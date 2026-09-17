@@ -1,0 +1,49 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.cache/
+tmp/
+temp/
+*.log
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+.credentials/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Runtime data and backups
+/data/
+/uploads/
+/storage/
+/orthanc/
+/minio/
+/backups/
+/exports/
+*.dump
+*.bak
+*.sql.gz
+
+# Medical data must never be committed by default
+*.dcm
+*.dicom
+*.nii
+*.nii.gz
+
+# Only explicitly reviewed synthetic fixtures may override the medical-data rule
+!test/fixtures/synthetic/**
+!server/test/fixtures/synthetic/**
