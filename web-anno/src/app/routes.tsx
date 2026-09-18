@@ -1,3 +1,5 @@
+import { matchPath } from 'react-router-dom';
+
 export interface AppRoute {
   path: string;
   label: string;
@@ -16,8 +18,8 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/admin', label: '系统管理', implementationWorkPackage: 'WP-15' },
 ];
 
-const darkThemeRoutePattern = /^\/(?:workbench|review)\/[^/]+$/;
+const darkThemeRoutes = ['/workbench/:caseId', '/review/:caseId'];
 
 export function isDarkThemePath(pathname: string): boolean {
-  return darkThemeRoutePattern.test(pathname);
+  return darkThemeRoutes.some((path) => matchPath({ path, end: true }, pathname) !== null);
 }

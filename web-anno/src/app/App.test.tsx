@@ -29,6 +29,16 @@ describe('App', () => {
     expect(screen.queryByText(/患者|权限|状态|数量/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['/workbench/synthetic-case/', '标注工作台'],
+    ['/review/synthetic-case/', '审核台'],
+  ])('uses the dark theme for valid trailing-slash route %s', async (path, label) => {
+    render(<App initialEntries={[path]} />);
+
+    expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
+    expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'dark');
+  });
+
   it.each(['/workbench/', '/workbench/a/b', '/review/', '/review/a/b'])(
     'renders the neutral wildcard page with a light theme for invalid route %s',
     async (path) => {
