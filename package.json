@@ -11,6 +11,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check:forbidden-files": "node scripts/check-forbidden-files.mjs",
+    "check": "npm run check:forbidden-files && npm run lint && npm run typecheck && npm test && npm run build"
   }
 }
