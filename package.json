@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "workspaces": ["server", "web-anno"],
   "engines": { "node": "20.20.2", "npm": ">=10 <12" },
+  "overrides": { "multer": "2.4.0" },
   "scripts": {
     "preinstall": "node scripts/runtime-version.mjs",
     "lint": "npm run lint --workspaces --if-present",
