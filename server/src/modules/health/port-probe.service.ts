@@ -8,7 +8,7 @@ export interface PortProbe {
 
 @Injectable()
 export class PortProbeService implements PortProbe {
-  constructor(private readonly timeoutMs = 750) {}
+  private readonly timeoutMs = 750;
 
   check({ host, port }: DependencyTarget): Promise<void> {
     return new Promise((resolve, reject) => {

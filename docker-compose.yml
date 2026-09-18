@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${POSTGRES_PORT}:5432"]
+    volumes: [miap-postgres-data:/var/lib/postgresql/data]
+
+  orthanc:
+    image: orthancteam/orthanc
+    environment:
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USERNAME}":"${ORTHANC_PASSWORD}"}'
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --output /dev/null --user \"$${ORTHANC_USERNAME}:$${ORTHANC_PASSWORD}\" http://localhost:8042/system"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${ORTHANC_PORT}:8042"]
+    volumes: [miap-orthanc-data:/var/lib/orthanc/db]
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --output /dev/null http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${MINIO_PORT}:9000"]
+    volumes: [miap-minio-data:/data]
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli --no-auth-warning ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${REDIS_PORT}:6379"]
+    volumes: [miap-redis-data:/data]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --output /dev/null --user \"elastic:$${ELASTIC_PASSWORD}\" --cacert /usr/share/elasticsearch/config/certs/http_ca.crt 'https://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    networks: [miap-local]
+    ports: ["127.0.0.1:${ELASTICSEARCH_PORT}:9200"]
+    volumes: [miap-elasticsearch-data:/usr/share/elasticsearch/data]
+
+networks:
+  miap-local:
+    internal: true
+    name: miap-local-development
+
+volumes:
+  miap-postgres-data:
+    name: miap-postgres-data
+  miap-orthanc-data:
+    name: miap-orthanc-data
+  miap-minio-data:
+    name: miap-minio-data
+  miap-redis-data:
+    name: miap-redis-data
+  miap-elasticsearch-data:
+    name: miap-elasticsearch-data
