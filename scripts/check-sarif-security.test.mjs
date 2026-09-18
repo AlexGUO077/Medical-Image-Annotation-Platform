@@ -78,3 +78,37 @@ test('fails closed for missing and empty SARIF directories', () => {
     assert.throws(() => countBlockingSarifResults(directory));
   });
 });
+
+test('fails closed for malformed result and tool structures', () => withSarifDirectory({
+  'string-results.sarif': sarif([{ tool: { driver: { rules: [] } }, results: 'not-an-array' }]),
+  'missing-driver.sarif': sarif([{ tool: {}, results: [{ ruleId: 'js/rule' }] }]),
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_MALFORMED' });
+}));
+
+test('fails closed when JSON files do not contain valid SARIF documents', () => withSarifDirectory({
+  'not-sarif.json': { status: 'not-a-sarif-document' },
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_MALFORMED' });
+}));
+
+test('resolves a GUID-referenced extension rule instead of the driver rule', () => withSarifDirectory({
+  'guid-extension.sarif': sarif([{
+    tool: {
+      driver: { rules: [{ id: 'js/shared', properties: { 'security-severity': '1.0' } }] },
+      extensions: [{ guid: 'extension-guid', rules: [{ id: 'js/shared', properties: { 'security-severity': '9.0' } }] }],
+    },
+    results: [{ rule: { id: 'js/shared', toolComponent: { guid: 'extension-guid' } } }],
+  }]),
+}, (directory) => {
+  assert.equal(countBlockingSarifResults(directory), 1);
+}));
+
+test('fails closed for an unresolved explicit tool-component GUID', () => withSarifDirectory({
+  'unknown-guid.sarif': sarif([{
+    tool: { driver: { rules: [{ id: 'js/shared', properties: { 'security-severity': '1.0' } }] } },
+    results: [{ rule: { id: 'js/shared', toolComponent: { guid: 'missing-guid' } } }],
+  }]),
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_UNSUPPORTED_REFERENCE' });
+}));

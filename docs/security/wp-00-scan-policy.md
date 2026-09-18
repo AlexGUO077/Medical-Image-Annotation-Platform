@@ -16,7 +16,8 @@ file in CodeQL's SARIF output directory. It resolves each result's rule metadata
 across driver and referenced extension components, blocking strictly numeric
 `security-severity` scores of `7.0` or higher on pull requests, pushes, and
 scheduled runs. Missing, unreadable, empty, or malformed SARIF input fails
-closed. Dependency review and Gitleaks secret scanning also block the workflow
+closed, including unsupported result or explicit tool-component references.
+Dependency review and Gitleaks secret scanning also block the workflow
 on findings. Dependency review rejects added `GPL-2.0`, `GPL-3.0`, `AGPL-1.0`,
 and `AGPL-3.0` licenses. Other license identifiers found in `package-lock.json`
 are listed in the workflow job summary for review.
