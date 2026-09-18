@@ -28,4 +28,14 @@ describe('App', () => {
     expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'dark');
     expect(screen.queryByText(/患者|权限|状态|数量/)).not.toBeInTheDocument();
   });
+
+  it.each(['/workbench/', '/workbench/a/b', '/review/', '/review/a/b'])(
+    'renders the neutral wildcard page with a light theme for invalid route %s',
+    async (path) => {
+      render(<App initialEntries={[path]} />);
+
+      expect(await screen.findByRole('heading', { name: '页面' })).toBeInTheDocument();
+      expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'light');
+    },
+  );
 });

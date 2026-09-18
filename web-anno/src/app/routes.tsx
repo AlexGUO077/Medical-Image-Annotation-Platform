@@ -16,6 +16,8 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/admin', label: '系统管理', implementationWorkPackage: 'WP-15' },
 ];
 
+const darkThemeRoutePattern = /^\/(?:workbench|review)\/[^/]+$/;
+
 export function isDarkThemePath(pathname: string): boolean {
-  return pathname.startsWith('/workbench/') || pathname.startsWith('/review/');
+  return darkThemeRoutePattern.test(pathname);
 }
