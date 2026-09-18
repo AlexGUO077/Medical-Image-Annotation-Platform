@@ -79,8 +79,13 @@ test('fails closed for missing and empty SARIF directories', () => {
   });
 });
 
-test('fails closed for malformed result and tool structures', () => withSarifDirectory({
+test('fails closed for a malformed results structure', () => withSarifDirectory({
   'string-results.sarif': sarif([{ tool: { driver: { rules: [] } }, results: 'not-an-array' }]),
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_MALFORMED' });
+}));
+
+test('fails closed for a run with results but no driver', () => withSarifDirectory({
   'missing-driver.sarif': sarif([{ tool: {}, results: [{ ruleId: 'js/rule' }] }]),
 }, (directory) => {
   assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_MALFORMED' });
@@ -108,6 +113,27 @@ test('fails closed for an unresolved explicit tool-component GUID', () => withSa
   'unknown-guid.sarif': sarif([{
     tool: { driver: { rules: [{ id: 'js/shared', properties: { 'security-severity': '1.0' } }] } },
     results: [{ rule: { id: 'js/shared', toolComponent: { guid: 'missing-guid' } } }],
+  }]),
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_UNSUPPORTED_REFERENCE' });
+}));
+
+test('fails closed for an out-of-range driver rule index', () => withSarifDirectory({
+  'driver-index.sarif': sarif([{
+    tool: { driver: { rules: [{ id: 'js/only', properties: { 'security-severity': '1.0' } }] } },
+    results: [{ ruleIndex: 1 }],
+  }]),
+}, (directory) => {
+  assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_UNSUPPORTED_REFERENCE' });
+}));
+
+test('fails closed for an out-of-range GUID-referenced extension rule index', () => withSarifDirectory({
+  'extension-index.sarif': sarif([{
+    tool: {
+      driver: { rules: [{ id: 'js/driver', properties: { 'security-severity': '1.0' } }] },
+      extensions: [{ guid: 'extension-guid', rules: [{ id: 'js/only', properties: { 'security-severity': '9.0' } }] }],
+    },
+    results: [{ rule: { index: 1, toolComponent: { guid: 'extension-guid' } } }],
   }]),
 }, (directory) => {
   assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_UNSUPPORTED_REFERENCE' });

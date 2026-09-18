@@ -160,10 +160,14 @@ function resolveRule(run, result) {
       const rule = candidate.rules?.find((item) => item.id === ruleId);
       if (rule) return rule;
     }
+    throw inputError('SARIF_INPUT_UNSUPPORTED_REFERENCE');
   }
   if (Number.isInteger(ruleIndex)) {
-    if (component) return component.rules?.[ruleIndex];
-    return candidates[0]?.rules?.[ruleIndex];
+    const rule = component
+      ? component.rules?.[ruleIndex]
+      : candidates[0]?.rules?.[ruleIndex];
+    if (rule) return rule;
+    throw inputError('SARIF_INPUT_UNSUPPORTED_REFERENCE');
   }
   throw inputError('SARIF_INPUT_UNSUPPORTED_REFERENCE');
 }
