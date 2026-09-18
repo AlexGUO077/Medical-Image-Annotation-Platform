@@ -34,30 +34,7 @@ jobs:
       - name: Block CodeQL high and critical findings
         env:
           CODEQL_SARIF_PATH: ${{ steps.analyze.outputs.sarif-output }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-
-          const sarifPath = process.env.CODEQL_SARIF_PATH;
-          if (!sarifPath) throw new Error('CodeQL did not provide a SARIF output path.');
-
-          const sarif = JSON.parse(readFileSync(sarifPath, 'utf8'));
-          let blockingResults = 0;
-          for (const run of sarif.runs ?? []) {
-            const rules = run.tool?.driver?.rules ?? [];
-            const rulesById = new Map(rules.map((rule) => [rule.id, rule]));
-            for (const result of run.results ?? []) {
-              const rule = rulesById.get(result.ruleId) ?? rules[result.ruleIndex];
-              const severity = Number.parseFloat(rule?.properties?.['security-severity']);
-              if (Number.isFinite(severity) && severity >= 7.0) blockingResults += 1;
-            }
-          }
-
-          if (blockingResults > 0) {
-            throw new Error(`CodeQL severity gate blocked ${blockingResults} high or critical result(s).`);
-          }
-          console.log('CodeQL severity gate found no high or critical results.');
-          NODE
+        run: node scripts/check-sarif-security.mjs "$CODEQL_SARIF_PATH"
 
   dependency-review:
     name: Dependency and license review

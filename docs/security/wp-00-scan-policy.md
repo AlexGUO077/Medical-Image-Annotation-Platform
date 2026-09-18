@@ -11,12 +11,15 @@ starts services or prints environment values.
 
 `npm audit --audit-level=high` and Trivy filesystem/configuration scans fail on
 `HIGH` or `CRITICAL` findings. CodeQL uploads SARIF to GitHub code scanning and
-an explicit workflow gate parses every result's rule `security-severity`,
-blocking scores of `7.0` or higher on pull requests, pushes, and scheduled
-runs. Dependency review and Gitleaks secret scanning also block the workflow on
-findings. Dependency review rejects added `GPL-2.0`, `GPL-3.0`, `AGPL-1.0`, and
-`AGPL-3.0` licenses. Other license identifiers found in `package-lock.json` are
-listed in the workflow job summary for review.
+an explicit workflow gate recursively parses every regular `.sarif` and `.json`
+file in CodeQL's SARIF output directory. It resolves each result's rule metadata
+across driver and referenced extension components, blocking strictly numeric
+`security-severity` scores of `7.0` or higher on pull requests, pushes, and
+scheduled runs. Missing, unreadable, empty, or malformed SARIF input fails
+closed. Dependency review and Gitleaks secret scanning also block the workflow
+on findings. Dependency review rejects added `GPL-2.0`, `GPL-3.0`, `AGPL-1.0`,
+and `AGPL-3.0` licenses. Other license identifiers found in `package-lock.json`
+are listed in the workflow job summary for review.
 
 A finding can be excepted only through a separately reviewed and approved
 record that identifies the finding, scope, mitigation, approver, and expiry.
