@@ -33,8 +33,18 @@ test('writes only .env.local and never reveals generated credentials', () => {
   const environment = readFileSync(join(directory, '.env.local'), 'utf8');
   assert.match(environment, /^POSTGRES_PASSWORD=.+$/m);
   assert.match(environment, /^MINIO_ROOT_PASSWORD=.+$/m);
+  const generatedSecrets = environment
+    .split('\n')
+    .filter((line) => /^(POSTGRES_PASSWORD|ORTHANC_USERNAME|ORTHANC_PASSWORD|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD|REDIS_PASSWORD|ELASTIC_PASSWORD)=/.test(line))
+    .map((line) => line.split('=')[1]);
+
+  assert.equal(generatedSecrets.length, 7);
   assert.doesNotMatch(result.stdout, /POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD/);
   assert.doesNotMatch(result.stderr, /POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD/);
+  for (const secret of generatedSecrets) {
+    assert.equal(result.stdout.includes(secret), false);
+    assert.equal(result.stderr.includes(secret), false);
+  }
 });
 
 test('refuses to overwrite an existing .env.local unless explicitly forced', () => {
