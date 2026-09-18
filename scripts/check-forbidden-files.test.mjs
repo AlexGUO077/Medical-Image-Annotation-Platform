@@ -20,6 +20,14 @@ test('does not allow credentials or environment files in synthetic fixture roots
   assert.equal(findForbidden(['server/test/fixtures/synthetic/signing.key']).length, 1);
 });
 
+test('rejects credential directories outside synthetic fixture roots', () => {
+  assert.equal(findForbidden(['.credentials/service-account.json']).length, 1);
+});
+
+test('rejects credential directories inside synthetic fixture roots', () => {
+  assert.equal(findForbidden(['test/fixtures/synthetic/.credentials/auth.json']).length, 1);
+});
+
 test('rejects runtime data directories and backup formats', () => {
   assert.equal(findForbidden(['uploads/case-1/image.png']).length, 1);
   assert.equal(findForbidden(['exports/case-1.zip']).length, 1);

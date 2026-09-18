@@ -6,6 +6,7 @@ const SYNTHETIC_FIXTURE_ROOTS = [
 ];
 
 const CREDENTIAL_EXTENSIONS = /\.(?:key|pem|p12|pfx|token|jks|keystore|pkcs12|ppk|p8|der|csr|secret)$/i;
+const CREDENTIAL_DIRECTORY = /(?:^|\/)\.credentials(?:\/|$)/i;
 const MEDICAL_IMAGE_EXTENSIONS = /\.(?:dcm|dicom|nii|nii\.gz)$/i;
 const BACKUP_EXTENSIONS = /\.(?:dump|bak|backup|sql\.gz)$/i;
 const RUNTIME_STORAGE_ROOTS = /^(?:data|uploads|storage|orthanc|minio|backups|exports)(?:\/|$)/i;
@@ -27,6 +28,7 @@ export function findForbidden(files) {
     const path = normalizePath(file);
 
     if (isRealEnvironmentFile(path)) return [{ path, reason: 'environment-file' }];
+    if (CREDENTIAL_DIRECTORY.test(path)) return [{ path, reason: 'credential-directory' }];
     if (CREDENTIAL_EXTENSIONS.test(path)) return [{ path, reason: 'credential-file' }];
     if (BACKUP_EXTENSIONS.test(path)) return [{ path, reason: 'backup-or-dump' }];
     if (RUNTIME_STORAGE_ROOTS.test(path)) return [{ path, reason: 'runtime-storage' }];

@@ -10,11 +10,13 @@ starts services or prints environment values.
 ## Blocking policy
 
 `npm audit --audit-level=high` and Trivy filesystem/configuration scans fail on
-`HIGH` or `CRITICAL` findings. CodeQL, dependency review, and Gitleaks secret
-scanning also block the workflow on findings. Dependency review rejects added
-`GPL-2.0`, `GPL-3.0`, `AGPL-1.0`, and `AGPL-3.0` licenses. Other license
-identifiers found in `package-lock.json` are listed in the workflow job summary
-for review.
+`HIGH` or `CRITICAL` findings. CodeQL uploads SARIF to GitHub code scanning and
+an explicit workflow gate parses every result's rule `security-severity`,
+blocking scores of `7.0` or higher on pull requests, pushes, and scheduled
+runs. Dependency review and Gitleaks secret scanning also block the workflow on
+findings. Dependency review rejects added `GPL-2.0`, `GPL-3.0`, `AGPL-1.0`, and
+`AGPL-3.0` licenses. Other license identifiers found in `package-lock.json` are
+listed in the workflow job summary for review.
 
 A finding can be excepted only through a separately reviewed and approved
 record that identifies the finding, scope, mitigation, approver, and expiry.
@@ -25,8 +27,9 @@ blanket vulnerability waiver, and it does not permit high or critical findings.
 ## Repository-content control
 
 `npm run check:forbidden-files` examines `git ls-files -z`, so it evaluates only
-tracked content. It rejects real `.env` files, credential/key/token material,
-medical images, dumps/backups, and runtime storage roots. Medical-image test
+tracked content. It rejects real `.env` files, `.credentials/` directories,
+credential/key/token material, medical images, dumps/backups, and runtime
+storage roots. Medical-image test
 fixtures are allowed only under `test/fixtures/synthetic/` and
 `server/test/fixtures/synthetic/`; this exception does not allow credentials,
 environment files, dumps, or runtime storage.
