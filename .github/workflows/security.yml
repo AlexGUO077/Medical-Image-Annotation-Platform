@@ -1,0 +1,151 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL JavaScript/TypeScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # Version tags are documented in docs/security/wp-00-scan-policy.md.
+      - uses: actions/checkout@v4
+      - name: Check repository content before retaining SARIF
+        run: node scripts/check-forbidden-files.mjs
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - id: analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+          output: sarif-results
+          upload: never
+          upload-database: false
+      - name: Retain private code-only SARIF diagnostics
+        if: ${{ success() && github.event.repository.private == true && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.analyze.outputs.sarif-output }}
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: false
+      - name: Block CodeQL high and critical findings
+        if: ${{ !cancelled() }}
+        env:
+          CODEQL_SARIF_PATH: ${{ steps.analyze.outputs.sarif-output }}
+        run: node scripts/check-sarif-security.mjs "$CODEQL_SARIF_PATH"
+
+  dependency-policy:
+    name: Whole-lock dependency and license policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - run: npm ci
+      - name: Enforce whole-lock license policy and record evidence
+        run: node scripts/check-dependency-policy.mjs package-lock.json
+      - run: npm audit --audit-level=high
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy:
+    name: Trivy filesystem and configuration scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          skip-dirs: node_modules,.git
+
+  trivy-images:
+    name: Trivy image scan (${{ matrix.service }} @ ${{ matrix.digest }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: postgres
+            image: miap/postgres:16.15-alpine3.24
+            source: postgres:16.15-alpine3.24
+            digest: sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb
+            context: .
+            dockerfile: docker/postgres/Dockerfile
+          - service: orthanc
+            image: miap/orthanc:26.9.0-hardened
+            source: orthancteam/orthanc
+            digest: sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca
+            context: .
+            dockerfile: docker/orthanc/Dockerfile
+          - service: minio
+            image: miap/minio:2026-07-17-hardened
+            source: cgr.dev/chainguard/minio
+            digest: sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e
+            context: .
+            dockerfile: docker/minio/Dockerfile
+          - service: redis
+            image: miap/redis:7.4.11-alpine3.21
+            source: redis:7.4.11-alpine3.21
+            digest: sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
+            context: .
+            dockerfile: docker/redis/Dockerfile
+          - service: elasticsearch
+            image: miap/elasticsearch:8.19.21-netty-4.1.137
+            source: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21
+            digest: sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
+            context: .
+            dockerfile: docker/elasticsearch/Dockerfile
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Build ${{ matrix.image }}
+        run: docker build --pull=false --file "${{ matrix.dockerfile }}" --tag "${{ matrix.image }}" "${{ matrix.context }}"
+
+      # Version tags are documented in docs/security/wp-00-scan-policy.md.
+      - name: Scan ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'

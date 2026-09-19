@@ -1,0 +1,211 @@
+# WP-00 验证证据
+
+> 首次执行：2026-09-19 00:12–00:23 CST<br>
+> 评审证据重跑：2026-09-19 10:16–10:20 CST<br>
+> 分支：`feature/wp-00-project-skeleton`<br>
+> 验证基线：`f61c9c1`<br>
+> 数据边界：仅本地合成环境，无真实医学数据、患者信息或生产凭据
+
+## 追踪与范围
+
+- 源开发手册：3.1–3.4、8.1。
+- 需求基线：第 2、9、10、12、14 节，`WP-00`、`S1`、`SG-1`。
+- 本次验证：monorepo 工程门、前后端骨架、五个中间件、存活/就绪检查、Redis 故障安全响应、依赖漏洞阈值和禁止文件门。
+- 不在本次范围：真实数据、生产部署、业务数据库/API 契约、鉴权、DICOM 导入/脱敏、帧服务、标注及审核业务。
+
+## 环境与可重现命令
+
+使用 Node.js `v20.20.2`、npm `10.8.2`。本地从空依赖目录执行：
+
+```bash
+nvm use 20.20.2
+npm ci
+npm run check:forbidden-files
+npm run lint
+npm run typecheck
+npm test
+npm run build
+docker compose --env-file .env.local config --quiet
+docker compose --env-file .env.local up -d
+docker compose --env-file .env.local ps
+```
+
+后端在独立终端启动，不记录或输出 `.env.local` 值：
+
+```bash
+set -a
+source .env.local
+set +a
+npm run start:dev --workspace server
+```
+
+另一终端执行：
+
+```bash
+curl --fail --silent http://localhost:3000/api/health/live
+curl --fail --silent http://localhost:3000/api/health
+```
+
+前端可达性验证：
+
+```bash
+npm run dev --workspace web-anno
+curl --fail --silent http://localhost:5173/
+```
+
+## 自动化检查结果
+
+| 时间（CST） | 检查 | 结果 |
+| --- | --- | --- |
+| 00:12–00:15 | `npm ci` | 通过，安装 523 packages；锁文件未改变 |
+| 00:15 | 禁止文件、lint、typecheck | 全部退出 0 |
+| 00:16 | `npm test` | scripts 24/24、server 19/19、web 26/26 通过 |
+| 00:16 | `npm run build` | server 与 web 构建通过；Vite 仅有已知 529.73 kB chunk 非阻断提醒 |
+| 00:17 | Compose 配置与运行状态 | 配置通过；PostgreSQL、Orthanc、MinIO、Redis、Elasticsearch 均 `running healthy` |
+| 00:19 | `npm audit --audit-level=high` | 退出 0；0 Critical/High，5 Moderate，1 Low |
+| 00:19 | 前端 `http://localhost:5173/` | HTTP 200，React root 存在 |
+| 00:22–00:23 | 文档变更后 `npm run check` | 退出 0；scripts 24/24、server 19/19、web 26/26，lint/typecheck/build 通过 |
+
+`npm ci` 在受限网络中的首次尝试因 DNS 不可用未完成；允许访问 npm registry 后的正式重跑退出 0，本表只以该成功重跑为验收结果。
+
+每个命令的开始/结束时间、退出码和经脱敏的原始输出见 [WP-00 命令转录](wp-00-command-transcript.md)。该转录来自评审后的完整重跑；对无输出的成功命令明确记录了 `stdout/stderr: (none)`。
+
+## 运行时健康证据
+
+2026-09-19 00:17:40 CST，五个依赖均健康：
+
+```text
+GET /api/health/live -> HTTP 200
+{"status":"ok","service":"server"}
+
+GET /api/health -> HTTP 200
+{"status":"ok","dependencies":{"postgres":"up","orthanc":"up","minio":"up","redis":"up","elasticsearch":"up"}}
+```
+
+## Redis 故障与恢复验证
+
+故障注入：
+
+```bash
+docker compose --env-file .env.local stop redis
+curl --silent --output /tmp/miap-readiness.json --write-out '%{http_code}' \
+  http://localhost:3000/api/health
+```
+
+2026-09-19 00:18:05 CST 结果：
+
+```text
+HTTP 503
+{"status":"error","dependency":"redis"}
+```
+
+响应只有 `status` 和 `dependency` 字段；针对 host、port、stack、password、credential、secret、token 的检查通过，未泄露主机、端口、堆栈或凭据。
+
+恢复：
+
+```bash
+docker compose --env-file .env.local up -d --wait --wait-timeout 60 redis
+curl --fail --silent http://localhost:3000/api/health
+```
+
+2026-09-19 00:18:29 CST 结果：
+
+```text
+HTTP 200
+{"status":"ok","dependencies":{"postgres":"up","orthanc":"up","minio":"up","redis":"up","elasticsearch":"up"}}
+```
+
+验证结束后，Redis 与其余四个容器全部恢复为 `running healthy`；Nest 和 Vite 验证进程已停止，3000/5173 无监听进程。
+
+## 安全、D-38 与已知项
+
+- `.env.local` 被 `.gitignore` 命中且不在 `git ls-files` 中；跟踪文件禁止项扫描通过。本次未使用或写入真实医学数据。
+- D-38 遵循源手册固定 Node `20.20.2`。Node 20 已结束上游维护，因此仍必须在每个 PR 执行依赖、代码、镜像和配置扫描；任何未批准的 Critical/High 问题都阻断合并和上线。
+- 当前 npm 已知 5 Moderate 和 1 Low，高危阈值门通过。不使用 `npm audit fix --force` 自动引入破坏性主版升级；后续在独立依赖更新 PR 中评估和回归。
+- Vite 的单 chunk 大于 500 kB 为非阻断性构建提醒，在真实功能路由引入后再评估按路由分包。
+- Draft PR #2 的早期远程失败及修复均保留为历史证据；本页最后一节记录当前镜像阻断修复。在新提交的远程重跑通过前，WP-00 状态仍为“等待评审”。
+- SG-1 在 WP-00 范围内已建立合成数据边界、本地秘密隔离、健康失败脱敏和扫描门；完整放行仍需 WP-S0 的数据流、信任边界、权限矩阵、密钥/日志/事件方案及威胁清单获得评审批准；在此之前不创建真实数据连接或生产秘密。
+
+## Draft PR #2 首轮远程失败与本地修复
+
+2026-09-19 的首次远程运行已证实三个环境/配置问题：
+
+1. `aquasecurity/trivy-action@0.28.0` 无法解析。核对官方发布和 `v0.36.0` action metadata 后，文件系统/配置与五镜像扫描统一改用 `aquasecurity/trivy-action@v0.36.0`；现有 `scan-type`、`scan-ref`、`image-ref`、`scanners`、`severity`、`exit-code` 和 `skip-dirs` 输入仍与官方 metadata 兼容。
+2. Gitleaks 在列取 PR commits 时收到 403。`secret-scan` 作业现仅授予 `contents: read` 和必需的 `pull-requests: read`。
+3. 私有仓库的 `security_and_analysis` 未启用，因此 hosted Dependency Review 和 CodeQL SARIF 上传不可用。本修复不开启 GHAS、不产生付费变更；CodeQL 改用 `upload: never`，但仍生成 SARIF 并由仓库内失败关闭门阻断 `security-severity >= 7.0`。Hosted Dependency Review 替换为仓库原生的全锁文件门：先记录允许许可证标识符，阻断 `GPL-2.0`、`GPL-3.0`、`AGPL-1.0`、`AGPL-3.0`，再用 `npm audit --audit-level=high` 阻断 High/Critical。
+
+本地重跑使用项目指定的 Node `20.20.2`。聚焦工作流/依赖政策测试 9/9 通过；根检查脚本 33/33、服务端 19/19、前端 26/26 通过，lint、typecheck 和两端构建通过；workflow YAML、Compose 配置、禁止文件和 diff 检查通过。当前锁文件许可证门记录 11 个允许标识符、6 个未在锁文件中提供许可证元数据的条目，且无禁止标识符；在线 npm 审计仍为 0 Critical/High、5 Moderate、1 Low。GitHub Actions 自身使用 Node 24 的提醒属于外部 action runtime，不改变项目的 Node 20 契约。当前只能声明本地配置与测试结果；Trivy、Gitleaks、CodeQL 本地 SARIF 门和依赖政策的新远程结果仍待 PR #2 重跑，本文不声明远程修复已成功。
+
+第四轮复核补充：`upload: never` 不会关闭独立的数据库上传输入；现已同时设置
+`upload-database: false`。回归断言先因该值缺失失败，再在修复后通过。Node
+`20.20.2` 下聚焦测试 9/9、根脚本 33/33、服务端 19/19、前端 26/26、两份
+workflow YAML 解析、禁止文件和 diff 检查均通过。远程结果仍待控制器推送后验证。
+
+## 第五轮远程修复：SARIF 可选字段与 Redis 候选
+
+远程 [Security run 35432974464](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35432974464)
+的 CodeQL analyze 已成功，但本地门返回 `SARIF_INPUT_MALFORMED`。按官方 SARIF
+2.1.0 schema，省略 `run.results` 或组件 `rules` 不再误报；显式 null、对象、字符串、
+数字、布尔值仍失败关闭，实际结果的未知规则、组件或越界索引仍阻断。新增私有
+Actions SARIF artifact 只保留一天，禁止 fork PR 上传，先检查跟踪内容；上传失败
+或跳过也不会跳过后续本地门。这不代表 GitHub code-scanning 上传或 GHAS 放行。
+
+2026-09-19 17:02–17:04 CST，本地 Node `v20.20.2` 验证：
+
+- TDD 首轮 28 项中 6 项按预期失败（可选字段、artifact 缺失和旧 Redis 引用）；修复后 28/28 通过。
+- `npm run check` 退出 0：scripts 44/44、server 19/19、web 26/26，lint、typecheck、两端 build 通过；仅保留已有 Vite chunk 大小提醒。
+- 两份 workflow 与 Compose YAML 解析、Compose `config --quiet`、禁止文件门和 diff 检查退出 0。
+- 仅 Redis 更新到 `redis:7.4.11-alpine3.21`，本地 RepoDigest 与镜像契约中的 `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` 一致。
+- `docker compose --env-file .env.local up -d --no-deps --wait --wait-timeout 60 redis` 退出 0。Redis 从 `a94f63ea70ad` 重建为 `f1999b70bd61`；其余四个容器 ID 未变，五服务均 healthy。现有 `miap-redis-data:/data` 复用，没有删除卷。
+- `redis-server --version` 返回 `Redis server v=7.4.11`；liveness 和聚合 readiness 均 HTTP 200，五依赖均 `up`。临时 Nest 验证进程随后停止。
+
+Docker socket 与本地监听在初始沙箱中被拒绝；使用已授权的限定本地操作重跑成功。
+Redis 候选的零可修复 High/Critical 是控制器提供的本地 Docker Scout 结果，不能
+代替尚未执行的该摘要远程 Trivy 扫描。其余四镜像没有改变；此前真实 Trivy
+High/Critical 阻断仍未关闭。未降低严重度、添加 `ignore-unfixed`、抑制 CVE 或
+创建漏洞例外。本轮未推送；WP-00 仍等待新远程结果和剩余镜像问题处置。
+
+## PR #2 镜像阻断修复
+
+远程 Security run `35434129762` 的四项失败来自实际镜像漏洞，不是工作流误报。
+本次未降低 `HIGH,CRITICAL` 阈值，未使用 `ignore-unfixed`，也未添加 CVE 抑制或
+漏洞例外。Compose 与 CI 改为从摘要固定的源镜像构建同一组本地运行镜像：
+
+- PostgreSQL 保留官方 16.15 Alpine 运行契约，用原生 `su-exec` 替换含漏洞的 Go `gosu`，并用多阶段扁平化移除旧层扫描残留。
+- Orthanc 保留 26.9.0，移除运行时不需要的 `linux-libc-dev`。
+- MinIO 改用当前 Chainguard MinIO 构建并以非 root UID/GID `65532:65532` 运行；既有合成卷仅做一次所有权迁移，未删除数据。
+- Redis 保留已选定的 7.4.11 Alpine 摘要，并通过同一 Dockerfile 构建/扫描。
+- Elasticsearch 使用官方 8.19.21 Wolfi 源镜像，将受影响的 Netty 组件替换为 SHA-256 校验固定的 4.1.137 构件。
+
+2026-09-19 19:44–19:53 CST，本地验证使用 Node `v20.20.2`：
+
+- `npm run check` 退出 0：scripts 44/44、server 19/19、web 26/26，lint、typecheck 和两端 build 通过；仅保留已有 Vite chunk 大小提醒。
+- `docker compose --env-file .env.local config --quiet` 与 `git diff --check` 退出 0；五个最终容器均为 `healthy`。
+- 五个源摘要均解析为包含 `linux/amd64` 的多架构清单，可由 GitHub Ubuntu runner 构建。
+- `/api/health/live` 与 `/api/health` 均返回 HTTP 200，聚合结果显示五依赖全部 `up`；临时 Node 20 验证进程随后停止。
+- 使用 Trivy `0.70.0` 对五个本地镜像归档执行 `vuln`、`HIGH,CRITICAL`、`exit-code 1` 扫描；PostgreSQL、Orthanc、MinIO、Redis、Elasticsearch 均报告 0 个阻断级漏洞并退出 0。
+
+当前仅声明本地修复证据；PR #2 的远程结果等待本提交推送后核验。
+
+首次推送后的 Security run `35441826294` 已确认 MinIO 与 Redis 镜像扫描通过，
+但 filesystem/configuration 作业对四个新增 Dockerfile 报告 `DS-0002`：未显式
+声明非 root 运行用户。本次没有忽略该规则；回归断言先按预期失败，再为
+PostgreSQL、Orthanc、MinIO、Redis 显式设置非 root 用户后通过。现有合成卷未
+删除，Orthanc 卷仅迁移为 UID/GID `999:999`。四个重建容器的实际 UID 分别为
+70、999、65532、999，五服务均为 `healthy`。Trivy `0.70.0` 对五个 Dockerfile
+的 `HIGH,CRITICAL` misconfiguration 重扫均为 0；四个变更后镜像的
+`HIGH,CRITICAL` vulnerability 归档重扫也均为 0。最终 Node `20.20.2`
+`npm run check` 退出 0：scripts 45/45、server 19/19、web 26/26，lint、
+typecheck 与两端 build 通过。下一次远程重跑仍需核验。
+
+## 回滚
+
+```bash
+# 立即停止本地服务，默认保留命名卷
+docker compose --env-file .env.local down
+
+# 共享后的文档/代码回退使用可追溯的反向提交
+git revert <commit-sha>
+```
+
+不对共享分支使用 `git reset --hard` 或强制推送。需删除命名卷时必须另行核对精确卷名、确认仅含合成数据并获得授权；本验收未删除任何卷。

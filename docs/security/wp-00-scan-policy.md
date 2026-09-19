@@ -1,0 +1,99 @@
+# WP-00 scan policy
+
+## Purpose and scope
+
+WP-00 keeps CI and security evidence gates closed to real medical data. Pull
+requests and the protected default branch run the root verification gates; the
+security workflow also runs weekly. CI validates Compose syntax only and never
+starts services or prints environment values.
+
+## Blocking policy
+
+`npm audit --audit-level=high` and Trivy filesystem/configuration scans fail on
+`HIGH` or `CRITICAL` findings. A separate Trivy image matrix builds the exact
+PostgreSQL, Orthanc, MinIO, Redis, and Elasticsearch runtime images used by
+Compose from source images pinned by full digest, then scans those final local
+images. The build definitions and source digests are recorded in
+[the container image contract](../contracts/container-images.md). Every matrix
+leg exits nonzero on `HIGH` or `CRITICAL` image vulnerabilities. Updating a
+Compose image or hardening Dockerfile therefore requires updating the contract,
+Compose definition, workflow matrix, and regression assertions together.
+
+CodeQL saves SARIF locally with `upload: never` and `upload-database: false`
+because this private repository does not have GitHub Advanced Security enabled.
+The workflow disables GitHub code-scanning SARIF and CodeQL database uploads. Its explicit repository
+gate still recursively parses every regular `.sarif` and `.json` file in CodeQL's SARIF
+output directory. It resolves each result's rule metadata across driver and
+referenced extension components, blocking strictly numeric `security-severity`
+scores of `7.0` or higher on pull requests, pushes, and scheduled runs. Missing,
+unreadable, empty, or malformed SARIF input fails closed, including unsupported
+result or explicit tool-component references. The SARIF 2.1.0 schema permits
+omitted `run.results` and tool-component `rules`; the gate treats those as empty
+arrays, while present non-array values (including null) still fail closed.
+Every actual result must resolve to a rule and any explicitly referenced
+component must resolve.
+
+For diagnostic evidence, `actions/upload-artifact@v4` retains only the generated
+SARIF directory for one day, after analysis and before the threshold gate. This
+is a private Actions artifact, not a GitHub code-scanning upload or GHAS result.
+It runs only in a private repository, excludes fork pull requests, and requires
+the preceding tracked-content check and analysis to succeed. Repository inputs
+remain code and approved synthetic fixtures only; real clinical data is forbidden
+and the path check is not a content classifier. Hidden files are excluded, and
+missing artifact input is an error. The threshold gate uses `!cancelled()` so
+artifact failure or a skipped upload cannot bypass it; no gate uses
+`continue-on-error`.
+
+Inputs and optional fields were checked against the official
+[SARIF 2.1.0 schema](https://docs.oasis-open.org/sarif/sarif/v2.1.0/cos02/schemas/sarif-schema-2.1.0.json),
+[CodeQL v3 analyze metadata](https://github.com/github/codeql-action/blob/v3/analyze/action.yml),
+and [upload-artifact v4 metadata](https://github.com/actions/upload-artifact/blob/v4/action.yml).
+
+The repository-native whole-lock dependency job replaces GitHub's hosted
+Dependency Review action, which is unavailable without GitHub Advanced
+Security in this private repository. It runs under exact Node `20.20.2`, uses
+`npm audit --audit-level=high` to block High/Critical dependency findings, and
+evaluates every `package-lock.json` package entry. It blocks `GPL-2.0`,
+`GPL-3.0`, `AGPL-1.0`, and `AGPL-3.0` identifiers even inside compound license
+expressions, records sorted allowed identifiers in the job summary, and reports
+the count of entries without lockfile license metadata. Invalid lockfile input
+fails closed. Gitleaks also blocks secret findings; its job receives only
+`contents: read` and `pull-requests: read`, the latter being required to list PR
+commits.
+
+A finding can be excepted only through a separately reviewed and approved
+record that identifies the finding, scope, mitigation, approver, and expiry.
+There is no implicit exception. In particular, [D-38](../decisions/D-38-node20-runtime.md)
+selects Node `20.20.2` for compatibility; its end-of-support risk is not a
+blanket vulnerability waiver, and it does not permit high or critical findings.
+
+## Repository-content control
+
+`npm run check:forbidden-files` examines `git ls-files -z`, so it evaluates only
+tracked content. It rejects real `.env` files, `.credentials/` directories,
+credential/key/token material, medical images, dumps/backups, and runtime
+storage roots. Medical-image test
+fixtures are allowed only under `test/fixtures/synthetic/` and
+`server/test/fixtures/synthetic/`; this exception does not allow credentials,
+environment files, dumps, or runtime storage.
+
+## Workflow supply-chain control
+
+The workflows use maintained major/minor action tags rather than unverified
+commit SHAs: `actions/checkout@v4`, `actions/setup-node@v4`,
+`actions/upload-artifact@v4`, `github/codeql-action@v3`, `gitleaks/gitleaks-action@v2`, and
+`aquasecurity/trivy-action@v0.36.0`. The Trivy ref and the workflow's
+`scan-type`, `scan-ref`, `image-ref`, `scanners`, `severity`, `exit-code`, and
+`skip-dirs` inputs were checked against the official `v0.36.0` action metadata.
+Tags are mutable, so each Dependabot update and workflow change must be reviewed
+as a supply-chain change. Once a release SHA is independently verified against
+the publisher's release, replace the corresponding tag with that immutable SHA;
+do not invent a digest or SHA.
+
+## Evidence and response
+
+Capture the workflow URL, run timestamp, scanner version, finding identifiers,
+and disposition in the relevant release or security evidence. Do not copy
+secret values, tokens, private keys, or real clinical data into job summaries,
+issues, pull requests, or evidence documents. Rotate and revoke any credential
+identified by a secret scan before closing the finding.

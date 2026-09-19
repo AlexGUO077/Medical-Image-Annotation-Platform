@@ -1,0 +1,118 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    image: miap/postgres:16.15-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${POSTGRES_PORT}:5432"]
+    volumes: [miap-postgres-data:/var/lib/postgresql/data]
+
+  orthanc:
+    build:
+      context: .
+      dockerfile: docker/orthanc/Dockerfile
+    image: miap/orthanc:26.9.0-hardened
+    environment:
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USERNAME}":"${ORTHANC_PASSWORD}"}'
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "false"
+    healthcheck:
+      test: ["CMD", "/probes/test-aliveness.py"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${ORTHANC_PORT}:8042"]
+    volumes: [miap-orthanc-data:/var/lib/orthanc/db]
+
+  minio:
+    build:
+      context: .
+      dockerfile: docker/minio/Dockerfile
+    image: miap/minio:2026-07-17-hardened
+    command: server /data --console-address ":9001"
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${MINIO_PORT}:9000"]
+    volumes: [miap-minio-data:/data]
+
+  redis:
+    build:
+      context: .
+      dockerfile: docker/redis/Dockerfile
+    image: miap/redis:7.4.11-alpine3.21
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli --no-auth-warning ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks: [miap-local]
+    ports: ["127.0.0.1:${REDIS_PORT}:6379"]
+    volumes: [miap-redis-data:/data]
+
+  elasticsearch:
+    build:
+      context: .
+      dockerfile: docker/elasticsearch/Dockerfile
+    image: miap/elasticsearch:8.19.21-netty-4.1.137
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --output /dev/null --user \"elastic:$${ELASTIC_PASSWORD}\" 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    networks: [miap-local]
+    ports: ["127.0.0.1:${ELASTICSEARCH_PORT}:9200"]
+    volumes: [miap-elasticsearch-data:/usr/share/elasticsearch/data]
+
+networks:
+  miap-local:
+    name: miap-local-development
+
+volumes:
+  miap-postgres-data:
+    name: miap-postgres-data
+  miap-orthanc-data:
+    name: miap-orthanc-data
+  miap-minio-data:
+    name: miap-minio-data
+  miap-redis-data:
+    name: miap-redis-data
+  miap-elasticsearch-data:
+    name: miap-elasticsearch-data
