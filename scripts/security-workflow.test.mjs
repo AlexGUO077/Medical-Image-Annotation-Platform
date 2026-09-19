@@ -116,6 +116,37 @@ test('repository-native dependency policy replaces unsupported hosted dependency
   );
 });
 
+test('private SARIF diagnostics cannot skip the blocking gate or retain untrusted fork content', () => {
+  const steps = workflow.jobs.codeql.steps;
+  const analyzeIndex = steps.findIndex((step) => step.id === 'analyze');
+  const artifactIndex = steps.findIndex((step) => step.uses === 'actions/upload-artifact@v4');
+  const gateIndex = steps.findIndex((step) => step.run?.includes('scripts/check-sarif-security.mjs'));
+  assert.ok(artifactIndex > analyzeIndex && artifactIndex < gateIndex);
+  assert.equal(steps[artifactIndex].if, '${{ success() && github.event.repository.private == true && (github.event_name != \'pull_request\' || github.event.pull_request.head.repo.full_name == github.repository) }}');
+  assert.deepEqual(steps[artifactIndex].with, {
+    name: 'codeql-sarif-${{ github.run_id }}-${{ github.run_attempt }}',
+    path: '${{ steps.analyze.outputs.sarif-output }}',
+    'retention-days': 1,
+    'if-no-files-found': 'error',
+    'include-hidden-files': false,
+  });
+  assert.equal(steps[gateIndex].if, '${{ !cancelled() }}');
+  assert.equal(steps[gateIndex]['continue-on-error'], undefined);
+  assert.equal(workflow.jobs.codeql['continue-on-error'], undefined);
+  assert.ok(steps.findIndex((step) => step.run === 'node scripts/check-forbidden-files.mjs') < analyzeIndex);
+  assert.ok(steps.some((step) => step.run === 'node scripts/check-forbidden-files.mjs'));
+});
+
+test('Redis scans the exact selected Redis 7 Alpine release used by Compose', () => {
+  const redis = workflow.jobs['trivy-images'].strategy.matrix.include.find((entry) => entry.service === 'redis');
+  assert.equal(compose.services.redis.image, 'redis:7.4.11-alpine3.21');
+  assert.deepEqual(redis, {
+    service: 'redis',
+    image: 'redis:7.4.11-alpine3.21',
+    digest: 'sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7',
+  });
+});
+
 test('Gitleaks can read pull request commit metadata with minimum permissions', () => {
   assert.deepEqual(workflow.jobs['secret-scan'].permissions, {
     contents: 'read',

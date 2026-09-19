@@ -20,13 +20,33 @@ in the same reviewed change.
 
 CodeQL saves SARIF locally with `upload: never` and `upload-database: false`
 because this private repository does not have GitHub Advanced Security enabled.
-The workflow disables both SARIF and database uploads. Its explicit repository
+The workflow disables GitHub code-scanning SARIF and CodeQL database uploads. Its explicit repository
 gate still recursively parses every regular `.sarif` and `.json` file in CodeQL's SARIF
 output directory. It resolves each result's rule metadata across driver and
 referenced extension components, blocking strictly numeric `security-severity`
 scores of `7.0` or higher on pull requests, pushes, and scheduled runs. Missing,
 unreadable, empty, or malformed SARIF input fails closed, including unsupported
-result or explicit tool-component references.
+result or explicit tool-component references. The SARIF 2.1.0 schema permits
+omitted `run.results` and tool-component `rules`; the gate treats those as empty
+arrays, while present non-array values (including null) still fail closed.
+Every actual result must resolve to a rule and any explicitly referenced
+component must resolve.
+
+For diagnostic evidence, `actions/upload-artifact@v4` retains only the generated
+SARIF directory for one day, after analysis and before the threshold gate. This
+is a private Actions artifact, not a GitHub code-scanning upload or GHAS result.
+It runs only in a private repository, excludes fork pull requests, and requires
+the preceding tracked-content check and analysis to succeed. Repository inputs
+remain code and approved synthetic fixtures only; real clinical data is forbidden
+and the path check is not a content classifier. Hidden files are excluded, and
+missing artifact input is an error. The threshold gate uses `!cancelled()` so
+artifact failure or a skipped upload cannot bypass it; no gate uses
+`continue-on-error`.
+
+Inputs and optional fields were checked against the official
+[SARIF 2.1.0 schema](https://docs.oasis-open.org/sarif/sarif/v2.1.0/cos02/schemas/sarif-schema-2.1.0.json),
+[CodeQL v3 analyze metadata](https://github.com/github/codeql-action/blob/v3/analyze/action.yml),
+and [upload-artifact v4 metadata](https://github.com/actions/upload-artifact/blob/v4/action.yml).
 
 The repository-native whole-lock dependency job replaces GitHub's hosted
 Dependency Review action, which is unavailable without GitHub Advanced
@@ -60,7 +80,7 @@ environment files, dumps, or runtime storage.
 
 The workflows use maintained major/minor action tags rather than unverified
 commit SHAs: `actions/checkout@v4`, `actions/setup-node@v4`,
-`github/codeql-action@v3`, `gitleaks/gitleaks-action@v2`, and
+`actions/upload-artifact@v4`, `github/codeql-action@v3`, `gitleaks/gitleaks-action@v2`, and
 `aquasecurity/trivy-action@v0.36.0`. The Trivy ref and the workflow's
 `scan-type`, `scan-ref`, `image-ref`, `scanners`, `severity`, `exit-code`, and
 `skip-dirs` inputs were checked against the official `v0.36.0` action metadata.

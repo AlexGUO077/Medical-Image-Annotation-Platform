@@ -19,10 +19,19 @@ published by the Elastic registry. Elastic's current 8.x Docker guide specifies
 `8.19.21`, so Compose pins that current release within the source-manual's
 required Elasticsearch 8 major line.
 
+On 2026-09-19, Redis alone moved from `redis:7` digest
+`sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7`
+to the exact Redis 7 Alpine release below. Local image inspection confirmed the
+manifest digest, and the existing synthetic `miap-redis-data` volume was reused
+without deletion. Redis 7.4.11 reached healthy and aggregate readiness returned
+HTTP 200. The controller's candidate Docker Scout scan reported zero fixable
+High/Critical findings; that is not a Trivy clearance. The unchanged remote
+HIGH/CRITICAL gate must rerun on this digest before any clearance claim.
+
 | Service | Image reference | Resolved digest |
 | --- | --- | --- |
 | PostgreSQL | `postgres:16` | `sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94` |
 | Orthanc | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` |
 | MinIO | `quay.io/minio/minio` | `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |
-| Redis | `redis:7` | `sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7` |
+| Redis | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` |
 | Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.21` | `sha256:cbf5cd6cfe5532a9c02d510c66d238bf329cd51fe3d57170a2a880aca7d47419` |

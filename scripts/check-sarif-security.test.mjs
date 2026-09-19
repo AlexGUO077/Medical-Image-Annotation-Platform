@@ -38,6 +38,55 @@ test('clean SARIF directory exits 0', () => withSarifDirectory({
   assert.equal(result.status, 0);
 }));
 
+test('accepts omitted results in a rules-only SARIF run', () => withSarifDirectory({
+  'metadata.sarif': sarif([{ tool: { driver: { name: 'CodeQL', rules: [{ id: 'js/high', properties: { 'security-severity': '9.0' } }] } } }]),
+}, (directory) => {
+  assert.equal(countBlockingSarifResults(directory), 0);
+}));
+
+test('accepts empty scans with omitted driver and extension rules', () => withSarifDirectory({
+  'empty.sarif': sarif([{ tool: { driver: { name: 'CodeQL' }, extensions: [{ name: 'empty-pack' }] }, results: [] }]),
+}, (directory) => {
+  const result = spawnSync(process.execPath, ['scripts/check-sarif-security.mjs', directory]);
+  assert.equal(result.status, 0);
+}));
+
+test('blocks extension findings even when the driver omits rules', () => withSarifDirectory({
+  'extension.sarif': sarif([{
+    tool: {
+      driver: { name: 'CodeQL' },
+      extensions: [{ name: 'security-pack', rules: [{ id: 'js/high', properties: { 'security-severity': '7.0' } }] }],
+    },
+    results: [{ rule: { id: 'js/high', toolComponent: { index: 0 } } }],
+  }]),
+}, (directory) => {
+  assert.equal(countBlockingSarifResults(directory), 1);
+}));
+
+for (const invalid of [null, {}, 'not-an-array', 0, false]) {
+  test(`fails closed for present invalid optional arrays: ${JSON.stringify(invalid)}`, () => {
+    for (const candidate of [
+      { tool: { driver: { name: 'CodeQL', rules: [] } }, results: invalid },
+      { tool: { driver: { name: 'CodeQL', rules: invalid } }, results: [] },
+      { tool: { driver: { name: 'CodeQL', rules: [] }, extensions: [{ name: 'pack', rules: invalid }] }, results: [] },
+    ]) {
+      withSarifDirectory({ 'invalid.sarif': sarif([candidate]) }, (directory) => {
+        assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_MALFORMED' });
+      });
+    }
+  });
+}
+
+test('fails closed when a result references a component with omitted rules', () => {
+  for (const result of [{ ruleId: 'js/missing' }, { ruleIndex: 0 }, { rule: { index: 0, toolComponent: { index: 0 } } }]) {
+    withSarifDirectory({
+      'unresolved.sarif': sarif([{ tool: { driver: { name: 'CodeQL' }, extensions: [{ name: 'empty-pack' }] }, results: [result] }]),
+    }, (directory) => {
+      assert.throws(() => countBlockingSarifResults(directory), { code: 'SARIF_INPUT_UNSUPPORTED_REFERENCE' });
+    });
+  }
+});
+
 test('a high result in a later nested SARIF file exits nonzero', () => withSarifDirectory({
   'first.sarif': sarif([run('js/clean', '6.9')]),
   'nested/later.json': sarif([run('js/high', '7.0')]),

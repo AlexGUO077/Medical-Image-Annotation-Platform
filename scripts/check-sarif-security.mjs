@@ -36,7 +36,7 @@ function validateToolComponent(component) {
   if (component.guid !== undefined && (typeof component.guid !== 'string' || component.guid.length === 0)) {
     throw inputError('SARIF_INPUT_MALFORMED');
   }
-  validateRules(component.rules);
+  if (component.rules !== undefined) validateRules(component.rules);
 }
 
 function validateRuleReference(reference) {
@@ -70,7 +70,8 @@ function validateSarifDocument(sarif) {
     throw inputError('SARIF_INPUT_MALFORMED');
   }
   for (const run of sarif.runs) {
-    if (!isObject(run) || !isObject(run.tool) || !isObject(run.tool.driver) || !Array.isArray(run.results)) {
+    if (!isObject(run) || !isObject(run.tool) || !isObject(run.tool.driver)
+      || (run.results !== undefined && !Array.isArray(run.results))) {
       throw inputError('SARIF_INPUT_MALFORMED');
     }
     validateToolComponent(run.tool.driver);
@@ -78,7 +79,7 @@ function validateSarifDocument(sarif) {
       throw inputError('SARIF_INPUT_MALFORMED');
     }
     for (const extension of run.tool.extensions ?? []) validateToolComponent(extension);
-    for (const result of run.results) {
+    for (const result of run.results ?? []) {
       if (!isObject(result)) throw inputError('SARIF_INPUT_MALFORMED');
       if (result.ruleId !== undefined && (typeof result.ruleId !== 'string' || result.ruleId.length === 0)) {
         throw inputError('SARIF_INPUT_MALFORMED');

@@ -21,6 +21,8 @@ jobs:
     steps:
       # Version tags are documented in docs/security/wp-00-scan-policy.md.
       - uses: actions/checkout@v4
+      - name: Check repository content before retaining SARIF
+        run: node scripts/check-forbidden-files.mjs
       - uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
@@ -32,7 +34,17 @@ jobs:
           output: sarif-results
           upload: never
           upload-database: false
+      - name: Retain private code-only SARIF diagnostics
+        if: ${{ success() && github.event.repository.private == true && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.analyze.outputs.sarif-output }}
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: false
       - name: Block CodeQL high and critical findings
+        if: ${{ !cancelled() }}
         env:
           CODEQL_SARIF_PATH: ${{ steps.analyze.outputs.sarif-output }}
         run: node scripts/check-sarif-security.mjs "$CODEQL_SARIF_PATH"
@@ -102,8 +114,8 @@ jobs:
             image: quay.io/minio/minio
             digest: sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
           - service: redis
-            image: redis:7
-            digest: sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
+            image: redis:7.4.11-alpine3.21
+            digest: sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
           - service: elasticsearch
             image: docker.elastic.co/elasticsearch/elasticsearch:8.19.21
             digest: sha256:cbf5cd6cfe5532a9c02d510c66d238bf329cd51fe3d57170a2a880aca7d47419

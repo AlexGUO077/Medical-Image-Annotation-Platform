@@ -141,6 +141,30 @@ HTTP 200
 `20.20.2` 下聚焦测试 9/9、根脚本 33/33、服务端 19/19、前端 26/26、两份
 workflow YAML 解析、禁止文件和 diff 检查均通过。远程结果仍待控制器推送后验证。
 
+## 第五轮远程修复：SARIF 可选字段与 Redis 候选
+
+远程 [Security run 35432974464](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35432974464)
+的 CodeQL analyze 已成功，但本地门返回 `SARIF_INPUT_MALFORMED`。按官方 SARIF
+2.1.0 schema，省略 `run.results` 或组件 `rules` 不再误报；显式 null、对象、字符串、
+数字、布尔值仍失败关闭，实际结果的未知规则、组件或越界索引仍阻断。新增私有
+Actions SARIF artifact 只保留一天，禁止 fork PR 上传，先检查跟踪内容；上传失败
+或跳过也不会跳过后续本地门。这不代表 GitHub code-scanning 上传或 GHAS 放行。
+
+2026-09-19 17:02–17:04 CST，本地 Node `v20.20.2` 验证：
+
+- TDD 首轮 28 项中 6 项按预期失败（可选字段、artifact 缺失和旧 Redis 引用）；修复后 28/28 通过。
+- `npm run check` 退出 0：scripts 44/44、server 19/19、web 26/26，lint、typecheck、两端 build 通过；仅保留已有 Vite chunk 大小提醒。
+- 两份 workflow 与 Compose YAML 解析、Compose `config --quiet`、禁止文件门和 diff 检查退出 0。
+- 仅 Redis 更新到 `redis:7.4.11-alpine3.21`，本地 RepoDigest 与镜像契约中的 `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` 一致。
+- `docker compose --env-file .env.local up -d --no-deps --wait --wait-timeout 60 redis` 退出 0。Redis 从 `a94f63ea70ad` 重建为 `f1999b70bd61`；其余四个容器 ID 未变，五服务均 healthy。现有 `miap-redis-data:/data` 复用，没有删除卷。
+- `redis-server --version` 返回 `Redis server v=7.4.11`；liveness 和聚合 readiness 均 HTTP 200，五依赖均 `up`。临时 Nest 验证进程随后停止。
+
+Docker socket 与本地监听在初始沙箱中被拒绝；使用已授权的限定本地操作重跑成功。
+Redis 候选的零可修复 High/Critical 是控制器提供的本地 Docker Scout 结果，不能
+代替尚未执行的该摘要远程 Trivy 扫描。其余四镜像没有改变；此前真实 Trivy
+High/Critical 阻断仍未关闭。未降低严重度、添加 `ignore-unfixed`、抑制 CVE 或
+创建漏洞例外。本轮未推送；WP-00 仍等待新远程结果和剩余镜像问题处置。
+
 ## 回滚
 
 ```bash
