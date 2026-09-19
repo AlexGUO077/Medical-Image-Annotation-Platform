@@ -1,6 +1,7 @@
 # WP-00 验证证据
 
-> 执行时间：2026-09-19 00:12–00:23 CST<br>
+> 首次执行：2026-09-19 00:12–00:23 CST<br>
+> 评审证据重跑：2026-09-19 10:16–10:20 CST<br>
 > 分支：`feature/wp-00-project-skeleton`<br>
 > 验证基线：`f61c9c1`<br>
 > 数据边界：仅本地合成环境，无真实医学数据、患者信息或生产凭据
@@ -66,6 +67,8 @@ curl --fail --silent http://localhost:5173/
 | 00:22–00:23 | 文档变更后 `npm run check` | 退出 0；scripts 24/24、server 19/19、web 26/26，lint/typecheck/build 通过 |
 
 `npm ci` 在受限网络中的首次尝试因 DNS 不可用未完成；允许访问 npm registry 后的正式重跑退出 0，本表只以该成功重跑为验收结果。
+
+每个命令的开始/结束时间、退出码和经脱敏的原始输出见 [WP-00 命令转录](wp-00-command-transcript.md)。该转录来自评审后的完整重跑；对无输出的成功命令明确记录了 `stdout/stderr: (none)`。
 
 ## 运行时健康证据
 
