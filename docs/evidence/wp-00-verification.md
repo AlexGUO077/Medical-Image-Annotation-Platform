@@ -123,7 +123,7 @@ HTTP 200
 - D-38 遵循源手册固定 Node `20.20.2`。Node 20 已结束上游维护，因此仍必须在每个 PR 执行依赖、代码、镜像和配置扫描；任何未批准的 Critical/High 问题都阻断合并和上线。
 - 当前 npm 已知 5 Moderate 和 1 Low，高危阈值门通过。不使用 `npm audit fix --force` 自动引入破坏性主版升级；后续在独立依赖更新 PR 中评估和回归。
 - Vite 的单 chunk 大于 500 kB 为非阻断性构建提醒，在真实功能路由引入后再评估按路由分包。
-- Draft PR #2 已产生首轮远程证据，但安全工作流因 Trivy Action 引用、Gitleaks PR 读权限和私有仓库无 GHAS 的兼容性问题失败。修复已在本地通过，远程重跑仍待控制器推送后验证；在新远程运行通过前，WP-00 状态仍为“等待评审”。
+- Draft PR #2 的早期远程失败及修复均保留为历史证据；本页最后一节记录当前镜像阻断修复。在新提交的远程重跑通过前，WP-00 状态仍为“等待评审”。
 - SG-1 在 WP-00 范围内已建立合成数据边界、本地秘密隔离、健康失败脱敏和扫描门；完整放行仍需 WP-S0 的数据流、信任边界、权限矩阵、密钥/日志/事件方案及威胁清单获得评审批准；在此之前不创建真实数据连接或生产秘密。
 
 ## Draft PR #2 首轮远程失败与本地修复
@@ -164,6 +164,28 @@ Redis 候选的零可修复 High/Critical 是控制器提供的本地 Docker Sco
 代替尚未执行的该摘要远程 Trivy 扫描。其余四镜像没有改变；此前真实 Trivy
 High/Critical 阻断仍未关闭。未降低严重度、添加 `ignore-unfixed`、抑制 CVE 或
 创建漏洞例外。本轮未推送；WP-00 仍等待新远程结果和剩余镜像问题处置。
+
+## PR #2 镜像阻断修复
+
+远程 Security run `35434129762` 的四项失败来自实际镜像漏洞，不是工作流误报。
+本次未降低 `HIGH,CRITICAL` 阈值，未使用 `ignore-unfixed`，也未添加 CVE 抑制或
+漏洞例外。Compose 与 CI 改为从摘要固定的源镜像构建同一组本地运行镜像：
+
+- PostgreSQL 保留官方 16.15 Alpine 运行契约，用原生 `su-exec` 替换含漏洞的 Go `gosu`，并用多阶段扁平化移除旧层扫描残留。
+- Orthanc 保留 26.9.0，移除运行时不需要的 `linux-libc-dev`。
+- MinIO 改用当前 Chainguard MinIO 构建并以非 root UID/GID `65532:65532` 运行；既有合成卷仅做一次所有权迁移，未删除数据。
+- Redis 保留已选定的 7.4.11 Alpine 摘要，并通过同一 Dockerfile 构建/扫描。
+- Elasticsearch 使用官方 8.19.21 Wolfi 源镜像，将受影响的 Netty 组件替换为 SHA-256 校验固定的 4.1.137 构件。
+
+2026-09-19 19:44–19:53 CST，本地验证使用 Node `v20.20.2`：
+
+- `npm run check` 退出 0：scripts 44/44、server 19/19、web 26/26，lint、typecheck 和两端 build 通过；仅保留已有 Vite chunk 大小提醒。
+- `docker compose --env-file .env.local config --quiet` 与 `git diff --check` 退出 0；五个最终容器均为 `healthy`。
+- 五个源摘要均解析为包含 `linux/amd64` 的多架构清单，可由 GitHub Ubuntu runner 构建。
+- `/api/health/live` 与 `/api/health` 均返回 HTTP 200，聚合结果显示五依赖全部 `up`；临时 Node 20 验证进程随后停止。
+- 使用 Trivy `0.70.0` 对五个本地镜像归档执行 `vuln`、`HIGH,CRITICAL`、`exit-code 1` 扫描；PostgreSQL、Orthanc、MinIO、Redis、Elasticsearch 均报告 0 个阻断级漏洞并退出 0。
+
+当前仅声明本地修复证据；PR #2 的远程结果等待本提交推送后核验。
 
 ## 回滚
 

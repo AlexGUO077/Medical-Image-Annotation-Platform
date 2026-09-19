@@ -1,0 +1,1 @@
+FROM cgr.dev/chainguard/minio@sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e

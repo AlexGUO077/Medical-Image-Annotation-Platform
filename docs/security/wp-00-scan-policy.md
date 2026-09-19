@@ -10,13 +10,14 @@ starts services or prints environment values.
 ## Blocking policy
 
 `npm audit --audit-level=high` and Trivy filesystem/configuration scans fail on
-`HIGH` or `CRITICAL` findings. A separate Trivy image matrix scans the exact
-digest-pinned PostgreSQL, Orthanc, MinIO, Redis, and Elasticsearch references
-recorded in [the container image contract](../contracts/container-images.md).
-Every matrix leg is identified by service and full digest and exits nonzero on
-`HIGH` or `CRITICAL` image vulnerabilities. Updating a Compose image therefore
-requires updating its resolved digest in the contract and the workflow matrix
-in the same reviewed change.
+`HIGH` or `CRITICAL` findings. A separate Trivy image matrix builds the exact
+PostgreSQL, Orthanc, MinIO, Redis, and Elasticsearch runtime images used by
+Compose from source images pinned by full digest, then scans those final local
+images. The build definitions and source digests are recorded in
+[the container image contract](../contracts/container-images.md). Every matrix
+leg exits nonzero on `HIGH` or `CRITICAL` image vulnerabilities. Updating a
+Compose image or hardening Dockerfile therefore requires updating the contract,
+Compose definition, workflow matrix, and regression assertions together.
 
 CodeQL saves SARIF locally with `upload: never` and `upload-database: false`
 because this private repository does not have GitHub Advanced Security enabled.

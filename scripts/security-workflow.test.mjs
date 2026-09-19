@@ -18,26 +18,31 @@ const expectedServices = ['postgres', 'orthanc', 'minio', 'redis', 'elasticsearc
 
 function documentedImages(markdown) {
   return [...markdown.matchAll(
-    /^\| (PostgreSQL|Orthanc|MinIO|Redis|Elasticsearch) \| `([^`]+)` \| `(sha256:[a-f0-9]{64})` \|$/gm,
-  )].map(([, label, image, digest]) => ({
+    /^\| (PostgreSQL|Orthanc|MinIO|Redis|Elasticsearch) \| `([^`]+)` \| `([^`]+)` \| `(sha256:[a-f0-9]{64})` \| `([^`]+)` \|$/gm,
+  )].map(([, label, image, source, digest, dockerfile]) => ({
     service: serviceNames[label],
     image,
+    source,
     digest,
+    context: '.',
+    dockerfile,
   }));
 }
 
-test('Trivy blocks HIGH and CRITICAL findings in every documented Compose image digest', () => {
+test('Trivy builds and blocks HIGH and CRITICAL findings in every documented hardened Compose image', () => {
   const documented = documentedImages(imageContract);
   const composeImages = Object.entries(compose.services).map(([service, definition]) => ({
     service,
     image: definition.image,
+    context: definition.build?.context,
+    dockerfile: definition.build?.dockerfile,
   }));
 
   assert.deepEqual(documented.map(({ service }) => service), expectedServices);
   assert.deepEqual(
-    documented.map(({ service, image }) => ({ service, image })),
+    documented.map(({ service, image, context, dockerfile }) => ({ service, image, context, dockerfile })),
     composeImages,
-    'the image contract must cover exactly the five Compose services and references',
+    'the image contract must cover exactly the five Compose hardened build definitions',
   );
 
   const imageJob = workflow.jobs['trivy-images'];
@@ -46,13 +51,19 @@ test('Trivy blocks HIGH and CRITICAL findings in every documented Compose image 
   assert.equal(imageJob.strategy['fail-fast'], false, 'every digest must complete even if another fails');
   assert.deepEqual(imageJob.strategy.matrix.include, documented);
 
+  const buildStep = imageJob.steps.find((step) => step.name === 'Build ${{ matrix.image }}');
+  assert.deepEqual(buildStep, {
+    name: 'Build ${{ matrix.image }}',
+    run: 'docker build --pull=false --file "${{ matrix.dockerfile }}" --tag "${{ matrix.image }}" "${{ matrix.context }}"',
+  });
+
   const scanStep = imageJob.steps.find((step) => step.uses?.startsWith('aquasecurity/trivy-action@'));
   assert.ok(scanStep, 'trivy-images must invoke aquasecurity/trivy-action');
   assert.equal(scanStep.uses, 'aquasecurity/trivy-action@v0.36.0');
-  assert.equal(scanStep.name, 'Scan ${{ matrix.image }}@${{ matrix.digest }}');
+  assert.equal(scanStep.name, 'Scan ${{ matrix.image }}');
   assert.deepEqual(scanStep.with, {
     'scan-type': 'image',
-    'image-ref': '${{ matrix.image }}@${{ matrix.digest }}',
+    'image-ref': '${{ matrix.image }}',
     scanners: 'vuln',
     severity: 'HIGH,CRITICAL',
     'exit-code': '1',
@@ -139,11 +150,14 @@ test('private SARIF diagnostics cannot skip the blocking gate or retain untruste
 
 test('Redis scans the exact selected Redis 7 Alpine release used by Compose', () => {
   const redis = workflow.jobs['trivy-images'].strategy.matrix.include.find((entry) => entry.service === 'redis');
-  assert.equal(compose.services.redis.image, 'redis:7.4.11-alpine3.21');
+  assert.equal(compose.services.redis.image, 'miap/redis:7.4.11-alpine3.21');
   assert.deepEqual(redis, {
     service: 'redis',
-    image: 'redis:7.4.11-alpine3.21',
+    image: 'miap/redis:7.4.11-alpine3.21',
+    source: 'redis:7.4.11-alpine3.21',
     digest: 'sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7',
+    context: '.',
+    dockerfile: 'docker/redis/Dockerfile',
   });
 });
 

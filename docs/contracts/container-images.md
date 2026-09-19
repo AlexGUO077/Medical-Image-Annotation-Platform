@@ -4,8 +4,9 @@ This Compose environment is restricted to synthetic local development. Its named
 volumes must never hold real DICOM objects, reports, patient information, or
 production backups.
 
-Resolved digests are recorded after `docker compose --env-file .env.local pull`
-on a Docker-capable development machine. They intentionally exclude credentials.
+Every local runtime image is built from a source image pinned by manifest digest.
+The same Dockerfile and source digest are used by Compose and the blocking Trivy
+matrix. They intentionally exclude credentials.
 
 `minio/minio` was unavailable from Docker Hub on 2026-09-18 (`denied:
 requested access to the resource is denied` / `unauthorized: authentication
@@ -15,23 +16,31 @@ replacement. Its in-image `mc ready local` command replaces the unavailable
 HTTP-client probe.
 
 The generic `docker.elastic.co/elasticsearch/elasticsearch:8` tag was also not
-published by the Elastic registry. Elastic's current 8.x Docker guide specifies
-`8.19.21`, so Compose pins that current release within the source-manual's
-required Elasticsearch 8 major line.
+published by the Elastic registry. Elastic's 8.x Docker guide specifies
+`8.19.21` and its hardened Wolfi variant. The local image retains Elasticsearch
+8.19.21 and replaces the bundled Netty 4.1.135 artifacts with checksum-pinned
+4.1.137 artifacts from Maven Central, the compatible release containing the
+Trivy-reported fixes.
 
-On 2026-09-19, Redis alone moved from `redis:7` digest
-`sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7`
-to the exact Redis 7 Alpine release below. Local image inspection confirmed the
-manifest digest, and the existing synthetic `miap-redis-data` volume was reused
-without deletion. Redis 7.4.11 reached healthy and aggregate readiness returned
-HTTP 200. The controller's candidate Docker Scout scan reported zero fixable
-High/Critical findings; that is not a Trivy clearance. The unchanged remote
-HIGH/CRITICAL gate must rerun on this digest before any clearance claim.
+On 2026-09-19, Redis moved from `redis:7` to the exact Redis 7 Alpine release
+below. Local image inspection confirmed the manifest digest, and the existing
+synthetic `miap-redis-data` volume was reused without deletion. Redis 7.4.11
+reached healthy and aggregate readiness returned HTTP 200. The blocking matrix
+now builds and scans the same digest-pinned local runtime image used by Compose.
 
-| Service | Image reference | Resolved digest |
-| --- | --- | --- |
-| PostgreSQL | `postgres:16` | `sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94` |
-| Orthanc | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` |
-| MinIO | `quay.io/minio/minio` | `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |
-| Redis | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` |
-| Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.21` | `sha256:cbf5cd6cfe5532a9c02d510c66d238bf329cd51fe3d57170a2a880aca7d47419` |
+PostgreSQL replaces the vulnerable Go-based `gosu` helper with Alpine's native
+`su-exec` while retaining the upstream entrypoint's volume ownership repair.
+Orthanc removes the runtime-unneeded `linux-libc-dev` headers. The archived
+upstream MinIO container is replaced by Chainguard's current MinIO build of the
+same product (`RELEASE.2026-07-17T12-07-51Z`, Go 1.27.1) under its default
+non-root UID/GID `65532:65532`. Existing synthetic MinIO volumes require a
+one-time ownership migration from the previous root-running image. Redis keeps
+the exact previously selected 7.4.11 Alpine source image.
+
+| Service | Runtime image | Source image | Resolved digest | Dockerfile |
+| --- | --- | --- | --- | --- |
+| PostgreSQL | `miap/postgres:16.15-alpine3.24` | `postgres:16.15-alpine3.24` | `sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb` | `docker/postgres/Dockerfile` |
+| Orthanc | `miap/orthanc:26.9.0-hardened` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
+| MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
+| Redis | `miap/redis:7.4.11-alpine3.21` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
+| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |

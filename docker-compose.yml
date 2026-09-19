@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    image: miap/postgres:16.15-alpine3.24
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -16,7 +19,10 @@ services:
     volumes: [miap-postgres-data:/var/lib/postgresql/data]
 
   orthanc:
-    image: orthancteam/orthanc
+    build:
+      context: .
+      dockerfile: docker/orthanc/Dockerfile
+    image: miap/orthanc:26.9.0-hardened
     environment:
       ORTHANC_USERNAME: ${ORTHANC_USERNAME}
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
@@ -34,7 +40,10 @@ services:
     volumes: [miap-orthanc-data:/var/lib/orthanc/db]
 
   minio:
-    image: quay.io/minio/minio
+    build:
+      context: .
+      dockerfile: docker/minio/Dockerfile
+    image: miap/minio:2026-07-17-hardened
     command: server /data --console-address ":9001"
     environment:
       MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:9000
@@ -51,7 +60,10 @@ services:
     volumes: [miap-minio-data:/data]
 
   redis:
-    image: redis:7.4.11-alpine3.21
+    build:
+      context: .
+      dockerfile: docker/redis/Dockerfile
+    image: miap/redis:7.4.11-alpine3.21
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -66,7 +78,10 @@ services:
     volumes: [miap-redis-data:/data]
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.21
+    build:
+      context: .
+      dockerfile: docker/elasticsearch/Dockerfile
+    image: miap/elasticsearch:8.19.21-netty-4.1.137
     environment:
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
       discovery.type: single-node
