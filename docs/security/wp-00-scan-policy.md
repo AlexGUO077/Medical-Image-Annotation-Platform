@@ -18,17 +18,27 @@ Every matrix leg is identified by service and full digest and exits nonzero on
 requires updating its resolved digest in the contract and the workflow matrix
 in the same reviewed change.
 
-CodeQL uploads SARIF to GitHub code scanning and an explicit workflow gate
+CodeQL saves SARIF locally with `upload: never` because this private repository
+does not have GitHub Advanced Security enabled. The workflow does not attempt a
+paid or unsupported code-scanning upload. Its explicit repository gate still
 recursively parses every regular `.sarif` and `.json` file in CodeQL's SARIF
 output directory. It resolves each result's rule metadata across driver and
 referenced extension components, blocking strictly numeric `security-severity`
 scores of `7.0` or higher on pull requests, pushes, and scheduled runs. Missing,
 unreadable, empty, or malformed SARIF input fails closed, including unsupported
-result or explicit tool-component references. Dependency review and Gitleaks
-secret scanning also block the workflow on findings. Dependency review rejects
-added `GPL-2.0`, `GPL-3.0`, `AGPL-1.0`, and `AGPL-3.0` licenses. Other license
-identifiers found in `package-lock.json` are listed in the workflow job summary
-for review.
+result or explicit tool-component references.
+
+The repository-native whole-lock dependency job replaces GitHub's hosted
+Dependency Review action, which is unavailable without GitHub Advanced
+Security in this private repository. It runs under exact Node `20.20.2`, uses
+`npm audit --audit-level=high` to block High/Critical dependency findings, and
+evaluates every `package-lock.json` package entry. It blocks `GPL-2.0`,
+`GPL-3.0`, `AGPL-1.0`, and `AGPL-3.0` identifiers even inside compound license
+expressions, records sorted allowed identifiers in the job summary, and reports
+the count of entries without lockfile license metadata. Invalid lockfile input
+fails closed. Gitleaks also blocks secret findings; its job receives only
+`contents: read` and `pull-requests: read`, the latter being required to list PR
+commits.
 
 A finding can be excepted only through a separately reviewed and approved
 record that identifies the finding, scope, mitigation, approver, and expiry.
@@ -50,8 +60,10 @@ environment files, dumps, or runtime storage.
 
 The workflows use maintained major/minor action tags rather than unverified
 commit SHAs: `actions/checkout@v4`, `actions/setup-node@v4`,
-`github/codeql-action@v3`, `actions/dependency-review-action@v4`,
-`gitleaks/gitleaks-action@v2`, and `aquasecurity/trivy-action@0.28.0`.
+`github/codeql-action@v3`, `gitleaks/gitleaks-action@v2`, and
+`aquasecurity/trivy-action@v0.36.0`. The Trivy ref and the workflow's
+`scan-type`, `scan-ref`, `image-ref`, `scanners`, `severity`, `exit-code`, and
+`skip-dirs` inputs were checked against the official `v0.36.0` action metadata.
 Tags are mutable, so each Dependabot update and workflow change must be reviewed
 as a supply-chain change. Once a release SHA is independently verified against
 the publisher's release, replace the corresponding tag with that immutable SHA;

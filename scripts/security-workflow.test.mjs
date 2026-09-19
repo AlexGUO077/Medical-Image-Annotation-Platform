@@ -48,6 +48,7 @@ test('Trivy blocks HIGH and CRITICAL findings in every documented Compose image 
 
   const scanStep = imageJob.steps.find((step) => step.uses?.startsWith('aquasecurity/trivy-action@'));
   assert.ok(scanStep, 'trivy-images must invoke aquasecurity/trivy-action');
+  assert.equal(scanStep.uses, 'aquasecurity/trivy-action@v0.36.0');
   assert.equal(scanStep.name, 'Scan ${{ matrix.image }}@${{ matrix.digest }}');
   assert.deepEqual(scanStep.with, {
     'scan-type': 'image',
@@ -63,9 +64,60 @@ test('Trivy retains the blocking filesystem and configuration scan', () => {
     (step) => step.uses?.startsWith('aquasecurity/trivy-action@'),
   );
 
+  assert.equal(scanStep.uses, 'aquasecurity/trivy-action@v0.36.0');
   assert.equal(scanStep.with['scan-type'], 'fs');
   assert.equal(scanStep.with['scan-ref'], '.');
   assert.equal(scanStep.with.scanners, 'vuln,secret,misconfig');
   assert.equal(scanStep.with.severity, 'HIGH,CRITICAL');
   assert.equal(scanStep.with['exit-code'], '1');
+});
+
+test('CodeQL keeps local SARIF gating without an unsupported GHAS upload', () => {
+  const codeqlJob = workflow.jobs.codeql;
+  const analyzeStep = codeqlJob.steps.find(
+    (step) => step.uses?.startsWith('github/codeql-action/analyze@'),
+  );
+  const gateStep = codeqlJob.steps.find(
+    (step) => step.run?.includes('scripts/check-sarif-security.mjs'),
+  );
+
+  assert.deepEqual(codeqlJob.permissions, { actions: 'read', contents: 'read' });
+  assert.equal(analyzeStep.with.output, 'sarif-results');
+  assert.equal(analyzeStep.with.upload, 'never');
+  assert.ok(gateStep, 'CodeQL SARIF must still pass through the local fail-closed gate');
+  assert.equal(gateStep.env.CODEQL_SARIF_PATH, '${{ steps.analyze.outputs.sarif-output }}');
+});
+
+test('repository-native dependency policy replaces unsupported hosted dependency review', () => {
+  assert.equal(workflow.jobs['dependency-review'], undefined);
+
+  const policyJob = workflow.jobs['dependency-policy'];
+  assert.ok(policyJob, 'security.yml must define the dependency-policy job');
+  assert.deepEqual(policyJob.permissions, { contents: 'read' });
+
+  const setupStep = policyJob.steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
+  assert.equal(setupStep.with['node-version'], '20.20.2');
+  assert.equal(setupStep.with.cache, 'npm');
+  assert.ok(policyJob.steps.some((step) => step.run === 'npm ci'));
+  assert.ok(policyJob.steps.some((step) => step.run === 'npm audit --audit-level=high'));
+  assert.ok(policyJob.steps.some(
+    (step) => step.run === 'node scripts/check-dependency-policy.mjs package-lock.json',
+  ));
+  assert.ok(
+    policyJob.steps.findIndex(
+      (step) => step.run === 'node scripts/check-dependency-policy.mjs package-lock.json',
+    ) < policyJob.steps.findIndex((step) => step.run === 'npm audit --audit-level=high'),
+    'license evidence must be recorded before a blocking vulnerability audit can stop the job',
+  );
+  assert.equal(
+    policyJob.steps.some((step) => step.uses?.startsWith('actions/dependency-review-action@')),
+    false,
+  );
+});
+
+test('Gitleaks can read pull request commit metadata with minimum permissions', () => {
+  assert.deepEqual(workflow.jobs['secret-scan'].permissions, {
+    contents: 'read',
+    'pull-requests': 'read',
+  });
 });

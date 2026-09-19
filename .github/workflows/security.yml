@@ -18,7 +18,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write
     steps:
       # Version tags are documented in docs/security/wp-00-scan-policy.md.
       - uses: actions/checkout@v4
@@ -31,30 +30,18 @@ jobs:
         with:
           category: /language:javascript-typescript
           output: sarif-results
+          upload: never
       - name: Block CodeQL high and critical findings
         env:
           CODEQL_SARIF_PATH: ${{ steps.analyze.outputs.sarif-output }}
         run: node scripts/check-sarif-security.mjs "$CODEQL_SARIF_PATH"
 
-  dependency-review:
-    name: Dependency and license review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0
-
-  dependency-audit:
-    name: npm audit and license evidence
+  dependency-policy:
+    name: Whole-lock dependency and license policy
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,28 +49,17 @@ jobs:
           node-version: 20.20.2
           cache: npm
       - run: npm ci
+      - name: Enforce whole-lock license policy and record evidence
+        run: node scripts/check-dependency-policy.mjs package-lock.json
       - run: npm audit --audit-level=high
-      - name: Record detected non-denied license identifiers
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from 'node:fs';
-
-          const denied = new Set(['GPL-2.0', 'GPL-3.0', 'AGPL-1.0', 'AGPL-3.0']);
-          const lockfile = JSON.parse(readFileSync('package-lock.json', 'utf8'));
-          const licenses = new Set();
-          for (const entry of Object.values(lockfile.packages)) {
-            if (entry.license && !denied.has(entry.license)) licenses.add(entry.license);
-          }
-          const summary = licenses.size === 0
-            ? 'No non-denied license identifiers were present in package-lock.json.\n'
-            : `${[...licenses].sort().map((license) => `- ${license}`).join('\n')}\n`;
-          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Detected non-denied licenses\n\n${summary}`);
-          NODE
 
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,7 +74,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -133,7 +109,7 @@ jobs:
     steps:
       # Version tags are documented in docs/security/wp-00-scan-policy.md.
       - name: Scan ${{ matrix.image }}@${{ matrix.digest }}
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ matrix.image }}@${{ matrix.digest }}

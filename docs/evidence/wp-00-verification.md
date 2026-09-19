@@ -123,8 +123,18 @@ HTTP 200
 - D-38 遵循源手册固定 Node `20.20.2`。Node 20 已结束上游维护，因此仍必须在每个 PR 执行依赖、代码、镜像和配置扫描；任何未批准的 Critical/High 问题都阻断合并和上线。
 - 当前 npm 已知 5 Moderate 和 1 Low，高危阈值门通过。不使用 `npm audit fix --force` 自动引入破坏性主版升级；后续在独立依赖更新 PR 中评估和回归。
 - Vite 的单 chunk 大于 500 kB 为非阻断性构建提醒，在真实功能路由引入后再评估按路由分包。
-- GitHub 上的 CodeQL、Dependency Review、Gitleaks 和 Trivy 运行证据只能由 Draft PR 工作流产生；在远程工作流和独立评审通过前，WP-00 状态为“等待评审”，不宣称已完成。
+- Draft PR #2 已产生首轮远程证据，但安全工作流因 Trivy Action 引用、Gitleaks PR 读权限和私有仓库无 GHAS 的兼容性问题失败。修复已在本地通过，远程重跑仍待控制器推送后验证；在新远程运行通过前，WP-00 状态仍为“等待评审”。
 - SG-1 在 WP-00 范围内已建立合成数据边界、本地秘密隔离、健康失败脱敏和扫描门；完整放行仍需 WP-S0 的数据流、信任边界、权限矩阵、密钥/日志/事件方案及威胁清单获得评审批准；在此之前不创建真实数据连接或生产秘密。
+
+## Draft PR #2 首轮远程失败与本地修复
+
+2026-09-19 的首次远程运行已证实三个环境/配置问题：
+
+1. `aquasecurity/trivy-action@0.28.0` 无法解析。核对官方发布和 `v0.36.0` action metadata 后，文件系统/配置与五镜像扫描统一改用 `aquasecurity/trivy-action@v0.36.0`；现有 `scan-type`、`scan-ref`、`image-ref`、`scanners`、`severity`、`exit-code` 和 `skip-dirs` 输入仍与官方 metadata 兼容。
+2. Gitleaks 在列取 PR commits 时收到 403。`secret-scan` 作业现仅授予 `contents: read` 和必需的 `pull-requests: read`。
+3. 私有仓库的 `security_and_analysis` 未启用，因此 hosted Dependency Review 和 CodeQL SARIF 上传不可用。本修复不开启 GHAS、不产生付费变更；CodeQL 改用 `upload: never`，但仍生成 SARIF 并由仓库内失败关闭门阻断 `security-severity >= 7.0`。Hosted Dependency Review 替换为仓库原生的全锁文件门：先记录允许许可证标识符，阻断 `GPL-2.0`、`GPL-3.0`、`AGPL-1.0`、`AGPL-3.0`，再用 `npm audit --audit-level=high` 阻断 High/Critical。
+
+本地重跑使用项目指定的 Node `20.20.2`。聚焦工作流/依赖政策测试 9/9 通过；根检查脚本 33/33、服务端 19/19、前端 26/26 通过，lint、typecheck 和两端构建通过；workflow YAML、Compose 配置、禁止文件和 diff 检查通过。当前锁文件许可证门记录 11 个允许标识符、6 个未在锁文件中提供许可证元数据的条目，且无禁止标识符；在线 npm 审计仍为 0 Critical/High、5 Moderate、1 Low。GitHub Actions 自身使用 Node 24 的提醒属于外部 action runtime，不改变项目的 Node 20 契约。当前只能声明本地配置与测试结果；Trivy、Gitleaks、CodeQL 本地 SARIF 门和依赖政策的新远程结果仍待 PR #2 重跑，本文不声明远程修复已成功。
 
 ## 回滚
 
