@@ -84,6 +84,7 @@ test('CodeQL keeps local SARIF gating without an unsupported GHAS upload', () =>
   assert.deepEqual(codeqlJob.permissions, { actions: 'read', contents: 'read' });
   assert.equal(analyzeStep.with.output, 'sarif-results');
   assert.equal(analyzeStep.with.upload, 'never');
+  assert.equal(analyzeStep.with['upload-database'], false);
   assert.ok(gateStep, 'CodeQL SARIF must still pass through the local fail-closed gate');
   assert.equal(gateStep.env.CODEQL_SARIF_PATH, '${{ steps.analyze.outputs.sarif-output }}');
 });

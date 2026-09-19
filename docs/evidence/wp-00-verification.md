@@ -136,6 +136,11 @@ HTTP 200
 
 本地重跑使用项目指定的 Node `20.20.2`。聚焦工作流/依赖政策测试 9/9 通过；根检查脚本 33/33、服务端 19/19、前端 26/26 通过，lint、typecheck 和两端构建通过；workflow YAML、Compose 配置、禁止文件和 diff 检查通过。当前锁文件许可证门记录 11 个允许标识符、6 个未在锁文件中提供许可证元数据的条目，且无禁止标识符；在线 npm 审计仍为 0 Critical/High、5 Moderate、1 Low。GitHub Actions 自身使用 Node 24 的提醒属于外部 action runtime，不改变项目的 Node 20 契约。当前只能声明本地配置与测试结果；Trivy、Gitleaks、CodeQL 本地 SARIF 门和依赖政策的新远程结果仍待 PR #2 重跑，本文不声明远程修复已成功。
 
+第四轮复核补充：`upload: never` 不会关闭独立的数据库上传输入；现已同时设置
+`upload-database: false`。回归断言先因该值缺失失败，再在修复后通过。Node
+`20.20.2` 下聚焦测试 9/9、根脚本 33/33、服务端 19/19、前端 26/26、两份
+workflow YAML 解析、禁止文件和 diff 检查均通过。远程结果仍待控制器推送后验证。
+
 ## 回滚
 
 ```bash

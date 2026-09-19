@@ -18,10 +18,10 @@ Every matrix leg is identified by service and full digest and exits nonzero on
 requires updating its resolved digest in the contract and the workflow matrix
 in the same reviewed change.
 
-CodeQL saves SARIF locally with `upload: never` because this private repository
-does not have GitHub Advanced Security enabled. The workflow does not attempt a
-paid or unsupported code-scanning upload. Its explicit repository gate still
-recursively parses every regular `.sarif` and `.json` file in CodeQL's SARIF
+CodeQL saves SARIF locally with `upload: never` and `upload-database: false`
+because this private repository does not have GitHub Advanced Security enabled.
+The workflow disables both SARIF and database uploads. Its explicit repository
+gate still recursively parses every regular `.sarif` and `.json` file in CodeQL's SARIF
 output directory. It resolves each result's rule metadata across driver and
 referenced extension components, blocking strictly numeric `security-severity`
 scores of `7.0` or higher on pull requests, pushes, and scheduled runs. Missing,

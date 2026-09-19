@@ -31,6 +31,7 @@ jobs:
           category: /language:javascript-typescript
           output: sarif-results
           upload: never
+          upload-database: false
       - name: Block CodeQL high and critical findings
         env:
           CODEQL_SARIF_PATH: ${{ steps.analyze.outputs.sarif-output }}
