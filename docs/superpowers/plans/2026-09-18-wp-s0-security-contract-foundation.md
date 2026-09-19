@@ -1,6 +1,6 @@
 # WP-S0 Security and Contract Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **历史计划，执行流程已退役（2026-09-19）。** 后续只按 [AGENTS.md](../../../AGENTS.md) 执行；本文保留需求、接口及既有决定的追溯信息，下面的步骤和命令不再作为执行清单。停止 Superpowers、默认双代理、强制 RED/GREEN、owner/文件占用登记、实现交接及全文证据转录。当前状态统一见 [STATUS](../../STATUS.md)。 Task 1 文档验证器及后续对该验证器、manifest、固定标题/排版测试的依赖全部取消，不新建这些脚本或测试；其余安全/契约内容按基线相关要求落实，决策批准、数据准入和 SG 验收要求不变。原 `wp-s0-status.md` 等当前状态记录由 STATUS 单表替代，证据材料仅保留引用。
 
 **Goal:** Produce the reviewed contracts and evidence required to keep real medical data closed while establishing traceable decisions, data boundaries, authorization, threat controls, and security gates for all later work packages.
 

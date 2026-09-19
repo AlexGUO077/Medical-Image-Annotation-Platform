@@ -81,6 +81,9 @@ docker compose --env-file .env.local down
 
 ## 开发基线
 
+- [项目执行规则](AGENTS.md)：单一实现者、按需阅读、风险分级和精简证据。
+- [工作包与安全门状态](docs/STATUS.md)：当前状态、关联提交、证据和阻塞。
+
 - [需求拆解与实施基线](docs/医学影像标注平台-需求拆解与实施基线.md)
 - [UI 与交互设计要求](docs/医学影像标注平台-UI与交互设计要求.md)
 - [GitHub 版本管理与回滚规范](docs/GitHub版本管理与回滚规范.md)
