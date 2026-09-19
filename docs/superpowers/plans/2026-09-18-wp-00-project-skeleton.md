@@ -1,6 +1,6 @@
 # WP-00 Project Skeleton Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **历史计划，执行流程已退役（2026-09-19）。** 后续只按 [AGENTS.md](../../../AGENTS.md) 执行；本文保留需求、接口及既有决定的追溯信息，下面的步骤和命令不再作为执行清单。停止 Superpowers、默认双代理、强制 RED/GREEN、owner/文件占用登记、实现交接及全文证据转录。当前状态统一见 [STATUS](../../STATUS.md)。
 
 **Goal:** Build a reproducible Node 20 monorepo skeleton with a NestJS health API, React/Ant Design application shell, five local infrastructure services, CI, tests, and security scanning without opening any real-data path.
 
