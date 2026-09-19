@@ -4,7 +4,7 @@
 > 运行时：Node.js `20.20.2`、npm `10.8.2`<br>
 > 边界：仅合成本地数据；未打印 `.env.local`、凭据或医学数据
 
-本文件保留 WP-00 评审重跑的命令、时间、退出状态和关键原始输出。仅做两类脱敏：移除终端 ANSI 控制字符，将绝对工作树路径缩写为 `[worktree]`。测试的重复逐用例输出明确标出省略边界，汇总行和失败计数原样保留。
+本文件保留 WP-00 评审重跑的命令、时间、退出状态和关键原始输出。仅做两类脱敏：移除终端 ANSI 控制字符，将绝对工作树路径缩写为 `[worktree]`。`npm test` 的脚本、服务端和前端用例与汇总行全部保留。
 
 ## 运行时与清洁安装
 
@@ -98,7 +98,7 @@ exit_status=0
 
 ## 测试
 
-`node:test` 的 24 个逐用例块保留首尾用例和完整汇总，中间 22 个均为 `ok` 的详细块用明确范围标记取代：
+以下是 `npm test` 的完整脱敏输出，包含所有脚本、服务端和前端测试用例及汇总行：
 
 ```text
 command=npm test
@@ -110,9 +110,124 @@ started_at=2026-09-19 10:17:17 CST
 TAP version 13
 # Subtest: rejects medical files, credentials, and real environment files
 ok 1 - rejects medical files, credentials, and real environment files
-[subtests 2 through 23: all `ok`; per-test duration lines omitted]
+  ---
+  duration_ms: 2.776833
+  ...
+# Subtest: allows an explicitly reviewed synthetic fixture path
+ok 2 - allows an explicitly reviewed synthetic fixture path
+  ---
+  duration_ms: 1.709541
+  ...
+# Subtest: allows medical synthetic fixtures only in reviewed fixture roots
+ok 3 - allows medical synthetic fixtures only in reviewed fixture roots
+  ---
+  duration_ms: 0.175292
+  ...
+# Subtest: does not allow credentials or environment files in synthetic fixture roots
+ok 4 - does not allow credentials or environment files in synthetic fixture roots
+  ---
+  duration_ms: 0.137917
+  ...
+# Subtest: rejects credential directories outside synthetic fixture roots
+ok 5 - rejects credential directories outside synthetic fixture roots
+  ---
+  duration_ms: 0.998334
+  ...
+# Subtest: rejects credential directories inside synthetic fixture roots
+ok 6 - rejects credential directories inside synthetic fixture roots
+  ---
+  duration_ms: 0.208917
+  ...
+# Subtest: rejects runtime data directories and backup formats
+ok 7 - rejects runtime data directories and backup formats
+  ---
+  duration_ms: 0.162583
+  ...
+# Subtest: clean SARIF directory exits 0
+ok 8 - clean SARIF directory exits 0
+  ---
+  duration_ms: 74.891042
+  ...
+# Subtest: a high result in a later nested SARIF file exits nonzero
+ok 9 - a high result in a later nested SARIF file exits nonzero
+  ---
+  duration_ms: 74.71075
+  ...
+# Subtest: aggregates matching results across multiple runs and extensions
+ok 10 - aggregates matching results across multiple runs and extensions
+  ---
+  duration_ms: 2.417
+  ...
+# Subtest: ignores malformed security-severity values
+ok 11 - ignores malformed security-severity values
+  ---
+  duration_ms: 1.168958
+  ...
+# Subtest: fails closed for missing and empty SARIF directories
+ok 12 - fails closed for missing and empty SARIF directories
+  ---
+  duration_ms: 0.540875
+  ...
+# Subtest: fails closed for a malformed results structure
+ok 13 - fails closed for a malformed results structure
+  ---
+  duration_ms: 1.306
+  ...
+# Subtest: fails closed for a run with results but no driver
+ok 14 - fails closed for a run with results but no driver
+  ---
+  duration_ms: 0.749417
+  ...
+# Subtest: fails closed when JSON files do not contain valid SARIF documents
+ok 15 - fails closed when JSON files do not contain valid SARIF documents
+  ---
+  duration_ms: 0.6265
+  ...
+# Subtest: resolves a GUID-referenced extension rule instead of the driver rule
+ok 16 - resolves a GUID-referenced extension rule instead of the driver rule
+  ---
+  duration_ms: 0.831583
+  ...
+# Subtest: fails closed for an unresolved explicit tool-component GUID
+ok 17 - fails closed for an unresolved explicit tool-component GUID
+  ---
+  duration_ms: 1.404708
+  ...
+# Subtest: fails closed for an out-of-range driver rule index
+ok 18 - fails closed for an out-of-range driver rule index
+  ---
+  duration_ms: 0.721584
+  ...
+# Subtest: fails closed for an out-of-range GUID-referenced extension rule index
+ok 19 - fails closed for an out-of-range GUID-referenced extension rule index
+  ---
+  duration_ms: 0.66125
+  ...
+# Subtest: generates every required local key without patient data fields
+ok 20 - generates every required local key without patient data fields
+  ---
+  duration_ms: 2.042625
+  ...
+# Subtest: writes only .env.local and never reveals generated credentials
+ok 21 - writes only .env.local and never reveals generated credentials
+  ---
+  duration_ms: 66.548375
+  ...
+# Subtest: refuses to overwrite an existing .env.local unless explicitly forced
+ok 22 - refuses to overwrite an existing .env.local unless explicitly forced
+  ---
+  duration_ms: 126.055333
+  ...
+# Subtest: accepts the approved Node 20 patch version
+ok 23 - accepts the approved Node 20 patch version
+  ---
+  duration_ms: 1.588584
+  ...
 # Subtest: rejects a different Node major or patch version
 ok 24 - rejects a different Node major or patch version
+  ---
+  duration_ms: 0.453084
+  ...
 1..24
 # tests 24
 # suites 0
