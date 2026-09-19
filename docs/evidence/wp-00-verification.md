@@ -187,6 +187,17 @@ High/Critical 阻断仍未关闭。未降低严重度、添加 `ignore-unfixed`�
 
 当前仅声明本地修复证据；PR #2 的远程结果等待本提交推送后核验。
 
+首次推送后的 Security run `35441826294` 已确认 MinIO 与 Redis 镜像扫描通过，
+但 filesystem/configuration 作业对四个新增 Dockerfile 报告 `DS-0002`：未显式
+声明非 root 运行用户。本次没有忽略该规则；回归断言先按预期失败，再为
+PostgreSQL、Orthanc、MinIO、Redis 显式设置非 root 用户后通过。现有合成卷未
+删除，Orthanc 卷仅迁移为 UID/GID `999:999`。四个重建容器的实际 UID 分别为
+70、999、65532、999，五服务均为 `healthy`。Trivy `0.70.0` 对五个 Dockerfile
+的 `HIGH,CRITICAL` misconfiguration 重扫均为 0；四个变更后镜像的
+`HIGH,CRITICAL` vulnerability 归档重扫也均为 0。最终 Node `20.20.2`
+`npm run check` 退出 0：scripts 45/45、server 19/19、web 26/26，lint、
+typecheck 与两端 build 通过。下一次远程重跑仍需核验。
+
 ## 回滚
 
 ```bash

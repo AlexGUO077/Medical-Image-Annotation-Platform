@@ -83,6 +83,17 @@ test('Trivy retains the blocking filesystem and configuration scan', () => {
   assert.equal(scanStep.with['exit-code'], '1');
 });
 
+test('every hardened Dockerfile explicitly ends with a non-root runtime user', () => {
+  for (const { service, dockerfile } of documentedImages(imageContract)) {
+    const content = readFileSync(dockerfile, 'utf8');
+    const users = [...content.matchAll(/^USER\s+(\S+)/gm)].map(([, user]) => user);
+    const runtimeUser = users.at(-1);
+
+    assert.ok(runtimeUser, `${service} must declare its runtime user`);
+    assert.doesNotMatch(runtimeUser, /^(?:root|0)(?::(?:root|0))?$/, `${service} must not run as root`);
+  }
+});
+
 test('CodeQL keeps local SARIF gating without an unsupported GHAS upload', () => {
   const codeqlJob = workflow.jobs.codeql;
   const analyzeStep = codeqlJob.steps.find(

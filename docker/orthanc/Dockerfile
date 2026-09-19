@@ -4,4 +4,7 @@ USER root
 
 # Kernel development headers are not needed to run Orthanc.
 RUN apt-get purge --yes --auto-remove linux-libc-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && chown -R orthanc:orthanc /var/lib/orthanc
+
+USER orthanc

@@ -36,6 +36,9 @@ same product (`RELEASE.2026-07-17T12-07-51Z`, Go 1.27.1) under its default
 non-root UID/GID `65532:65532`. Existing synthetic MinIO volumes require a
 one-time ownership migration from the previous root-running image. Redis keeps
 the exact previously selected 7.4.11 Alpine source image.
+All five final images explicitly declare a non-root runtime user; PostgreSQL,
+Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
+1000 respectively in the local Compose environment.
 
 | Service | Runtime image | Source image | Resolved digest | Dockerfile |
 | --- | --- | --- | --- | --- |

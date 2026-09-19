@@ -21,3 +21,5 @@ EXPOSE 5432
 STOPSIGNAL SIGINT
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["postgres"]
+
+USER postgres
