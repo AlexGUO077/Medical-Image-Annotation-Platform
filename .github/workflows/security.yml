@@ -106,3 +106,37 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           skip-dirs: node_modules,.git
+
+  trivy-images:
+    name: Trivy image scan (${{ matrix.service }} @ ${{ matrix.digest }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: postgres
+            image: postgres:16
+            digest: sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+          - service: orthanc
+            image: orthancteam/orthanc
+            digest: sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca
+          - service: minio
+            image: quay.io/minio/minio
+            digest: sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          - service: redis
+            image: redis:7
+            digest: sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
+          - service: elasticsearch
+            image: docker.elastic.co/elasticsearch/elasticsearch:8.19.21
+            digest: sha256:cbf5cd6cfe5532a9c02d510c66d238bf329cd51fe3d57170a2a880aca7d47419
+    steps:
+      # Version tags are documented in docs/security/wp-00-scan-policy.md.
+      - name: Scan ${{ matrix.image }}@${{ matrix.digest }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}@${{ matrix.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
