@@ -10,7 +10,7 @@
 | WP-S0 | 合成数据阶段最小方案已由郝鹏翼老师终审通过；PR 已合并 | [门禁决定](security/wp-s0-gate-evidence.md)；[D-39](decisions/D-39-node24-runtime.md)；[PR #13](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/13)；merge `18362b1cb9a1a8db604334512b9de010d1f8ff64` | 当前仅限合成数据；未来接入真实医学数据前重新核验授权、伦理/合规及安全条件 |
 | SG-0 | 当前不触发真实数据放行；仅允许合成数据 | [数据来源与保留最小契约](contracts/source-authorization-and-data-lifecycle.md)；[门禁决定](security/wp-s0-gate-evidence.md) | 真实数据入口保持关闭；未来接入前重新核验正式责任与授权 |
 | SG-1 | 合成数据阶段的源手册架构与安全红线已确认；实现证据随对应 WP 验收 | [最小安全边界](security/wp-s0-architecture-threat-model.md)；[鉴权与会话](contracts/authorization-and-session-policy.md)；[秘密、审计与事件](security/secrets-audit-and-incident-response.md)；[PR #13](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/13) | 当前仅限合成数据；不创建真实数据连接、生产秘密或额外安全平台 |
-| WP-01 | 实现及本地验证完成；待 CI 与人工评审 | 分支 `feature/wp-01-database`；[数据库契约与数据字典](contracts/database-schema.md)；Node `24.14.0` + PostgreSQL 16 完成迁移、seed、16 次回滚、重建、逐字段和最小角色核验 | 推送 Draft PR；必需检查通过并由郝鹏翼老师评审后方可合并、进入 WP-02 |
+| WP-01 | 实现及本地验证完成；Draft PR 待 CI 与人工评审 | [PR #14](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/14)；提交 `28004aa`；[数据库契约与数据字典](contracts/database-schema.md)；Node `24.14.0` + PostgreSQL 16 完成迁移、seed、16 次回滚、重建、逐字段和最小角色核验 | 必需检查通过并由郝鹏翼老师评审后方可合并、进入 WP-02 |
 | WP-02～WP-17 | 本次核对范围内未记录启动或完成 | 需求基线 §9/§10 | 后续按源手册和实际依赖推进，启动时拆分相应状态行 |
 | SG-2～SG-7 | 未记录放行 | 需求基线 §10.4 | 在各门原定时点核验，不提前宣称通过；发生变化时拆分相应状态行 |
 
