@@ -4,11 +4,11 @@
 
 ## 本地开发快速开始
 
-前提：Docker Desktop 已启动，本地安装了 `nvm`。仓库按 D-38 固定使用 Node.js `20.20.2`，不允许其他 Node 版本跳过运行时校验。
+前提：Docker Desktop 已启动，本地安装了 `nvm`。仓库按 D-39 固定使用 Node.js `24.14.0`，不允许其他 Node 版本跳过运行时校验。
 
 ```bash
-nvm install 20.20.2
-nvm use 20.20.2
+nvm install 24.14.0
+nvm use 24.14.0
 node --version
 npm ci
 ```
@@ -34,7 +34,7 @@ npm run start:dev --workspace server
 在另一个终端启动前端：
 
 ```bash
-nvm use 20.20.2
+nvm use 24.14.0
 npm run dev --workspace web-anno
 ```
 
@@ -49,7 +49,7 @@ npm run dev --workspace web-anno
 本地完整检查：
 
 ```bash
-nvm use 20.20.2
+nvm use 24.14.0
 npm run check
 docker compose --env-file .env.local config --quiet
 npm audit --audit-level=high

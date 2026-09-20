@@ -20,6 +20,7 @@ const localDefaults = {
 
 const secretKeys = [
   'POSTGRES_PASSWORD',
+  'SEED_ADMIN_PASSWORD',
   'ORTHANC_USERNAME',
   'ORTHANC_PASSWORD',
   'MINIO_ROOT_USER',

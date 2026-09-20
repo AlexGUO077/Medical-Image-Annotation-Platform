@@ -7,19 +7,30 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "nest build"
+    "build": "nest build",
+    "migration:show": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:show",
+    "migration:run": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:run",
+    "migration:revert": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:revert",
+    "db:seed": "ts-node src/database/seed.ts",
+    "db:provision-role": "ts-node src/database/provision-role.ts",
+    "db:verify": "ts-node src/database/verify.ts",
+    "db:verify-cycle": "ts-node src/database/verify-cycle.ts"
   },
   "dependencies": {
     "@nestjs/common": "11.2.5",
     "@nestjs/core": "11.2.5",
     "@nestjs/platform-express": "11.2.5",
+    "dotenv": "18.0.1",
+    "pg": "8.23.0",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "typeorm": "1.1.1"
   },
   "devDependencies": {
     "@nestjs/cli": "11.0.24",
     "@nestjs/testing": "11.2.5",
-    "@types/node": "20.19.14",
+    "@types/node": "24.13.6",
+    "ts-node": "10.9.2",
     "typescript": "5.9.2",
     "vitest": "3.2.7"
   }
