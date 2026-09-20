@@ -51,7 +51,7 @@ and [upload-artifact v4 metadata](https://github.com/actions/upload-artifact/blo
 
 The repository-native whole-lock dependency job replaces GitHub's hosted
 Dependency Review action, which is unavailable without GitHub Advanced
-Security in this private repository. It runs under exact Node `20.20.2`, uses
+Security in this private repository. It runs under exact Node `24.14.0`, uses
 `npm audit --audit-level=high` to block High/Critical dependency findings, and
 evaluates every `package-lock.json` package entry. It blocks `GPL-2.0`,
 `GPL-3.0`, `AGPL-1.0`, and `AGPL-3.0` identifiers even inside compound license
@@ -63,9 +63,9 @@ commits.
 
 A finding can be excepted only through a separately reviewed and approved
 record that identifies the finding, scope, mitigation, approver, and expiry.
-There is no implicit exception. In particular, [D-38](../decisions/D-38-node20-runtime.md)
-selects Node `20.20.2` for compatibility; its end-of-support risk is not a
-blanket vulnerability waiver, and it does not permit high or critical findings.
+There is no implicit exception. In particular, [D-39](../decisions/D-39-node24-runtime.md)
+selects Node `24.14.0`; the runtime upgrade is not a blanket vulnerability
+waiver, and it does not permit high or critical findings.
 
 ## Repository-content control
 

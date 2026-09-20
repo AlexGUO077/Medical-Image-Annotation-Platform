@@ -1,8 +1,8 @@
-const REQUIRED_VERSION = 'v20.20.2';
+const REQUIRED_VERSION = 'v24.14.0';
 
 export function assertSupportedRuntime(version) {
   if (version !== REQUIRED_VERSION) {
-    throw new Error(`Node 20.20.2 is required; received ${version}`);
+    throw new Error(`Node 24.14.0 is required; received ${version}`);
   }
 }
 

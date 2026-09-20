@@ -119,7 +119,7 @@ test('repository-native dependency policy replaces unsupported hosted dependency
   assert.deepEqual(policyJob.permissions, { contents: 'read' });
 
   const setupStep = policyJob.steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
-  assert.equal(setupStep.with['node-version'], '20.20.2');
+  assert.equal(setupStep.with['node-version'], '24.14.0');
   assert.equal(setupStep.with.cache, 'npm');
   assert.ok(policyJob.steps.some((step) => step.run === 'npm ci'));
   assert.ok(policyJob.steps.some((step) => step.run === 'npm audit --audit-level=high'));
