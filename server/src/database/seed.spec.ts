@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashSeedPassword } from './password';
+import { hashSeedPassword, verifyPassword } from './password';
 
 describe('hashSeedPassword', () => {
   it('stores a salted scrypt hash instead of the seed password', () => {
@@ -10,5 +10,11 @@ describe('hashSeedPassword', () => {
     expect(first).toMatch(/^scrypt\$16384\$8\$1\$/);
     expect(first).not.toContain(password);
     expect(first).not.toBe(second);
+    expect(verifyPassword(password, first)).toBe(true);
+    expect(verifyPassword('wrong-password', first)).toBe(false);
+  });
+
+  it('fails closed for malformed password hashes', () => {
+    expect(verifyPassword('password', 'not-a-scrypt-hash')).toBe(false);
   });
 });

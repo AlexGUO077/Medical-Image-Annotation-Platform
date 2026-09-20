@@ -11,7 +11,7 @@
 | SG-0 | 当前不触发真实数据放行；仅允许合成数据 | [数据来源与保留最小契约](contracts/source-authorization-and-data-lifecycle.md)；[门禁决定](security/wp-s0-gate-evidence.md) | 真实数据入口保持关闭；未来接入前重新核验正式责任与授权 |
 | SG-1 | 合成数据阶段的源手册架构与安全红线已确认；实现证据随对应 WP 验收 | [最小安全边界](security/wp-s0-architecture-threat-model.md)；[鉴权与会话](contracts/authorization-and-session-policy.md)；[秘密、审计与事件](security/secrets-audit-and-incident-response.md)；[PR #13](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/13) | 当前仅限合成数据；不创建真实数据连接、生产秘密或额外安全平台 |
 | WP-01 | 人工评审与 CI 完成；PR 已合并 | [PR #14](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/14)；head `002be928fa8718f3e66f8ee4e83ddcfdf9630323`；merge `1b4561f27eca5d57e56ed00b3d5bfb039438900a`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35516827814)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35516827810)；[数据库契约与数据字典](contracts/database-schema.md) | WP-02 可在 D-03 管理员 2FA 契约确认后实施 |
-| WP-02 | 已建立 `feature/wp-02-auth`；等待管理员 2FA 契约确认 | 源手册 §2.1/§3.4/§5.1～§5.2；需求基线 WP-02、SG-2、D-03；[鉴权与会话契约](contracts/authorization-and-session-policy.md) | 确认 D-03 后实现认证、账号、资格、会话失效、登录页和基础布局 |
+| WP-02 | D-03 已批准；认证、账号、资格、会话失效、登录页和基础布局已实现并完成本地验证；Draft PR 待建立 | 源手册 §2.1～§2.2、§3.4、§5.1～§5.3；需求基线 WP-02、SG-2；[D-03](decisions/D-03-admin-2fa.md)；[认证接口契约](contracts/auth-api.md)；[鉴权与会话契约](contracts/authorization-and-session-policy.md) | 等待 CI 和郝鹏翼老师人工评审；资格挂起后的在途任务释放须在 D-09 明确并由 WP-06 任务状态机接入后，才能核验 SG-2 完整放行 |
 | WP-03～WP-17 | 本次核对范围内未记录启动或完成 | 需求基线 §9/§10 | 后续按源手册和实际依赖推进，启动时拆分相应状态行 |
 | SG-2～SG-7 | 未记录放行 | 需求基线 §10.4 | 在各门原定时点核验，不提前宣称通过；发生变化时拆分相应状态行 |
 

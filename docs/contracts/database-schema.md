@@ -19,7 +19,7 @@
 
 | 表 | 业务字段及类型 | 关键约束 |
 | --- | --- | --- |
-| `users` | `username varchar`、`password_hash varchar`、`real_name varchar`、`email varchar?`、`phone varchar?`、`role varchar`、`quals jsonb`、`status varchar`、`expire_at date` | `username` 活跃记录唯一；`role=admin/member`；`status=active/disabled`；`quals` 使用 GIN |
+| `users` | `username varchar`、`password_hash varchar`、`real_name varchar`、`email varchar?`、`phone varchar?`、`role varchar`、`quals jsonb`、`status varchar`、`expire_at date`、`must_change_password bool`、`mfa_secret_encrypted varchar?` | `username` 活跃记录唯一；`role=admin/member`；`status=active/disabled`；`quals` 使用 GIN；新增认证状态字段依据已批准 D-03，不新增业务表 |
 | `cases` | `case_no varchar`、`status varchar`、`source varchar`、`system_code varchar`、`disease_tag_id uuid?`、`clinical_text text?`、`age_band varchar?`、`sex varchar?`、`confirm_method varchar`、`teaching_fields jsonb?` | `case_no` 活跃记录唯一；状态、八大系统编码和三种确诊方式受检查约束；`disease_tag_id → taxonomy_nodes.id` |
 | `studies` | `case_id uuid`、`study_uid varchar`、`study_date date` | `study_uid` 活跃记录唯一；`case_id → cases.id` |
 | `series` | `study_id uuid`、`modality varchar`、`series_uid varchar`、`orthanc_id varchar`、`frame_count int`、`default_window jsonb?` | UID 和 Orthanc ID 活跃记录唯一；CT 的 `default_window` 必填；`study_id → studies.id` |

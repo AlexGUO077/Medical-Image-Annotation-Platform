@@ -8,6 +8,7 @@ const localDefaults = {
   POSTGRES_PORT: '5432',
   POSTGRES_USER: 'miap',
   POSTGRES_DB: 'miap_synthetic',
+  CORS_ORIGINS: 'http://localhost:5173',
   ORTHANC_HOST: '127.0.0.1',
   ORTHANC_PORT: '8042',
   MINIO_HOST: '127.0.0.1',
@@ -21,6 +22,8 @@ const localDefaults = {
 const secretKeys = [
   'POSTGRES_PASSWORD',
   'SEED_ADMIN_PASSWORD',
+  'JWT_SECRET',
+  'MFA_ENCRYPTION_KEY',
   'ORTHANC_USERNAME',
   'ORTHANC_PASSWORD',
   'MINIO_ROOT_USER',
