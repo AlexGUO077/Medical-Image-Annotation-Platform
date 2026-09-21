@@ -10,6 +10,8 @@ temp/
 *.log
 reports/
 .security-cache/
+__pycache__/
+*.py[cod]
 
 # Local environment and credentials
 .env
