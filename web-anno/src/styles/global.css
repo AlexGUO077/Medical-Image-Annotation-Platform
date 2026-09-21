@@ -67,3 +67,59 @@ body {
 .app-content {
   min-width: 0;
 }
+
+.taxonomy-admin-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.taxonomy-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.taxonomy-page-heading h1 {
+  margin-bottom: 0;
+}
+
+.taxonomy-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(420px, 1.5fr);
+  gap: 16px;
+}
+
+.taxonomy-admin-page > .ant-alert {
+  margin-bottom: 16px;
+}
+
+.taxonomy-filters {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.taxonomy-filters .ant-input-search {
+  width: min(320px, 100%);
+}
+
+.taxonomy-node-detail {
+  margin-top: 16px;
+  margin-bottom: 0;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.taxonomy-loading {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+}
+
+@media (max-width: 900px) {
+  .taxonomy-grid {
+    grid-template-columns: 1fr;
+  }
+}

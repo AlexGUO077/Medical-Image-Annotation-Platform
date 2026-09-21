@@ -19,7 +19,6 @@ describe('App', () => {
     ['/cases/import', '病例录入'],
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
-    ['/admin', '系统管理'],
     ['/cases/synthetic-case', '病例与临床信息'],
     ['/workbench/synthetic-case', '标注工作台'],
     ['/review/synthetic-case', '审核台'],
@@ -29,6 +28,13 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
     expect(screen.getByText('该模块将在对应工作包实现')).toBeInTheDocument();
     expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
+  });
+
+  it('redirects members away from the administrator route', async () => {
+    render(<App initialEntries={['/admin']} initialSession={{ ...session, role: 'member' }} />);
+
+    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(screen.queryByText('标签树与征象规范')).not.toBeInTheDocument();
   });
 
   it('uses the dark workbench theme without presenting business state', () => {
