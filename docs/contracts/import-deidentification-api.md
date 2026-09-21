@@ -75,7 +75,9 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
       "masked_report": "患者：某，年龄 45 岁。",
       "masked_count": 1,
       "ocr_hits": [],
-      "ocr_failed": false
+      "ocr_failed": false,
+      "suggested_system_code": "resp",
+      "classification_confidence": 0.91
     },
     "case_id": null
   }]
@@ -96,8 +98,14 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 仅管理员。请求体固定为：
 
 ```json
-{ "confirmed": true }
+{
+  "confirmed": true,
+  "system_code": "resp",
+  "confirm_method": "临床综合诊断"
+}
 ```
+
+`system_code` 必须是八大系统编码之一，默认可采用后端预分类建议，但必须由管理员确认；低置信度时界面必须要求人工选择。`confirm_method` 必须是源手册规定的“病理证实 / 随访确诊 / 临床综合诊断”之一，不能从报告或 DICOM 自动推断。
 
 确认前，处理后的 DICOM 和报告仍在隔离区，不写入正式 Orthanc、PostgreSQL 或 MinIO。确认成功后才执行正式入库事务：
 
@@ -152,4 +160,3 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 | 415 | 不是 ZIP、文件签名不符或包含不支持文件 |
 | 422 | DICOM、OCR、报告脱敏或去标识化处理失败 |
 | 503 | Redis、Orthanc、MinIO 或本地模型进程不可用 |
-
