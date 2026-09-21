@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import sharp from 'sharp';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { AuthUser } from '../auth/auth.models';
@@ -25,12 +25,14 @@ import type {
   SystemCode,
 } from './cases-import.models';
 import { CONFIRM_METHODS, SYSTEM_CODES } from './cases-import.models';
+import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
 import { DeidWorkerService } from './deid-worker.service';
 import { ImportStoreService } from './import-store.service';
 import { MaskMapService } from './mask-map.service';
 import { OrthancService } from './orthanc.service';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UPLOAD_NAME_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.zip$/i;
 
 interface ConfirmInput {
   confirmed: true;
@@ -64,18 +66,19 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
   }
 
   async acceptUpload(actor: AuthUser, file: Express.Multer.File | undefined, sourceValue: unknown, ip: string) {
+    const uploadedPath = file ? this.uploadedPath(file) : null;
     if (sourceValue !== 'synthetic') {
-      if (file) await rm(file.path, { force: true });
+      if (uploadedPath) await rm(uploadedPath, { force: true });
       throw new BadRequestException('当前导入来源只能为 synthetic');
     }
-    if (!file) throw new BadRequestException('缺少 ZIP 文件');
-    await this.assertZipSignature(file.path);
+    if (!file || !uploadedPath) throw new BadRequestException('缺少 ZIP 文件');
+    await this.assertZipSignature(uploadedPath);
 
     const batchId = randomUUID();
-    const batchPath = join(dirname(file.path), batchId);
+    const batchPath = join(IMPORT_QUARANTINE_ROOT, batchId);
     const zipPath = join(batchPath, 'upload.zip');
     await mkdir(batchPath, { recursive: false });
-    await rename(file.path, zipPath);
+    await rename(uploadedPath, zipPath);
 
     try {
       const inspection = await this.worker.inspectZip(zipPath, join(batchPath, 'items'));
@@ -515,6 +518,14 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       await rm(path, { force: true });
       throw new BadRequestException('上传文件不是有效 ZIP');
     }
+  }
+
+  private uploadedPath(file: Express.Multer.File): string {
+    const name = basename(file.path);
+    if (name !== file.filename || !UPLOAD_NAME_PATTERN.test(name)) {
+      throw new BadRequestException('上传文件路径无效');
+    }
+    return join(IMPORT_QUARANTINE_ROOT, name);
   }
 
   private uuid(value: unknown, field: string): string {

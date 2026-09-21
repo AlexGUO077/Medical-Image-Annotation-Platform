@@ -1,11 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../auth/auth.models';
-import { CasesImportService } from './cases-import.service';
 import type { ImportBatch } from './cases-import.models';
+import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
+import { CasesImportService } from './cases-import.service';
 
 const admin: AuthUser = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -58,21 +59,26 @@ function service(overrides: Record<string, unknown> = {}) {
 describe('CasesImportService', () => {
   it('rejects any source outside the approved synthetic D-31 boundary', async () => {
     const { instance } = service();
-    const root = await mkdtemp(join(tmpdir(), 'miap-import-source-test-'));
-    const upload = join(root, 'upload.zip');
+    const uploadName = '10000000-0000-4000-8000-000000000001.zip';
+    const upload = join(IMPORT_QUARANTINE_ROOT, uploadName);
+    await mkdir(IMPORT_QUARANTINE_ROOT, { recursive: true });
+    await rm(upload, { force: true });
     await writeFile(upload, Buffer.from('504b030400000000', 'hex'));
     try {
-      await expect(instance.acceptUpload(admin, { path: upload } as Express.Multer.File, 'hospital-a', '127.0.0.1'))
+      await expect(instance.acceptUpload(admin, { path: upload, filename: uploadName } as Express.Multer.File, 'hospital-a', '127.0.0.1'))
         .rejects.toBeInstanceOf(BadRequestException);
       await expect(writeFile(upload, 'cleaned', { flag: 'wx' })).resolves.toBeUndefined();
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await rm(upload, { force: true });
     }
   });
 
   it('persists a derived source record and audits the accepted batch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'miap-import-test-'));
-    const upload = join(root, 'upload.zip');
+    const uploadName = '10000000-0000-4000-8000-000000000002.zip';
+    const upload = join(IMPORT_QUARANTINE_ROOT, uploadName);
+    await mkdir(IMPORT_QUARANTINE_ROOT, { recursive: true });
+    await rm(upload, { force: true });
     await writeFile(upload, Buffer.from('504b030400000000', 'hex'));
     const { instance, audit, store, worker } = service();
     worker.inspectZip.mockResolvedValue({
@@ -84,6 +90,7 @@ describe('CasesImportService', () => {
     try {
       const result = await instance.acceptUpload(admin, {
         path: upload,
+        filename: uploadName,
         originalname: 'synthetic.zip',
       } as Express.Multer.File, 'synthetic', '127.0.0.1');
 
@@ -106,6 +113,9 @@ describe('CasesImportService', () => {
       );
       expect(store.enqueue).toHaveBeenCalledTimes(1);
     } finally {
+      const createdBatch = store.create.mock.calls[0]?.[0] as ImportBatch | undefined;
+      if (createdBatch) await rm(createdBatch.quarantine_path, { recursive: true, force: true });
+      await rm(upload, { force: true });
       await rm(root, { recursive: true, force: true });
     }
   });

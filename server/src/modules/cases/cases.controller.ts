@@ -16,15 +16,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
 import { diskStorage } from 'multer';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import type { AuthenticatedRequest } from '../auth/auth.models';
+import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
 import { CasesImportService } from './cases-import.service';
-
-const quarantineRoot = process.env.IMPORT_QUARANTINE_DIR ?? resolve(tmpdir(), 'miap-import-quarantine');
 
 @Controller('cases')
 @UseGuards(AccessTokenGuard, AdminGuard)
@@ -36,8 +33,8 @@ export class CasesController {
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: (_request, _file, callback) => {
-        mkdirSync(quarantineRoot, { recursive: true, mode: 0o700 });
-        callback(null, quarantineRoot);
+        mkdirSync(IMPORT_QUARANTINE_ROOT, { recursive: true, mode: 0o700 });
+        callback(null, IMPORT_QUARANTINE_ROOT);
       },
       filename: (_request, _file, callback) => callback(null, `${randomUUID()}.zip`),
     }),
