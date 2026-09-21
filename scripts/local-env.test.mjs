@@ -14,6 +14,8 @@ test('generates every required local key without patient data fields', () => {
 
   assert.match(env, /^POSTGRES_PASSWORD=fixed-random-value$/m);
   assert.match(env, /^SEED_ADMIN_PASSWORD=fixed-random-value$/m);
+  assert.match(env, /^JWT_SECRET=fixed-random-value$/m);
+  assert.match(env, /^MFA_ENCRYPTION_KEY=fixed-random-value$/m);
   assert.match(env, /^ORTHANC_USERNAME=fixed-random-value$/m);
   assert.match(env, /^MINIO_ROOT_PASSWORD=fixed-random-value$/m);
   assert.match(env, /^REDIS_PASSWORD=fixed-random-value$/m);
@@ -36,10 +38,10 @@ test('writes only .env.local and never reveals generated credentials', () => {
   assert.match(environment, /^MINIO_ROOT_PASSWORD=.+$/m);
   const generatedSecrets = environment
     .split('\n')
-    .filter((line) => /^(POSTGRES_PASSWORD|SEED_ADMIN_PASSWORD|ORTHANC_USERNAME|ORTHANC_PASSWORD|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD|REDIS_PASSWORD|ELASTIC_PASSWORD)=/.test(line))
+    .filter((line) => /^(POSTGRES_PASSWORD|SEED_ADMIN_PASSWORD|JWT_SECRET|MFA_ENCRYPTION_KEY|ORTHANC_USERNAME|ORTHANC_PASSWORD|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD|REDIS_PASSWORD|ELASTIC_PASSWORD)=/.test(line))
     .map((line) => line.split('=')[1]);
 
-  assert.equal(generatedSecrets.length, 8);
+  assert.equal(generatedSecrets.length, 10);
   assert.doesNotMatch(result.stdout, /POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD/);
   assert.doesNotMatch(result.stderr, /POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD/);
   for (const secret of generatedSecrets) {

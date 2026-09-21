@@ -16,6 +16,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     real_name: ['character varying', false], email: ['character varying', true],
     phone: ['character varying', true], role: ['character varying', false],
     quals: ['jsonb', false], status: ['character varying', false], expire_at: ['date', false],
+    must_change_password: ['boolean', false], mfa_secret_encrypted: ['character varying', true],
   },
   cases: {
     case_no: ['character varying', false], status: ['character varying', false],
