@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -8,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UnsupportedMediaTypeException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -41,7 +41,7 @@ export class CasesController {
     fileFilter: (_request, file, callback) => {
       const allowedMime = new Set(['application/zip', 'application/x-zip-compressed', 'application/octet-stream']);
       if (!file.originalname.toLowerCase().endsWith('.zip') || !allowedMime.has(file.mimetype)) {
-        callback(new BadRequestException('只允许上传 ZIP 文件'), false);
+        callback(new UnsupportedMediaTypeException('只允许上传 ZIP 文件'), false);
         return;
       }
       callback(null, true);

@@ -1,4 +1,11 @@
-import { Injectable, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  PayloadTooLargeException,
+  ServiceUnavailableException,
+  UnsupportedMediaTypeException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import type { CaseProcessingResult, ZipInspectionResult } from './cases-import.models';
@@ -13,6 +20,14 @@ interface WorkerResponse<T> {
   result?: T;
   error?: { code?: string; message?: string };
 }
+
+const PAYLOAD_TOO_LARGE_CODES = new Set([
+  'ZIP_SIZE_LIMIT',
+  'ZIP_EXPANDED_SIZE_LIMIT',
+  'ZIP_FILE_COUNT_LIMIT',
+  'ZIP_RATIO_LIMIT',
+]);
+const UNSUPPORTED_MEDIA_CODES = new Set(['ZIP_INVALID', 'UNSUPPORTED_FILE']);
 
 @Injectable()
 export class DeidWorkerService {
@@ -73,7 +88,7 @@ export class DeidWorkerService {
           if (!response.ok || response.result === undefined) {
             const errorCode = response.error?.code ?? 'DEIDENTIFICATION_FAILED';
             const message = response.error?.message ?? '脱敏处理失败';
-            return finish(new UnprocessableEntityException({ code: errorCode, message }));
+            return finish(this.workerException(errorCode, message));
           }
           return finish(undefined, response.result);
         } catch {
@@ -82,5 +97,12 @@ export class DeidWorkerService {
       });
       child.stdin.end(JSON.stringify(request));
     });
+  }
+
+  private workerException(code: string, message: string): HttpException {
+    const body = { code, message };
+    if (PAYLOAD_TOO_LARGE_CODES.has(code)) return new PayloadTooLargeException(body);
+    if (UNSUPPORTED_MEDIA_CODES.has(code)) return new UnsupportedMediaTypeException(body);
+    return new UnprocessableEntityException(body);
   }
 }

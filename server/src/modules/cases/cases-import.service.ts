@@ -7,6 +7,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
@@ -290,6 +291,8 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
           break;
         }
       }
+    } catch {
+      return;
     } finally {
       this.draining = false;
     }
@@ -310,30 +313,41 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (item.status !== 'queued' && item.status !== 'processing') return;
+    const hasProcessingCheckpoint = Boolean(item.processed && item.review);
     item.status = 'processing';
-    item.stage = 'deidentification';
+    item.stage = hasProcessingCheckpoint ? 'duplicate_check' : 'deidentification';
     this.store.refreshStatus(batch);
     await this.store.save(batch);
     let result: Awaited<ReturnType<DeidWorkerService['processCase']>>;
-    try {
-      result = await this.worker.processCase(item.quarantine_path, join(item.quarantine_path, 'processed'));
-    } catch (error) {
-      item.status = 'failed';
-      item.stage = 'failed';
-      item.failure = this.failure(error);
-      item.review = null;
-      item.processed = null;
-      await this.audit.record(batch.actor_id, 'case_import.case_failed', `import_batch:${batch.batch_id}`, {
-        batch_id: batch.batch_id,
-        source: batch.source,
-        item_id: item.item_id,
-        failure_code: item.failure.code,
-      }, batch.request_ip);
+    if (hasProcessingCheckpoint && item.processed && item.review) {
+      result = { processed: item.processed, review: item.review };
+    } else {
+      try {
+        result = await this.worker.processCase(item.quarantine_path, join(item.quarantine_path, 'processed'));
+      } catch (error) {
+        item.status = 'failed';
+        item.stage = 'failed';
+        item.failure = this.failure(error);
+        item.review = null;
+        item.processed = null;
+        await this.audit.record(batch.actor_id, 'case_import.case_failed', `import_batch:${batch.batch_id}`, {
+          batch_id: batch.batch_id,
+          source: batch.source,
+          item_id: item.item_id,
+          failure_code: item.failure.code,
+        }, batch.request_ip);
+        this.store.refreshStatus(batch);
+        await this.store.save(batch);
+        await rm(item.quarantine_path, { recursive: true, force: true });
+        await this.cleanupCompletedBatch(batch);
+        return;
+      }
+      item.review = result.review;
+      item.processed = result.processed;
+      item.failure = null;
+      item.stage = 'duplicate_check';
       this.store.refreshStatus(batch);
       await this.store.save(batch);
-      await rm(item.quarantine_path, { recursive: true, force: true });
-      await this.cleanupCompletedBatch(batch);
-      return;
     }
     if (await this.isDuplicate(result.processed.study_uid)) {
       item.status = 'duplicate';
@@ -516,7 +530,7 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
     const signature = bytes.toString('hex');
     if (!['504b0304', '504b0506', '504b0708'].includes(signature)) {
       await rm(path, { force: true });
-      throw new BadRequestException('上传文件不是有效 ZIP');
+      throw new UnsupportedMediaTypeException('上传文件不是有效 ZIP');
     }
   }
 

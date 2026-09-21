@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { MulterError } from 'multer';
 
 interface ResponseLike {
   status(code: number): ResponseLike;
@@ -9,6 +10,16 @@ interface ResponseLike {
 export class ApiExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<ResponseLike>();
+    if (exception instanceof MulterError) {
+      const status = exception.code === 'LIMIT_FILE_SIZE'
+        ? HttpStatus.PAYLOAD_TOO_LARGE
+        : HttpStatus.BAD_REQUEST;
+      const message = exception.code === 'LIMIT_FILE_SIZE'
+        ? '上传文件超过 512 MiB 限制'
+        : '上传请求不符合限制';
+      response.status(status).json({ code: `HTTP_${status}`, message });
+      return;
+    }
     const status = exception instanceof HttpException
       ? exception.getStatus()
       : HttpStatus.INTERNAL_SERVER_ERROR;
