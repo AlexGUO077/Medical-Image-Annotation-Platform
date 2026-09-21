@@ -1,4 +1,4 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import { hashPassword, verifyPassword } from '../../database/password';
 import { AuditService } from '../audit/audit.service';
@@ -9,6 +9,8 @@ import { SecurityStateService } from './security-state.service';
 import { TotpService } from './totp.service';
 
 type NextStep = 'authenticated' | 'change_password' | 'setup_2fa' | 'verify_2fa';
+
+const DUMMY_PASSWORD_HASH = hashPassword('timing-equalization-only', Buffer.alloc(16, 0x5a));
 
 export interface AuthResponse {
   token: string;
@@ -30,9 +32,11 @@ export class AuthService {
 
   async login(body: unknown, ip: string): Promise<AuthResponse> {
     const { username, password } = this.loginInput(body);
-    await this.securityState.assertAttemptAllowed('password', username);
     const user = await this.findByUsername(username);
-    if (!user || !verifyPassword(password, user.password_hash) || !this.isAccountUsable(user)) {
+    await this.assertAttemptAllowed('password', username, user, ip);
+    const passwordMatches = verifyPassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !passwordMatches || !this.isAccountUsable(user)) {
+      if (user) await this.recordFailure(user, 'auth.login_failed', 'password', ip);
       throw new UnauthorizedException('用户名或密码错误');
     }
     await this.securityState.clearAttempts('password', username);
@@ -52,10 +56,17 @@ export class AuthService {
     const claims = this.verifyBearer(authorization, ['password_change', 'access']);
     const { currentPassword, newPassword } = this.passwordInput(body);
     const user = await this.requireUsableUser(claims.sub);
+    await this.assertAttemptAllowed('password', `change:${user.id}`, user, ip);
     if (!verifyPassword(currentPassword, user.password_hash)) {
+      await this.recordFailure(user, 'auth.password_change_failed', 'password', ip);
       throw new UnauthorizedException('当前密码错误');
     }
-    this.assertStrongPassword(newPassword, currentPassword);
+    try {
+      this.assertStrongPassword(newPassword, currentPassword);
+    } catch (error) {
+      await this.recordFailure(user, 'auth.password_change_failed', 'password_policy', ip);
+      throw error;
+    }
 
     await this.dataSource.transaction(async (manager) => {
       await manager.query(
@@ -70,6 +81,7 @@ export class AuthService {
         [user.id, `users:${user.id}`, ip],
       );
     });
+    await this.securityState.clearAttempts('password', `change:${user.id}`);
 
     const updated = await this.requireUsableUser(user.id);
     if (updated.role === 'admin') {
@@ -104,20 +116,29 @@ export class AuthService {
     const claims = this.verifyBearer(authorization, ['mfa_verify', 'mfa_enroll']);
     const user = await this.requireUsableUser(claims.sub);
     if (user.role !== 'admin' || user.must_change_password) {
+      await this.recordFailure(user, 'auth.mfa_failed', 'account_state', ip);
       throw new UnauthorizedException('当前账号不能验证双因素认证');
     }
     if (claims.purpose === 'mfa_enroll' && user.mfa_secret_encrypted) {
+      await this.recordFailure(user, 'auth.mfa_failed', 'enrollment_state', ip);
       throw new UnauthorizedException('双因素认证已经绑定');
     }
-    const code = this.mfaCodeInput(body);
-    await this.securityState.assertAttemptAllowed('mfa', user.id);
-    const encryptedSecret = claims.purpose === 'mfa_enroll'
-      ? claims.mfa_secret_encrypted
-      : user.mfa_secret_encrypted;
-    if (!encryptedSecret) throw new UnauthorizedException('尚未绑定双因素认证');
-    const timeStep = await this.totp.verify(encryptedSecret, code);
-    if (!await this.securityState.consumeTotp(user.id, timeStep)) {
-      throw new UnauthorizedException('动态验证码已使用');
+    await this.assertAttemptAllowed('mfa', user.id, user, ip);
+    let encryptedSecret: string;
+    try {
+      const code = this.mfaCodeInput(body);
+      const candidate = claims.purpose === 'mfa_enroll'
+        ? claims.mfa_secret_encrypted
+        : user.mfa_secret_encrypted;
+      if (!candidate) throw new UnauthorizedException('尚未绑定双因素认证');
+      encryptedSecret = candidate;
+      const timeStep = await this.totp.verify(encryptedSecret, code);
+      if (!await this.securityState.consumeTotp(user.id, timeStep)) {
+        throw new UnauthorizedException('动态验证码已使用');
+      }
+    } catch (error) {
+      await this.recordFailure(user, 'auth.mfa_failed', 'totp', ip);
+      throw error;
     }
     await this.securityState.clearAttempts('mfa', user.id);
 
@@ -166,6 +187,38 @@ export class AuthService {
 
   private isAccountUsable(user: AuthUser): boolean {
     return user.status === 'active' && user.expire_at >= new Date().toISOString().slice(0, 10);
+  }
+
+  private async assertAttemptAllowed(
+    scope: 'password' | 'mfa',
+    identifier: string,
+    user: AuthUser | undefined,
+    ip: string,
+  ): Promise<void> {
+    try {
+      await this.securityState.assertAttemptAllowed(scope, identifier);
+    } catch (error) {
+      if (user && error instanceof HttpException && error.getStatus() === 429) {
+        await this.audit.record(
+          user.id,
+          'auth.locked_out',
+          `users:${user.id}`,
+          { result: 'blocked', scope },
+          ip,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private recordFailure(user: AuthUser, action: string, scope: string, ip: string): Promise<void> {
+    return this.audit.record(
+      user.id,
+      action,
+      `users:${user.id}`,
+      { result: 'failure', scope },
+      ip,
+    );
   }
 
   private challenge(

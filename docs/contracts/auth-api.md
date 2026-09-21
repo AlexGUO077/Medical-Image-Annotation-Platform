@@ -12,6 +12,7 @@
 - `next=authenticated`：`token` 是 8 小时正式 JWT，可调用受保护接口。
 
 认证失败统一返回“用户名或密码错误”，不说明账号是否存在、停用或过期。
+已识别账号的登录、改密、TOTP 失败和触发 15 分钟限流均写入 `audit_logs`，详情只记录失败范围和结果，不记录密码、动态码、JWT 或 TOTP 密钥。
 
 ## 首次改密与 TOTP
 
@@ -23,8 +24,8 @@ TOTP 密钥、密码、JWT、完整二维码和动态码不得写入日志或审
 
 ## 账号管理
 
-- `POST /api/users`：管理员创建账号；请求为手册字段 `real_name/email/phone/role/quals/expire_at`。服务端生成用户名和初始密码，初始密码只在本次响应返回。
+- `POST /api/users`：管理员创建账号；请求为手册字段 `real_name/email/phone/role/quals/expire_at`。服务端生成用户名和初始密码，合成数据阶段仅在本次响应中向当前管理员交接一次，不启用邮件、短信或长期可查渠道。
 - `GET /api/users?page=1&pageSize=20`：管理员分页查询，不返回密码散列或 TOTP 密钥。
-- `PATCH /api/users`：管理员按 `id` 更新 `status/expire_at/quals`；可用 `reset_mfa=true` 重置另一名管理员的 TOTP。
+- `PATCH /api/users`：管理员按 `id` 更新 `status/expire_at/quals`；可用 `reset_mfa=true` 重置另一名管理员的 TOTP。管理员不能通过接口停用自己或重置自己的 TOTP。
 
 前端显隐不构成权限边界。账号、资格和 MFA 变更均由后端鉴权并写审计。

@@ -15,6 +15,9 @@ async function request<T>(path: string, body: unknown, token?: string): Promise<
     },
     body: JSON.stringify(body),
   });
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error(response.ok ? '服务响应格式无效' : '服务暂时不可用，请稍后重试');
+  }
   const payload = await response.json() as { message?: string } & T;
   if (!response.ok) throw new Error(payload.message ?? '请求失败，请稍后重试');
   return payload;

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { DataSource } from 'typeorm';
 import { hashPassword } from '../../database/password';
@@ -98,6 +98,9 @@ export class UsersService {
     const changes: Record<string, unknown> = {};
     if (input.status !== undefined) {
       if (input.status !== 'active' && input.status !== 'disabled') throw new BadRequestException('账号状态无效');
+      if (target.id === actor.id && input.status === 'disabled') {
+        throw new ForbiddenException('管理员不能停用自己的账号');
+      }
       updates.push(`"status" = $${values.push(input.status)}`);
       changes.status = { before: target.status, after: input.status };
     }

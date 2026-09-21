@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { hashPassword } from '../../database/password';
 import type { AuthUser } from './auth.models';
@@ -19,19 +19,21 @@ function serviceFor(user: AuthUser | undefined) {
   const tokens = {
     signAccess: vi.fn().mockReturnValue('access-token'),
     signChallenge: vi.fn().mockImplementation((_user, purpose) => `${purpose}-token`),
+    verify: vi.fn().mockReturnValue({ sub: user?.id, purpose: 'mfa_verify' }),
   };
   const security = {
-    assertAttemptAllowed: vi.fn(), clearAttempts: vi.fn(), consumeTotp: vi.fn(),
+    assertAttemptAllowed: vi.fn(), clearAttempts: vi.fn(), consumeTotp: vi.fn().mockResolvedValue(true),
   };
+  const totp = { verify: vi.fn().mockResolvedValue(123) };
   const audit = { record: vi.fn() };
   const service = new AuthService(
     dataSource as never,
     tokens as never,
-    {} as never,
+    totp as never,
     security as never,
     audit as never,
   );
-  return { service, tokens, security, audit };
+  return { service, tokens, totp, security, audit };
 }
 
 describe('AuthService login', () => {
@@ -66,5 +68,52 @@ describe('AuthService login', () => {
     const { service } = serviceFor(user);
     await expect(service.login({ username: 'member', password }, '127.0.0.1'))
       .rejects.toEqual(expect.objectContaining<Partial<UnauthorizedException>>({ message: '用户名或密码错误' }));
+  });
+
+  it('records a failed login for a known account without sensitive values', async () => {
+    const current = createUser();
+    const { service, audit } = serviceFor(current);
+
+    await expect(service.login({ username: current.username, password: 'wrong-password' }, '127.0.0.1'))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(audit.record).toHaveBeenCalledWith(
+      current.id,
+      'auth.login_failed',
+      `users:${current.id}`,
+      { result: 'failure', scope: 'password' },
+      '127.0.0.1',
+    );
+  });
+
+  it('records a rate-limit lockout for a known account', async () => {
+    const current = createUser();
+    const { service, security, audit } = serviceFor(current);
+    security.assertAttemptAllowed.mockRejectedValue(new HttpException('尝试次数过多，请稍后重试', 429));
+
+    await expect(service.login({ username: current.username, password: 'wrong-password' }, '127.0.0.1'))
+      .rejects.toMatchObject({ status: 429 });
+    expect(audit.record).toHaveBeenCalledWith(
+      current.id,
+      'auth.locked_out',
+      `users:${current.id}`,
+      { result: 'blocked', scope: 'password' },
+      '127.0.0.1',
+    );
+  });
+
+  it('records a failed administrator TOTP verification without the code', async () => {
+    const current = createUser({ role: 'admin', mfa_secret_encrypted: 'encrypted' });
+    const { service, totp, audit } = serviceFor(current);
+    totp.verify.mockRejectedValue(new UnauthorizedException('动态验证码无效'));
+
+    await expect(service.verifyMfa('Bearer challenge', { code: '123456' }, '127.0.0.1'))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(audit.record).toHaveBeenCalledWith(
+      current.id,
+      'auth.mfa_failed',
+      `users:${current.id}`,
+      { result: 'failure', scope: 'totp' },
+      '127.0.0.1',
+    );
   });
 });
