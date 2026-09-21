@@ -20,3 +20,26 @@ export interface TaxonomyTreeResponse {
   tree: TaxonomyNode[];
   sign_tags: SignTag[];
 }
+
+export interface TaxonomyNodeInput {
+  name: string;
+  synonyms: string[];
+  icd: string | null;
+}
+
+export interface CreateTaxonomyNodeInput extends TaxonomyNodeInput {
+  parent_id: string;
+}
+
+export interface SignTagInput {
+  name: string;
+  system_code: string;
+  definition: string;
+}
+
+export interface SignTagListResponse {
+  items: SignTag[];
+  page: number;
+  pageSize: number;
+  total: number;
+}

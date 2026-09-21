@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('AdminTaxonomyPage', () => {
   it('loads the four-level tree and displays disease sign definitions', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    const tree = {
       tree: [{
         id: 'root', parent_id: null, level: 1, name: '呼吸', synonyms: [], icd: null,
         children: [{
@@ -21,21 +21,28 @@ describe('AdminTaxonomyPage', () => {
         }],
       }],
       sign_tags: [{ id: 'sign', name: '合成征象', system_code: 'resp', definition: '仅用于合成验证' }],
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    };
+    const fetchMock = vi.fn().mockImplementation((input: string) => Promise.resolve(new Response(JSON.stringify(
+      input.includes('/sign-tags?')
+        ? { items: tree.sign_tags, page: 1, pageSize: 20, total: 1 }
+        : tree,
+    ), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<AdminTaxonomyPage session={session} />);
 
     expect(await screen.findByText('合成分型')).toBeInTheDocument();
-    expect(screen.getByText('合成疾病 可用征象')).toBeInTheDocument();
+    expect(screen.getByText('征象规范')).toBeInTheDocument();
     expect(screen.getByText('合成别名')).toBeInTheDocument();
     expect(screen.getByText('仅用于合成验证')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新增征象' })).toBeInTheDocument();
   });
 
   it('shows the service error without inventing fallback taxonomy data', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: '认证信息无效' }), {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ message: '认证信息无效' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
-    })));
+    }))));
 
     render(<AdminTaxonomyPage session={session} />);
 

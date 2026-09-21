@@ -92,6 +92,26 @@ body {
   gap: 16px;
 }
 
+.taxonomy-admin-page > .ant-alert {
+  margin-bottom: 16px;
+}
+
+.taxonomy-filters {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.taxonomy-filters .ant-input-search {
+  width: min(320px, 100%);
+}
+
+.taxonomy-node-detail {
+  margin-top: 16px;
+  margin-bottom: 0;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
 .taxonomy-loading {
   display: grid;
   min-height: 240px;
