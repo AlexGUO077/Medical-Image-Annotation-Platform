@@ -150,12 +150,18 @@ export async function verifyDatabase(dataSource: DataSource): Promise<void> {
     SELECT
       (SELECT count(*)::int FROM users WHERE role = 'admin' AND deleted_at IS NULL) AS admins,
       (SELECT count(*)::int FROM taxonomy_nodes WHERE level = 1 AND deleted_at IS NULL) AS systems,
+      (SELECT count(*)::int FROM taxonomy_nodes WHERE level = 2 AND name LIKE '合成示例部位-%' AND deleted_at IS NULL) AS parts,
+      (SELECT count(*)::int FROM taxonomy_nodes WHERE level = 3 AND name LIKE '合成示例疾病-%' AND deleted_at IS NULL) AS diseases,
+      (SELECT count(*)::int FROM taxonomy_nodes WHERE level = 4 AND name LIKE '合成示例分型-%' AND deleted_at IS NULL) AS subtypes,
       (SELECT count(*)::int FROM sign_tags WHERE name LIKE '合成示例征象-%' AND deleted_at IS NULL) AS signs
-  `) as Array<{ admins: number; systems: number; signs: number }>;
+  `) as Array<{ admins: number; systems: number; parts: number; diseases: number; subtypes: number; signs: number }>;
   const seedCounts = seedRows[0];
   assert(seedCounts !== undefined, 'Seed verification query returned no result');
   assert(seedCounts.admins >= 1, 'Synthetic administrator seed is missing');
   assert(seedCounts.systems === 8, `Expected 8 system roots, found ${seedCounts.systems}`);
+  assert(seedCounts.parts === 8, `Expected 8 synthetic level-2 nodes, found ${seedCounts.parts}`);
+  assert(seedCounts.diseases === 8, `Expected 8 synthetic disease nodes, found ${seedCounts.diseases}`);
+  assert(seedCounts.subtypes === 8, `Expected 8 synthetic level-4 nodes, found ${seedCounts.subtypes}`);
   assert(seedCounts.signs === 8, `Expected 8 synthetic sign tags, found ${seedCounts.signs}`);
 
   const indexRows = await dataSource.query(`

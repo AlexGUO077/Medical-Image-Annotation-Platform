@@ -31,11 +31,32 @@ export async function seedDatabase(dataSource: DataSource, adminPassword: string
 
     for (const [index, [systemCode, systemName]] of SYSTEMS.entries()) {
       const suffix = String(index + 1).padStart(12, '0');
+      const rootId = `10000000-0000-4000-8000-${suffix}`;
+      const partId = `11000000-0000-4000-8000-${suffix}`;
+      const diseaseId = `12000000-0000-4000-8000-${suffix}`;
       await manager.query(
         `INSERT INTO "taxonomy_nodes" ("id", "parent_id", "level", "name", "synonyms", "icd")
          VALUES ($1, NULL, 1, $2, '[]'::jsonb, NULL)
          ON CONFLICT DO NOTHING`,
-        [`10000000-0000-4000-8000-${suffix}`, systemName],
+        [rootId, systemName],
+      );
+      await manager.query(
+        `INSERT INTO "taxonomy_nodes" ("id", "parent_id", "level", "name", "synonyms", "icd")
+         VALUES ($1, $2, 2, $3, '[]'::jsonb, NULL)
+         ON CONFLICT DO NOTHING`,
+        [partId, rootId, `合成示例部位-${systemCode}`],
+      );
+      await manager.query(
+        `INSERT INTO "taxonomy_nodes" ("id", "parent_id", "level", "name", "synonyms", "icd")
+         VALUES ($1, $2, 3, $3, $4::jsonb, NULL)
+         ON CONFLICT DO NOTHING`,
+        [diseaseId, partId, `合成示例疾病-${systemCode}`, JSON.stringify([`合成示例疾病别名-${systemCode}`])],
+      );
+      await manager.query(
+        `INSERT INTO "taxonomy_nodes" ("id", "parent_id", "level", "name", "synonyms", "icd")
+         VALUES ($1, $2, 4, $3, '[]'::jsonb, NULL)
+         ON CONFLICT DO NOTHING`,
+        [`13000000-0000-4000-8000-${suffix}`, diseaseId, `合成示例分型-${systemCode}`],
       );
       await manager.query(
         `INSERT INTO "sign_tags" ("id", "name", "system_code", "definition")
@@ -58,7 +79,7 @@ async function main(): Promise<void> {
   await AppDataSource.initialize();
   try {
     await seedDatabase(AppDataSource, password);
-    console.log('Database seed completed: 1 synthetic admin, 8 system roots, 8 synthetic sign tags.');
+    console.log('Database seed completed: 1 synthetic admin, 8 four-level synthetic trees, 8 synthetic sign tags.');
   } finally {
     await AppDataSource.destroy();
   }
