@@ -7,6 +7,8 @@ const batch: ImportBatch = {
   source: 'synthetic',
   source_record: {
     source: 'synthetic', scope: 'development_test_only', real_data_allowed: false,
+    authorization_basis: 'synthetic_data', valid_until: 'project_acceptance',
+    withdrawal_action: 'stop_import_and_delete',
     decision: 'D-31', recorded_by: 'admin', recorded_at: '2026-09-21T00:00:00Z',
   },
   actor_id: 'admin',

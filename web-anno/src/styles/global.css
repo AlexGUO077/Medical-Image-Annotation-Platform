@@ -118,8 +118,82 @@ body {
   place-items: center;
 }
 
+.case-import-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.case-import-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.case-import-heading h1 {
+  margin-bottom: 0;
+}
+
+.case-import-page > .ant-alert {
+  margin-bottom: 16px;
+}
+
+.case-import-stack {
+  width: 100%;
+}
+
+.case-import-source {
+  width: min(420px, 100%);
+}
+
+.case-import-note,
+.case-import-submit {
+  margin-top: 16px;
+}
+
+.case-import-statistics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.case-import-statistics .ant-statistic {
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.case-import-review-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr);
+  gap: 16px;
+}
+
+.case-import-review-grid .ant-image,
+.case-import-review-grid img {
+  width: 100%;
+}
+
+.case-import-masked-report {
+  max-height: 180px;
+  margin-bottom: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   .taxonomy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .case-import-statistics {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+
+  .case-import-review-grid {
     grid-template-columns: 1fr;
   }
 }

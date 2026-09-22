@@ -4,6 +4,7 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-rout
 import type { Session } from '../auth/types';
 import { LoginPage } from '../pages/LoginPage';
 import { AdminTaxonomyPage } from '../pages/AdminTaxonomyPage';
+import { CaseImportPage } from '../pages/CaseImportPage';
 import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
@@ -26,13 +27,15 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
         {appRoutes.filter((route) => route.path !== '/login').map((route) => (
           <Route key={route.path} path={route.path} element={session
             ? (
-              route.path === '/admin' && session.role !== 'admin'
+              ['/admin', '/cases/import'].includes(route.path) && session.role !== 'admin'
                 ? <Navigate replace to="/tasks" />
                 : (
                   <AuthenticatedLayout session={session} onLogout={() => setSession(null)}>
                     {route.path === '/admin'
                       ? <AdminTaxonomyPage session={session} />
-                      : <ModulePlaceholderPage title={route.label} />}
+                      : route.path === '/cases/import'
+                        ? <CaseImportPage session={session} />
+                        : <ModulePlaceholderPage title={route.label} />}
                   </AuthenticatedLayout>
                 )
             )

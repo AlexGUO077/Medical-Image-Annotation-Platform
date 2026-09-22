@@ -1,6 +1,6 @@
 # WP-04 导入与脱敏接口契约
 
-本契约对应源开发手册 §5.2、§7.1～§7.2，需求基线 WP-04、SG-3，以及已批准的 [D-04、D-15、D-17、D-18](../decisions/D-04-D-15-D-17-D-18-import-deidentification.md)和 [D-31 合成数据来源边界](source-authorization-and-data-lifecycle.md)。当前只允许合成数据，真实医学数据入口保持关闭。
+本契约对应源开发手册 §5.2、§7.1～§7.2，需求基线 WP-04、SG-3，以及已批准的 [D-04、D-15、D-17、D-18](../decisions/D-04-D-15-D-17-D-18-import-deidentification.md)和 [D-31 数据来源边界](source-authorization-and-data-lifecycle.md)。当前只允许 `synthetic` 和 `teacher_provided_teaching`，其他真实医学数据来源保持关闭。
 
 ## 通用规则
 
@@ -11,12 +11,13 @@
 
 ## 批次来源记录
 
-`source` 是必填字段，但不得只作为普通字符串保存。当前合成数据阶段执行以下固定控制：
+`source` 是必填字段，但不得只作为普通字符串保存。当前执行以下固定控制：
 
-- 请求中的 `source` 必须精确为 `synthetic`；缺失、空值或其他值均拒绝。
-- 服务端在接收批次时派生来源记录：`source=synthetic`、`scope=development_test_only`、`real_data_allowed=false`、`decision=D-31`、`recorded_by` 和 `recorded_at`。
-- 来源记录随 Redis 批次元数据保存；正式入库时每个 `cases.source` 写入 `synthetic`；批次接收、病例入库和原始暂存清理的审计详情均记录 `batch_id` 与 `source`，但不记录原始内容。
-- 当前记录只证明“合成数据开发准入”，不能替代真实数据所需的提供方、协议、伦理和授权台账。检测到或怀疑为真实数据时必须停止处理并清理暂存，不能通过更换 `source` 字符串绕过。
+- 请求中的 `source` 必须精确为 `synthetic` 或 `teacher_provided_teaching`；缺失、空值或其他值均拒绝。
+- 两类来源均固定 `scope=development_test_only`、`valid_until=project_acceptance`、`withdrawal_action=stop_import_and_delete`、`decision=D-31`。
+- `synthetic` 派生 `real_data_allowed=false`、`authorization_basis=synthetic_data`；`teacher_provided_teaching` 派生 `real_data_allowed=true`、`authorization_basis=project_owner_confirmation`。
+- 来源记录随 Redis 批次元数据保存；正式入库时每个 `cases.source` 写入实际固定值；批次接收、病例入库和原始暂存清理审计记录最小来源字段，但不记录原始内容。
+- `teacher_provided_teaching` 仅证明本项目开发测试准入，不替代伦理或生产授权。授权撤回时必须从服务端白名单移除并停止导入，再删除该来源已导入数据和暂存数据。
 
 ## POST /api/cases/import
 
@@ -24,7 +25,7 @@
 
 | 字段 | 必填 | 规则 |
 | --- | --- | --- |
-| `source` | 是 | 当前只能为 `synthetic` |
+| `source` | 是 | `synthetic` 或 `teacher_provided_teaching` |
 | `file` | 是 | ZIP；同时校验扩展名、MIME 和 ZIP 文件签名 |
 
 ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例可直接放在根目录；病例内只允许 `.dcm` 和一个 UTF-8 `report.txt`。禁止嵌套压缩包、符号链接、绝对路径、路径穿越和规范化后重名。默认上限为压缩包 512 MiB、解压后 2 GiB、5000 个文件、总压缩比 100:1。
@@ -35,10 +36,13 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 {
   "batch_id": "uuid",
   "status": "queued",
-  "source": "synthetic",
+  "source": "teacher_provided_teaching",
   "source_record": {
     "scope": "development_test_only",
-    "real_data_allowed": false,
+    "real_data_allowed": true,
+    "authorization_basis": "project_owner_confirmation",
+    "valid_until": "project_acceptance",
+    "withdrawal_action": "stop_import_and_delete",
     "decision": "D-31"
   }
 }
@@ -53,7 +57,7 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 ```json
 {
   "batch_id": "uuid",
-  "source": "synthetic",
+  "source": "teacher_provided_teaching",
   "status": "processing",
   "stage": "deidentification",
   "counts": {
@@ -110,7 +114,7 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 确认前，处理后的 DICOM 和报告仍在隔离区，不写入正式 Orthanc、PostgreSQL 或 MinIO。确认成功后才执行正式入库事务：
 
 1. 去标识化后的序列写入 Orthanc；
-2. 写入 `cases/studies/series/reports`，`cases.source` 固定为 `synthetic`，病例状态为 `已录入`；
+2. 写入 `cases/studies/series/reports`，`cases.source` 写入批次已批准的固定来源值，病例状态为 `已录入`；
 3. 报告映射按 D-04 加密写入 MinIO 私有桶，`reports.mask_map_id` 保存映射 UUID；无映射时该字段为 `null`；
 4. 写 `case_import.deidentification_confirmed` 和 `case_import.case_committed` 审计；
 5. 清理该病例的原始及处理中间暂存文件，并写 `case_import.quarantine_cleaned` 审计。
@@ -134,7 +138,7 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 仅管理员按单个病例审计读取，不提供列表或批量接口。请求必须填写用途理由：
 
 ```json
-{ "reason": "核对合成报告脱敏结果" }
+{ "reason": "核对教学报告脱敏结果" }
 ```
 
 成功时解密并返回该病例的映射，同时写 `case_import.mask_map_accessed` 审计；审计只记录病例、映射 UUID、操作者和理由，不记录映射内容。无映射返回空数组。业务人员、搜索、导出和普通病例详情接口永不返回映射。
@@ -153,7 +157,7 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 | --- | --- |
 | 400 | 缺少或不支持的 `source`、请求体或参数无效、ZIP 目录结构不符合 D-15 |
 | 401 | 缺少、过期或无效认证信息 |
-| 403 | 非管理员调用；真实数据入口被策略阻断 |
+| 403 | 非管理员调用；未批准来源被策略阻断 |
 | 404 | 批次、病例条目或病例不存在，或暂存已清理 |
 | 409 | 条目状态不允许预览/确认；确认结果与现有状态冲突 |
 | 413 | 压缩包、展开大小、文件数或压缩比超过限制 |

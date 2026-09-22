@@ -64,6 +64,9 @@ function processingBatch(): ImportBatch {
       source: 'synthetic',
       scope: 'development_test_only',
       real_data_allowed: false,
+      authorization_basis: 'synthetic_data',
+      valid_until: 'project_acceptance',
+      withdrawal_action: 'stop_import_and_delete',
       decision: 'D-31',
       recorded_by: admin.id,
       recorded_at: '2026-09-21T00:00:00.000Z',
@@ -110,7 +113,7 @@ function processingBatch(): ImportBatch {
 }
 
 describe('CasesImportService', () => {
-  it('rejects any source outside the approved synthetic D-31 boundary', async () => {
+  it('rejects any source outside the approved D-31 boundary', async () => {
     const { instance } = service();
     const uploadName = '10000000-0000-4000-8000-000000000001.zip';
     const upload = join(IMPORT_QUARANTINE_ROOT, uploadName);
@@ -126,7 +129,7 @@ describe('CasesImportService', () => {
     }
   });
 
-  it('persists a derived source record and audits the accepted batch', async () => {
+  it('persists the approved teacher-provided source record and audits the accepted batch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'miap-import-test-'));
     const uploadName = '10000000-0000-4000-8000-000000000002.zip';
     const upload = join(IMPORT_QUARANTINE_ROOT, uploadName);
@@ -144,15 +147,27 @@ describe('CasesImportService', () => {
       const result = await instance.acceptUpload(admin, {
         path: upload,
         filename: uploadName,
-        originalname: 'synthetic.zip',
-      } as Express.Multer.File, 'synthetic', '127.0.0.1');
+        originalname: 'teaching.zip',
+      } as Express.Multer.File, 'teacher_provided_teaching', '127.0.0.1');
 
       const batch = store.create.mock.calls[0]?.[0] as ImportBatch;
-      expect(result).toMatchObject({ source: 'synthetic', source_record: { decision: 'D-31', real_data_allowed: false } });
+      expect(result).toMatchObject({
+        source: 'teacher_provided_teaching',
+        source_record: {
+          decision: 'D-31',
+          real_data_allowed: true,
+          authorization_basis: 'project_owner_confirmation',
+          valid_until: 'project_acceptance',
+          withdrawal_action: 'stop_import_and_delete',
+        },
+      });
       expect(batch.source_record).toMatchObject({
-        source: 'synthetic',
+        source: 'teacher_provided_teaching',
         scope: 'development_test_only',
-        real_data_allowed: false,
+        real_data_allowed: true,
+        authorization_basis: 'project_owner_confirmation',
+        valid_until: 'project_acceptance',
+        withdrawal_action: 'stop_import_and_delete',
         decision: 'D-31',
         recorded_by: admin.id,
       });
@@ -161,7 +176,11 @@ describe('CasesImportService', () => {
         admin.id,
         'case_import.batch_accepted',
         expect.stringMatching(/^import_batch:/),
-        expect.objectContaining({ source: 'synthetic', scope: 'development_test_only' }),
+        expect.objectContaining({
+          source: 'teacher_provided_teaching',
+          scope: 'development_test_only',
+          authorization_basis: 'project_owner_confirmation',
+        }),
         '127.0.0.1',
       );
       expect(store.enqueue).toHaveBeenCalledTimes(1);
@@ -223,6 +242,20 @@ describe('CasesImportService', () => {
     expect(store.retry).not.toHaveBeenCalled();
   });
 
+  it('keeps duplicate checks isolated by the approved source', async () => {
+    const { instance, dataSource } = service();
+    dataSource.query.mockResolvedValue([]);
+
+    await (instance as unknown as {
+      isDuplicate(source: 'teacher_provided_teaching', studyUid: string): Promise<boolean>;
+    }).isDuplicate('teacher_provided_teaching', '2.25.1');
+
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('c."source" = $1'),
+      ['teacher_provided_teaching', '2.25.1'],
+    );
+  });
+
   it('requires explicit system and confirmation method when confirming import', async () => {
     const { instance } = service();
     await expect(instance.confirm(
@@ -244,6 +277,9 @@ describe('CasesImportService', () => {
         source: 'synthetic',
         scope: 'development_test_only',
         real_data_allowed: false,
+        authorization_basis: 'synthetic_data',
+        valid_until: 'project_acceptance',
+        withdrawal_action: 'stop_import_and_delete',
         decision: 'D-31',
         recorded_by: admin.id,
         recorded_at: '2026-09-21T00:00:00.000Z',

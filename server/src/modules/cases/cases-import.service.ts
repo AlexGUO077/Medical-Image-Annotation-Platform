@@ -22,7 +22,9 @@ import type {
   ImportBatch,
   ImportFailure,
   ImportItem,
+  ImportSource,
   ProcessedSeries,
+  SourceRecord,
   SystemCode,
 } from './cases-import.models';
 import { CONFIRM_METHODS, SYSTEM_CODES } from './cases-import.models';
@@ -34,6 +36,26 @@ import { OrthancService } from './orthanc.service';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UPLOAD_NAME_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.zip$/i;
+const SOURCE_POLICIES = {
+  synthetic: {
+    scope: 'development_test_only',
+    real_data_allowed: false,
+    authorization_basis: 'synthetic_data',
+    valid_until: 'project_acceptance',
+    withdrawal_action: 'stop_import_and_delete',
+    decision: 'D-31',
+    case_prefix: 'SYN',
+  },
+  teacher_provided_teaching: {
+    scope: 'development_test_only',
+    real_data_allowed: true,
+    authorization_basis: 'project_owner_confirmation',
+    valid_until: 'project_acceptance',
+    withdrawal_action: 'stop_import_and_delete',
+    decision: 'D-31',
+    case_prefix: 'TPT',
+  },
+} as const satisfies Record<ImportSource, Omit<SourceRecord, 'source' | 'recorded_by' | 'recorded_at'> & { case_prefix: string }>;
 
 interface ConfirmInput {
   confirmed: true;
@@ -68,10 +90,12 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
 
   async acceptUpload(actor: AuthUser, file: Express.Multer.File | undefined, sourceValue: unknown, ip: string) {
     const uploadedPath = file ? this.uploadedPath(file) : null;
-    if (sourceValue !== 'synthetic') {
+    if (typeof sourceValue !== 'string' || !Object.hasOwn(SOURCE_POLICIES, sourceValue)) {
       if (uploadedPath) await rm(uploadedPath, { force: true });
-      throw new BadRequestException('当前导入来源只能为 synthetic');
+      throw new BadRequestException('导入来源未获批准');
     }
+    const source = sourceValue as ImportSource;
+    const policy = SOURCE_POLICIES[source];
     if (!file || !uploadedPath) throw new BadRequestException('缺少 ZIP 文件');
     await this.assertZipSignature(uploadedPath);
 
@@ -87,11 +111,14 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       const now = new Date().toISOString();
       const batch: ImportBatch = {
         batch_id: batchId,
-        source: 'synthetic',
+        source,
         source_record: {
-          source: 'synthetic',
+          source,
           scope: 'development_test_only',
-          real_data_allowed: false,
+          real_data_allowed: policy.real_data_allowed,
+          authorization_basis: policy.authorization_basis,
+          valid_until: policy.valid_until,
+          withdrawal_action: policy.withdrawal_action,
           decision: 'D-31',
           recorded_by: actor.id,
           recorded_at: now,
@@ -120,8 +147,11 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.audit.record(actor.id, 'case_import.batch_accepted', `import_batch:${batchId}`, {
           batch_id: batchId,
-          source: 'synthetic',
+          source,
           scope: batch.source_record.scope,
+          authorization_basis: batch.source_record.authorization_basis,
+          valid_until: batch.source_record.valid_until,
+          withdrawal_action: batch.source_record.withdrawal_action,
           file_count: inspection.file_count,
           compressed_size: inspection.compressed_size,
           expanded_size: inspection.expanded_size,
@@ -134,10 +164,13 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       return {
         batch_id: batchId,
         status: 'queued',
-        source: 'synthetic',
+        source,
         source_record: {
           scope: batch.source_record.scope,
-          real_data_allowed: false,
+          real_data_allowed: batch.source_record.real_data_allowed,
+          authorization_basis: batch.source_record.authorization_basis,
+          valid_until: batch.source_record.valid_until,
+          withdrawal_action: batch.source_record.withdrawal_action,
           decision: 'D-31',
         },
       };
@@ -187,10 +220,10 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
     if (item.status !== 'awaiting_confirmation' || !item.processed || !item.review) {
       throw new ConflictException('病例尚未完成自动脱敏或当前状态不能确认');
     }
-    if (batch.source !== 'synthetic' || batch.source_record.decision !== 'D-31' || batch.source_record.real_data_allowed) {
+    if (!this.sourceRecordValid(batch)) {
       throw new ConflictException('导入批次来源记录无效');
     }
-    if (await this.isDuplicate(item.processed.study_uid)) {
+    if (await this.isDuplicate(batch.source, item.processed.study_uid)) {
       item.status = 'duplicate';
       item.stage = 'duplicate';
       item.processed = null;
@@ -349,7 +382,7 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       this.store.refreshStatus(batch);
       await this.store.save(batch);
     }
-    if (await this.isDuplicate(result.processed.study_uid)) {
+    if (await this.isDuplicate(batch.source, result.processed.study_uid)) {
       item.status = 'duplicate';
       item.stage = 'duplicate';
       await this.audit.record(batch.actor_id, 'case_import.duplicate_skipped', `import_batch:${batch.batch_id}`, {
@@ -394,7 +427,7 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       const caseRows = await manager.query(
         `INSERT INTO "cases" ("case_no", "status", "source", "system_code", "confirm_method")
          VALUES ($1, '已录入', $2, $3, $4) RETURNING "id"`,
-        [`SYN-${randomUUID().slice(0, 12).toUpperCase()}`, batch.source, input.systemCode, input.confirmMethod],
+        [`${SOURCE_POLICIES[batch.source].case_prefix}-${randomUUID().slice(0, 12).toUpperCase()}`, batch.source, input.systemCode, input.confirmMethod],
       ) as Array<{ id: string }>;
       const caseId = caseRows[0]?.id;
       if (!caseId) throw new Error('病例写入失败');
@@ -417,6 +450,9 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       await this.auditInTransaction(manager, actorId, 'case_import.deidentification_confirmed', `cases:${caseId}`, {
         batch_id: batch.batch_id,
         source: batch.source,
+        authorization_basis: batch.source_record.authorization_basis,
+        valid_until: batch.source_record.valid_until,
+        withdrawal_action: batch.source_record.withdrawal_action,
         item_id: item.item_id,
         system_code: input.systemCode,
         confirm_method: input.confirmMethod,
@@ -424,6 +460,9 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
       await this.auditInTransaction(manager, actorId, 'case_import.case_committed', `cases:${caseId}`, {
         batch_id: batch.batch_id,
         source: batch.source,
+        authorization_basis: batch.source_record.authorization_basis,
+        valid_until: batch.source_record.valid_until,
+        withdrawal_action: batch.source_record.withdrawal_action,
         item_id: item.item_id,
         study_uid: processed.study_uid,
         series_count: processed.series.length,
@@ -461,14 +500,27 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async isDuplicate(studyUid: string): Promise<boolean> {
+  private async isDuplicate(source: ImportSource, studyUid: string): Promise<boolean> {
     const rows = await this.dataSource.query(
       `SELECT 1 FROM "studies" s JOIN "cases" c ON c."id" = s."case_id"
-       WHERE c."source" = 'synthetic' AND s."study_uid" = $1
+       WHERE c."source" = $1 AND s."study_uid" = $2
          AND c."deleted_at" IS NULL AND s."deleted_at" IS NULL LIMIT 1`,
-      [studyUid],
+      [source, studyUid],
     ) as unknown[];
     return rows.length > 0;
+  }
+
+  private sourceRecordValid(batch: ImportBatch): boolean {
+    const policy = SOURCE_POLICIES[batch.source];
+    const record = batch.source_record;
+    return Boolean(policy)
+      && record.source === batch.source
+      && record.scope === policy.scope
+      && record.real_data_allowed === policy.real_data_allowed
+      && record.authorization_basis === policy.authorization_basis
+      && record.valid_until === policy.valid_until
+      && record.withdrawal_action === policy.withdrawal_action
+      && record.decision === policy.decision;
   }
 
   private async findItem(batchIdValue: unknown, itemIdValue: unknown): Promise<{ batch: ImportBatch; item: ImportItem }> {

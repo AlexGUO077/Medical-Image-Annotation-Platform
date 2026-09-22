@@ -1,15 +1,20 @@
 export const SYSTEM_CODES = ['cns', 'headneck', 'resp', 'circ', 'digest', 'uro', 'repro', 'bone'] as const;
 export const CONFIRM_METHODS = ['病理证实', '随访确诊', '临床综合诊断'] as const;
+export const IMPORT_SOURCES = ['synthetic', 'teacher_provided_teaching'] as const;
 
 export type SystemCode = typeof SYSTEM_CODES[number];
 export type ConfirmMethod = typeof CONFIRM_METHODS[number];
+export type ImportSource = typeof IMPORT_SOURCES[number];
 export type BatchStatus = 'queued' | 'processing' | 'awaiting_confirmation' | 'completed' | 'completed_with_failures' | 'failed';
 export type ItemStatus = 'queued' | 'processing' | 'awaiting_confirmation' | 'completed' | 'duplicate' | 'failed';
 
 export interface SourceRecord {
-  source: 'synthetic';
+  source: ImportSource;
   scope: 'development_test_only';
-  real_data_allowed: false;
+  real_data_allowed: boolean;
+  authorization_basis: 'synthetic_data' | 'project_owner_confirmation';
+  valid_until: 'project_acceptance';
+  withdrawal_action: 'stop_import_and_delete';
   decision: 'D-31';
   recorded_by: string;
   recorded_at: string;
@@ -66,7 +71,7 @@ export interface ImportItem {
 
 export interface ImportBatch {
   batch_id: string;
-  source: 'synthetic';
+  source: ImportSource;
   source_record: SourceRecord;
   actor_id: string;
   request_ip: string;
@@ -107,7 +112,7 @@ export interface ImportProgressItem {
 
 export interface ImportProgress {
   batch_id: string;
-  source: 'synthetic';
+  source: ImportSource;
   status: BatchStatus;
   stage: string;
   counts: Record<ItemStatus | 'total', number>;

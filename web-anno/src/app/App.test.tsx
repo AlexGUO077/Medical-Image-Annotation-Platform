@@ -16,7 +16,6 @@ describe('App', () => {
 
   it.each([
     ['/tasks', '任务列表'],
-    ['/cases/import', '病例录入'],
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
     ['/cases/synthetic-case', '病例与临床信息'],
@@ -30,11 +29,26 @@ describe('App', () => {
     expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
   });
 
+  it('renders the administrator batch import workflow', async () => {
+    render(<App initialEntries={['/cases/import']} initialSession={session} />);
+
+    expect(await screen.findByRole('heading', { name: '病例录入' })).toBeInTheDocument();
+    expect(screen.getByText('批量导入')).toBeInTheDocument();
+    expect(screen.queryByText('该模块将在对应工作包实现')).not.toBeInTheDocument();
+  });
+
   it('redirects members away from the administrator route', async () => {
     render(<App initialEntries={['/admin']} initialSession={{ ...session, role: 'member' }} />);
 
     expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
     expect(screen.queryByText('标签树与征象规范')).not.toBeInTheDocument();
+  });
+
+  it('redirects members away from case import', async () => {
+    render(<App initialEntries={['/cases/import']} initialSession={{ ...session, role: 'member' }} />);
+
+    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '病例录入' })).not.toBeInTheDocument();
   });
 
   it('uses the dark workbench theme without presenting business state', () => {
