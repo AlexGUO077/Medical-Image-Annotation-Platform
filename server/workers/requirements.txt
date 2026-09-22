@@ -3,5 +3,5 @@ aistudio-sdk==0.2.6
 numpy==1.26.4
 paddleocr==2.10.0
 paddlepaddle==2.6.2
-paddlenlp==2.8.1
+paddlenlp==2.6.1
 Pillow==12.3.0

@@ -12,6 +12,7 @@ reports/
 .security-cache/
 __pycache__/
 *.py[cod]
+.venv/
 
 # Local environment and credentials
 .env
