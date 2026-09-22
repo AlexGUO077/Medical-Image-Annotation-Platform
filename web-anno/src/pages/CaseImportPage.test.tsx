@@ -15,4 +15,16 @@ describe('CaseImportPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '手工简版录入' }));
     expect(screen.getByText(/需按 D-16 确认后实现/)).toBeInTheDocument();
   });
+
+  it('does not render the selected ZIP filename', async () => {
+    const { container } = render(<CaseImportPage session={session} />);
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(['zip'], 'patient-name-and-id.zip', { type: 'application/zip' });
+
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    expect(await screen.findByText(/不显示或上传原文件名/)).toBeInTheDocument();
+    expect(screen.queryByText('patient-name-and-id.zip')).not.toBeInTheDocument();
+  });
 });

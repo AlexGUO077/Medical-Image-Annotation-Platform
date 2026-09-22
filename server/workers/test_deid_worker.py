@@ -17,12 +17,13 @@ class ZipInspectionTests(unittest.TestCase):
             archive_path = Path(root) / "batch.zip"
             output_path = Path(root) / "out"
             with zipfile.ZipFile(archive_path, "w") as archive:
-                archive.writestr("case-a/one.DCM", b"DICOM-A")
-                archive.writestr("case-a/REPORT.TXT", "患者：张三")
-                archive.writestr("case-b/two.dcm", b"DICOM-B")
+                archive.writestr("patient-name-a/one.DCM", b"DICOM-A")
+                archive.writestr("patient-name-a/REPORT.TXT", "患者：张三")
+                archive.writestr("patient-id-b/two.dcm", b"DICOM-B")
             result = worker.inspect_zip({"zip_path": str(archive_path), "output_path": str(output_path)})
-            self.assertEqual([item["display_name"] for item in result["items"]], ["case-a", "case-b"])
-            self.assertEqual((output_path / "item-0001" / "report.txt").read_text(), "患者：张三")
+            self.assertEqual([item["display_name"] for item in result["items"]], ["case-0001", "case-0002"])
+            self.assertNotIn("patient", str(result["items"]))
+            self.assertEqual((output_path / "item-0002" / "report.txt").read_text(), "患者：张三")
 
     def test_rejects_path_traversal(self):
         self.assert_zip_error({"../outside.dcm": b"DICOM"}, "ZIP_PATH_INVALID")
