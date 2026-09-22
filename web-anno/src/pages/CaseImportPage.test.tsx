@@ -9,7 +9,8 @@ describe('CaseImportPage', () => {
     render(<CaseImportPage session={session} />);
 
     expect(screen.getByRole('heading', { name: '病例录入' })).toBeInTheDocument();
-    expect(screen.getByText(/当前正式接口仅接受已批准的合成数据来源/)).toBeInTheDocument();
+    expect(screen.getByText(/仅接受 D-31 已批准的数据来源/)).toBeInTheDocument();
+    expect(screen.getByText(/有效至项目验收/)).toBeInTheDocument();
     expect(screen.getByText(/浏览器不会解压或预览原始 DICOM/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '手工简版录入' }));
     expect(screen.getByText(/需按 D-16 确认后实现/)).toBeInTheDocument();

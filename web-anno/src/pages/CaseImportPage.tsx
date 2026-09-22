@@ -23,10 +23,12 @@ import type { Session } from '../auth/types';
 import { casesImportApi } from '../cases/api';
 import {
   CONFIRM_METHODS,
+  IMPORT_SOURCE_OPTIONS,
   SYSTEM_OPTIONS,
   type ConfirmImportInput,
   type ImportProgress,
   type ImportProgressItem,
+  type ImportSource,
   type ItemStatus,
 } from '../cases/types';
 
@@ -81,7 +83,7 @@ function stepIndex(
 }
 
 export function CaseImportPage({ session }: CaseImportPageProps) {
-  const [source, setSource] = useState<string>();
+  const [source, setSource] = useState<ImportSource>();
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<ImportProgress>();
@@ -210,15 +212,15 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
           className="case-import-source"
           placeholder="请选择数据来源"
           value={source}
-          options={[{ value: 'synthetic', label: '合成数据（当前已批准）' }]}
+          options={[...IMPORT_SOURCE_OPTIONS]}
           onChange={setSource}
         />
         <Alert
           className="case-import-note"
           type="info"
           showIcon
-          message="当前正式接口仅接受已批准的合成数据来源"
-          description="真实医学样例只在本地隔离环境验证；来源契约更新前不会标记为 synthetic 导入。"
+          message="仅接受 D-31 已批准的数据来源"
+          description="老师提供的教学样例仅限本项目开发测试；有效至项目验收，授权撤回后停止导入并删除已导入数据。"
         />
       </Card>
 

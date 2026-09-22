@@ -34,7 +34,7 @@
 
 ## 共同边界
 
-- 当前只处理明确标记的合成数据。真实医学数据入口继续关闭。
+- 当前只处理 D-31 明确批准的 `synthetic` 与 `teacher_provided_teaching`；老师提供样例仅限本项目开发测试，其他真实医学数据入口继续关闭。
 - DICOM 去标识化继续执行已批准 D-37：Basic Application Level Confidentiality Profile、Clean Pixel Data、私有标签默认删除、UID 引用一致和首帧人工确认。
 - 不新增审批流、KMS、保留删除编排、云端识别服务或通用机器学习平台。
 - 该模块属于脱敏 HIGH 风险改动，实现完成后仍须郝鹏翼老师进行组长复核，不能以自审代替。

@@ -6,15 +6,20 @@ afterEach(() => vi.unstubAllGlobals());
 describe('casesImportApi', () => {
   it('uploads multipart data without overriding the browser boundary header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      batch_id: 'batch-1', status: 'queued', source: 'synthetic',
+      batch_id: 'batch-1', status: 'queued', source: 'teacher_provided_teaching',
     }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await casesImportApi.create('token-1', 'synthetic', new File(['zip'], 'cases.zip', { type: 'application/zip' }));
+    await casesImportApi.create(
+      'token-1',
+      'teacher_provided_teaching',
+      new File(['zip'], 'cases.zip', { type: 'application/zip' }),
+    );
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toEqual({ Authorization: 'Bearer token-1' });
     expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get('source')).toBe('teacher_provided_teaching');
   });
 
   it('rejects non-image preview responses without exposing their body', async () => {

@@ -3,6 +3,7 @@ import type {
   ConfirmImportResponse,
   ImportAccepted,
   ImportProgress,
+  ImportSource,
 } from './types';
 
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
@@ -15,7 +16,7 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 }
 
 export const casesImportApi = {
-  async create(token: string, source: string, file: File) {
+  async create(token: string, source: ImportSource, file: File) {
     const body = new FormData();
     body.append('source', source);
     body.append('file', file);

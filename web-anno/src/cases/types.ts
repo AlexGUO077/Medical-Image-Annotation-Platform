@@ -10,9 +10,14 @@ export const SYSTEM_OPTIONS = [
 ] as const;
 
 export const CONFIRM_METHODS = ['病理证实', '随访确诊', '临床综合诊断'] as const;
+export const IMPORT_SOURCE_OPTIONS = [
+  { value: 'synthetic', label: '合成数据' },
+  { value: 'teacher_provided_teaching', label: '老师提供的教学样例' },
+] as const;
 
 export type SystemCode = typeof SYSTEM_OPTIONS[number]['value'];
 export type ConfirmMethod = typeof CONFIRM_METHODS[number];
+export type ImportSource = typeof IMPORT_SOURCE_OPTIONS[number]['value'];
 export type BatchStatus = 'queued' | 'processing' | 'awaiting_confirmation' | 'completed' | 'completed_with_failures' | 'failed';
 export type ItemStatus = 'queued' | 'processing' | 'awaiting_confirmation' | 'completed' | 'duplicate' | 'failed';
 
@@ -48,7 +53,7 @@ export interface ImportProgressItem {
 
 export interface ImportProgress {
   batch_id: string;
-  source: string;
+  source: ImportSource;
   status: BatchStatus;
   stage: string;
   counts: Record<ItemStatus | 'total', number>;
@@ -58,7 +63,7 @@ export interface ImportProgress {
 export interface ImportAccepted {
   batch_id: string;
   status: 'queued';
-  source: string;
+  source: ImportSource;
 }
 
 export interface ConfirmImportInput {
