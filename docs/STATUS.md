@@ -1,8 +1,8 @@
 # 工作包与安全门状态
 
-核验日期：2026-09-21。此表是当前状态入口；状态发生变化或核验纠正时更新。范围、依赖和放行标准仍见需求基线 §9/§10，本表不新增或替代验收条件。
+核验日期：2026-09-22。此表是当前状态入口；状态发生变化或核验纠正时更新。范围、依赖和放行标准仍见需求基线 §9/§10，本表不新增或替代验收条件。
 
-本次已读取 PR #2 的远端状态和检查结果，并核对主线文件及既有验证记录。PR 合并、检查通过、WP 完成和 SG 放行分别记录，不相互推定；“未记录”表示未取得相应证据，不等同于失败或已批准。
+PR 合并、检查通过、WP 完成和 SG 放行分别记录，不相互推定；“未记录”表示未取得相应证据，不等同于失败或已批准。
 
 | WP / SG | 当前状态 | 关联提交 / 证据 | 阻塞或下一步 |
 | --- | --- | --- | --- |
@@ -13,8 +13,10 @@
 | WP-01 | 人工评审与 CI 完成；PR 已合并 | [PR #14](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/14)；head `002be928fa8718f3e66f8ee4e83ddcfdf9630323`；merge `1b4561f27eca5d57e56ed00b3d5bfb039438900a`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35516827814)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35516827810)；[数据库契约与数据字典](contracts/database-schema.md) | WP-02 可在 D-03 管理员 2FA 契约确认后实施 |
 | WP-02 | D-03 已批准；人工评审、CI 和安全检查完成；PR 已合并 | [PR #15](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/15)；head `c9e7288c94e26a66ce1bcfba141a423bcd31ae90`；merge `29cda813f64efea485205106683f3cabc7267c8e`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35556444857)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35556444729)；[D-03](decisions/D-03-admin-2fa.md)；[认证接口契约](contracts/auth-api.md) | 资格挂起后的在途任务释放须在 D-09 明确并由 WP-06 状态机接入后再核验；D-22 当前仅采用创建响应一次性交接，正式发送渠道启用前另行确认 |
 | WP-03 | D-28 已批准；读取、标签与征象管理接口、服务端 admin 鉴权和管理交互已实现；人工评审、CI 和安全检查完成；PR 已合并 | 源手册 §4.2、§5.2、§6.3；需求基线 WP-03；[D-28](decisions/D-28-taxonomy-management.md)；[管理接口契约](contracts/taxonomy-api.md)；[PR #16](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/16)；实现 `093f5aa`；merge `9b363a3dac3eb2851a1783bac1af0932c33aa0fc`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35563347081)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35563347130) | WP-04 可在其模块决策和接口契约批准后实施 |
-| WP-04 | D-04、D-15、D-17、D-18 与 D-37 已批准；合成数据导入、D-31 来源绑定、DICOM/报告脱敏、人工确认和正式入库已实现；本地验证、PR 项目门禁和安全检查通过，Draft PR 待人工复核 | 源手册 §5.2、§7.1～§7.2；需求基线 WP-04、SG-3；[最小决策](decisions/D-04-D-15-D-17-D-18-import-deidentification.md)；[导入与脱敏接口契约](contracts/import-deidentification-api.md)；[来源契约](contracts/source-authorization-and-data-lifecycle.md)；[PR #17](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/17)；契约 `5650ec1`；实现 `53224e0`；路径约束修复 `0824df7`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35583872431)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35583872500) | 当前只允许 `synthetic`，真实医学数据入口继续关闭；等待另一人评审与郝鹏翼老师脱敏改动组长复核；通过前不放行 SG-3 |
-| WP-05～WP-17 | 本次核对范围内未记录启动或完成 | 需求基线 §9/§10 | 后续按源手册和实际依赖推进，启动时拆分相应状态行 |
-| SG-2～SG-7 | 未记录放行 | 需求基线 §10.4 | 在各门原定时点核验，不提前宣称通过；发生变化时拆分相应状态行 |
+| WP-04 | 合成数据导入、来源绑定、DICOM/报告脱敏、人工确认和正式入库已实现；人工复核、CI 和安全检查完成；PR 已合并 | 源手册 §5.2、§7.1～§7.2；需求基线 WP-04、SG-3；[最小决策](decisions/D-04-D-15-D-17-D-18-import-deidentification.md)；[导入与脱敏接口契约](contracts/import-deidentification-api.md)；[来源契约](contracts/source-authorization-and-data-lifecycle.md)；[PR #17](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/17)；head `91e729d`；merge `58bb6c7f39ebdb0a9a3a796440c403cd7e70f99c`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35583872431)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35583872500) | 当前正式接口仍只允许 `synthetic`；真实样例仅限本地隔离验证，正式接入前必须更新 D-31 来源与授权契约 |
+| WP-05 | 已启动；批量 ZIP 导入、服务端进度/失败明细、脱敏预览、OCR 命中与人工确认界面实现中；真实样例代表集的本地脱敏主链验证通过 | 源手册 §6.1、§7.2；需求基线 WP-05；分支 `feature/wp-05-case-entry`；本地隔离验证：331 个 DICOM 输入/输出、9 个序列，标识符、私有标签、UID 与预览检查通过 | 手工简版录入等待 D-16；附件预览等待 D-19；录入资格等待 D-20；真实数据正式导入等待 D-31 更新及来源固定值确认 |
+| WP-06～WP-17 | 本次核对范围内未记录启动或完成 | 需求基线 §9/§10 | 后续按源手册和实际依赖推进，启动时拆分相应状态行 |
+| SG-3 | 合成数据阶段方案已由郝鹏翼老师复核通过；WP-04 已合并 | [最小决策](decisions/D-04-D-15-D-17-D-18-import-deidentification.md)；[PR #17](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/17) | 该放行不自动授权真实医学数据正式入库；真实数据仍按 D-31 重新确认 |
+| SG-2、SG-4～SG-7 | 未记录放行 | 需求基线 §10.4 | 在各门原定时点核验，不提前宣称通过；发生变化时拆分相应状态行 |
 
 历史日志、旧计划和 PR2 验证材料保留当时状态，不再作为当前状态维护表。新增证据只在本表链接，不复制全文输出。
