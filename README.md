@@ -13,6 +13,16 @@ node --version
 npm ci
 ```
 
+导入与脱敏进程另需 Python 3.11。依赖安装在仓库内已忽略的本地虚拟环境，不得把模型缓存或运行产物提交到 Git：
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r server/workers/requirements.txt
+export DEID_WORKER_PYTHON="$PWD/.venv/bin/python"
+```
+
+PaddleOCR 与 PaddleNLP 模型必须在导入真实样例前完成本地下载和预热；实际识别只在本地子进程执行，不调用云端 OCR/NER，也不得把原始内容写入日志。
+
 首次启动时生成只用于本地合成环境的 `.env.local`；生成器不会输出密码，且默认拒绝覆盖已有文件。
 
 ```bash
@@ -75,7 +85,7 @@ docker compose --env-file .env.local down
 
 ## 数据与凭据边界
 
-- 本地和自动化验证只允许合成/匿名测试数据；严禁将真实 DICOM、原始报告、患者信息、脱敏映射、生产日志或备份放入本仓库或本地 Compose 卷。
+- 本地和自动化验证默认只允许合成/匿名测试数据。D-31 已批准的 `teacher_provided_teaching` 仅可在本项目开发测试环境按既有隔离、脱敏、人工确认流程导入；原始 DICOM、原始报告和患者信息不得进入 Git 或日志，正式卷只保存去标识化结果及按 D-04 加密的最小映射。
 - `.env.local` 只存在本地且已被 Git 忽略；不得将密码、Token、API key、私钥或生产凭据复制到代码、日志、PR 或 Issue。
 - SG-1 未完整放行前，不创建真实数据连接和生产秘密。
 
