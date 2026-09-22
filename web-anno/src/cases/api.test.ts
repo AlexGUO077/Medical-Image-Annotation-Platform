@@ -20,6 +20,7 @@ describe('casesImportApi', () => {
     expect(init.headers).toEqual({ Authorization: 'Bearer token-1' });
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get('source')).toBe('teacher_provided_teaching');
+    expect(((init.body as FormData).get('file') as File).name).toBe('import.zip');
   });
 
   it('rejects non-image preview responses without exposing their body', async () => {

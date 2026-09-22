@@ -90,6 +90,7 @@ ZIP 结构和限制按 D-15：一个顶层目录对应一个病例；单病例�
 
 - 批次 `status` 为 `queued | processing | awaiting_confirmation | completed | completed_with_failures | failed`。
 - 病例 `status` 为 `queued | processing | awaiting_confirmation | completed | duplicate | failed`。
+- `display_name` 必须由服务端生成为批次内临时编号，不得复用 ZIP 文件名、顶层目录名、DICOM 身份字段或其他原始输入。
 - `failure` 只返回稳定的 `code` 和脱敏说明，例如 `ZIP_PATH_INVALID`、`UNSUPPORTED_FILE`、`MULTIPLE_STUDIES`、`DICOM_INVALID`、`DEIDENTIFICATION_FAILED`、`OCR_FAILED`、`REPORT_DEIDENTIFICATION_FAILED`；不得返回原始输入。
 - `review` 只在 `awaiting_confirmation` 时返回去标识化内容。原始报告、原始身份标签和 `mask_map` 永不由该接口返回。
 

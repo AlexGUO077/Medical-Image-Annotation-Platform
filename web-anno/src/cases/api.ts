@@ -19,7 +19,7 @@ export const casesImportApi = {
   async create(token: string, source: ImportSource, file: File) {
     const body = new FormData();
     body.append('source', source);
-    body.append('file', file);
+    body.append('file', file, 'import.zip');
     const response = await fetch('/api/cases/import', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },

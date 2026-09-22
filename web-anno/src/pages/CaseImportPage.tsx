@@ -231,12 +231,18 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
           fileList={files}
           maxCount={1}
           multiple={false}
+          showUploadList={false}
           onChange={({ fileList }) => setFiles(fileList.slice(-1))}
           onRemove={() => { setFiles([]); return true; }}
         >
           <Typography.Title level={4}>拖拽 ZIP 到此处，或点击选择</Typography.Title>
           <Typography.Text type="secondary">浏览器不会解压或预览原始 DICOM；单包不超过 512 MiB。</Typography.Text>
         </Dragger>
+        {files.length === 1 ? (
+          <Typography.Paragraph className="case-import-selection" type="secondary">
+            已选择 1 个 ZIP 文件；为避免身份信息泄露，不显示或上传原文件名。
+          </Typography.Paragraph>
+        ) : null}
         <Button
           className="case-import-submit"
           type="primary"

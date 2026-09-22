@@ -77,7 +77,7 @@ def inspect_zip(request: dict) -> dict:
                     grouped.setdefault(path.parts[0], []).append((info, path))
 
             items = []
-            for index, (display_name, entries) in enumerate(sorted(grouped.items()), start=1):
+            for index, (_source_group, entries) in enumerate(sorted(grouped.items()), start=1):
                 report_count = 0
                 dicom_count = 0
                 item_path = output_path / f"item-{index:04d}"
@@ -102,7 +102,7 @@ def inspect_zip(request: dict) -> dict:
                         shutil.copyfileobj(source, target, length=1024 * 1024)
                 if dicom_count == 0:
                     raise WorkerError("DICOM_MISSING", "病例目录没有 DICOM 文件")
-                items.append({"display_name": display_name[:120], "path": str(item_path.resolve())})
+                items.append({"display_name": f"case-{index:04d}", "path": str(item_path.resolve())})
             return {
                 "compressed_size": compressed,
                 "expanded_size": expanded,
