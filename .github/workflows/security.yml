@@ -20,7 +20,7 @@ jobs:
       contents: read
     steps:
       # Version tags are documented in docs/security/wp-00-scan-policy.md.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check repository content before retaining SARIF
         run: node scripts/check-forbidden-files.mjs
       - uses: github/codeql-action/init@v3
@@ -56,7 +56,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.14.0
@@ -74,7 +74,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -135,7 +135,7 @@ jobs:
             context: .
             dockerfile: docker/elasticsearch/Dockerfile
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build ${{ matrix.image }}
         run: docker build --pull=false --file "${{ matrix.dockerfile }}" --tag "${{ matrix.image }}" "${{ matrix.context }}"
