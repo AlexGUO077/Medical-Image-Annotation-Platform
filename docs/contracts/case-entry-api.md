@@ -25,10 +25,14 @@
 
 ## 附件上传与预览
 
-`POST /api/cases/{id}/attachments` 采用分片上传：首片创建服务端 `upload_id`，后续片以该 ID、连续片序号和总片数续传；单片至多 5 MB，总文件至多 50 MB，最终片触发合并、类型和内容校验，并返回 `status=pending_confirmation`。只允许 PDF/JPG/PNG/DOCX/XLSX，客户端文件名仅用于格式提示，不进入响应、对象键或审计。缺片、重复片、超限、类型不符、转换失败或安全检查失败均拒绝；未确认附件只保留在隔离暂存，最长 24 小时。
+`POST /api/cases/{id}/attachments` 接收 `multipart/form-data`，每次恰好一片：`chunk`、从 0 开始的 `part_index`、`part_count`、`file_size`（整个文件字节数）、`format`（`pdf|jpg|png|docx|xlsx`）；首片不传 `upload_id`，服务端创建并返回，后续片必须带该 ID。单片至多 5 MB，整文件至多 50 MB；片序必须连续、总片数和总大小必须与首片一致。浏览器发送通用 multipart 文件名，不传原文件名。重复片、缺片、超限或会话不属于当前病例／操作者时拒绝，不覆盖已接收内容。
 
-`GET /api/cases/{id}/attachments/uploads/{uploadId}/preview` 仅供创建该上传的管理员核验隔离区中已转换、已做身份检查且带水印的预览；未经处理或识别失败时不可预览。`POST /api/cases/{id}/attachments/uploads/{uploadId}/confirm` 接收 `{ "confirmed": true, "kind": "检查报告|病理|其他" }`，重新检查来源、类型和处理结果，写入私有对象、附件行和审计后返回 `attachment_id`。转换结果不通过或管理员拒绝时清理暂存。
+上传响应为 `{ "upload_id": "UUID", "status": "receiving|processing", "next_part_index": 1, "part_count": 4 }`。最后一片接收后进入 `processing`，在隔离区合并并校验扩展声明、MIME、文件签名和可解码内容；失败时不进入正式存储。`GET /api/cases/{id}/attachments/uploads/{uploadId}` 返回 `{ "status": "receiving|processing|pending_confirmation|failed", "next_part_index": 1, "part_count": 4, "page_count": 1, "failure_code": null }`，只提供安全错误码，不返回原文或路径。上传会话与暂存最长保留 24 小时。
 
-`GET /api/cases/{id}/attachments/{attachmentId}/preview` 按对象鉴权返回已确认附件的只读水印预览。JPG/PNG 由服务端解码、剥离元数据并输出水印图像；PDF 转换为逐页带水印图像；DOCX/XLSX 先在隔离环境转换为只读页面，再按同一路径水印。分页参数由服务端校验并限幅，响应不含原始对象或下载 URL。转换或水印失败时返回错误；不回退为原件下载。
+处理 JPG/PNG 时剥离元数据；PDF 及转换后的 DOCX/XLSX 逐页检查文字层与渲染图。发现疑似身份标识或识别／转换失败时拒绝该附件并要求提交已去标识化版本，不向浏览器回传未处理页面。正式存储只保存经过确认的只读处理结果，原始上传文件在隔离区清理；不提供原件下载。
+
+`GET /api/cases/{id}/attachments/uploads/{uploadId}/preview?page=1` 仅供创建该上传的管理员核验 `pending_confirmation` 状态下已处理且带水印的 `image/png`；页码从 1 开始，不在 `page_count` 内时返回 404。`POST /api/cases/{id}/attachments/uploads/{uploadId}/confirm` 接收 `{ "confirmed": true, "kind": "检查报告|病理|其他" }`，重新检查来源、类型和处理结果，写入私有对象、附件行和审计后返回 `{ "attachment_id": "UUID", "filename": "服务端中性名称", "size": "字节数字符串", "deid_confirmed": true }`。确认失败须清理未引用正式对象，拒绝或失效则清理暂存。
+
+`GET /api/cases/{id}/attachments/{attachmentId}/preview?page=1` 按对象鉴权返回已确认附件的只读水印 `image/png`。JPG/PNG 解码、剥离元数据后作为单页；PDF 转换为逐页图像；DOCX/XLSX 先在隔离环境转换为只读页面，再按同一路径水印。页码按已处理的 `page_count` 校验，响应不含原始对象或下载 URL。转换或水印失败时返回错误；不回退为原件下载。
 
 附件正式入库前须由管理员显式确认脱敏结果，`deid_confirmed=true` 仅由服务端在确认与审计完成后设置。附件列表只展示安全类型、服务端生成的中性名称、大小和确认状态；未确认附件不向一般病例详情或预览接口开放。原件下载接口不提供。
