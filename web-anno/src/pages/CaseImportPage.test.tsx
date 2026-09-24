@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { casesImportApi } from '../cases/api';
 import { CaseImportPage } from './CaseImportPage';
 
 const session = { token: 'admin-token', role: 'admin' as const, quals: {} };
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('CaseImportPage', () => {
   it('shows the approved batch workflow and keeps the unresolved manual workflow explicit', () => {
@@ -26,5 +29,31 @@ describe('CaseImportPage', () => {
 
     expect(await screen.findByText(/不显示或上传原文件名/)).toBeInTheDocument();
     expect(screen.queryByText('patient-name-and-id.zip')).not.toBeInTheDocument();
+  });
+
+  it('shows measured file upload progress separately from server processing', async () => {
+    const create = vi.spyOn(casesImportApi, 'create').mockImplementation((_token, _source, _file, onProgress) => {
+      onProgress?.({ loaded: 2, total: 10 });
+      return new Promise(() => {});
+    });
+    const { container } = render(<CaseImportPage session={session} />);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '数据来源' }));
+    await screen.findByRole('option', { name: '合成数据' });
+    const option = document.querySelector('.ant-select-item-option');
+    expect(option).not.toBeNull();
+    fireEvent.click(option!);
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input!, {
+      target: { files: [new File(['zip'], 'sensitive.zip', { type: 'application/zip' })] },
+    });
+    await screen.findByText(/已选择 1 个 ZIP 文件/);
+    const submit = screen.getByRole('button', { name: '开始安全导入' });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/文件上传/)).toHaveTextContent('2 / 10 字节');
+    expect(screen.queryByText('服务端处理进度')).not.toBeInTheDocument();
+    expect(screen.queryByText('sensitive.zip')).not.toBeInTheDocument();
   });
 });

@@ -4,23 +4,48 @@ import { casesImportApi } from './api';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('casesImportApi', () => {
-  it('uploads multipart data without overriding the browser boundary header', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      batch_id: 'batch-1', status: 'queued', source: 'teacher_provided_teaching',
-    }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
-    vi.stubGlobal('fetch', fetchMock);
+  it('reports only measured upload bytes and keeps the source filename out of multipart data', async () => {
+    class FakeUploadRequest {
+      static latest: FakeUploadRequest;
+      upload = { onprogress: undefined as ((event: ProgressEvent) => void) | undefined };
+      onload?: () => void;
+      onerror?: () => void;
+      onabort?: () => void;
+      status = 202;
+      responseText = JSON.stringify({
+        batch_id: 'batch-1', status: 'queued', source: 'teacher_provided_teaching',
+      });
+      headers: Record<string, string> = {};
+      body?: FormData;
 
-    await casesImportApi.create(
+      constructor() { FakeUploadRequest.latest = this; }
+      open = vi.fn();
+      setRequestHeader(name: string, value: string) { this.headers[name] = value; }
+      getResponseHeader(name: string) { return name === 'content-type' ? 'application/json' : null; }
+      send(body: FormData) { this.body = body; }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeUploadRequest);
+    const progress = vi.fn();
+    const response = casesImportApi.create(
       'token-1',
       'teacher_provided_teaching',
       new File(['zip'], 'cases.zip', { type: 'application/zip' }),
+      progress,
     );
-
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(init.headers).toEqual({ Authorization: 'Bearer token-1' });
-    expect(init.body).toBeInstanceOf(FormData);
-    expect((init.body as FormData).get('source')).toBe('teacher_provided_teaching');
-    expect(((init.body as FormData).get('file') as File).name).toBe('import.zip');
+    const request = FakeUploadRequest.latest!;
+    expect(request.open).toHaveBeenCalledWith('POST', '/api/cases/import');
+    expect(request.headers).toEqual({ Authorization: 'Bearer token-1' });
+    expect(request.headers['Content-Type']).toBeUndefined();
+    expect(request.body?.get('source')).toBe('teacher_provided_teaching');
+    expect((request.body?.get('file') as File).name).toBe('import.zip');
+    request.upload.onprogress?.({ lengthComputable: false, loaded: 3, total: 0 } as ProgressEvent);
+    expect(progress).not.toHaveBeenCalled();
+    request.upload.onprogress?.({ lengthComputable: true, loaded: 2, total: 10 } as ProgressEvent);
+    expect(progress).toHaveBeenCalledWith({ loaded: 2, total: 10 });
+    request.onload?.();
+    await expect(response).resolves.toEqual({
+      batch_id: 'batch-1', status: 'queued', source: 'teacher_provided_teaching',
+    });
   });
 
   it('rejects non-image preview responses without exposing their body', async () => {

@@ -6,6 +6,11 @@ import type {
   ImportSource,
 } from './types';
 
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+}
+
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   if (!response.headers.get('content-type')?.includes('application/json')) {
     throw new Error(response.ok ? '服务响应格式无效' : '服务暂时不可用，请稍后重试');
@@ -16,16 +21,45 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 }
 
 export const casesImportApi = {
-  async create(token: string, source: ImportSource, file: File) {
+  async create(token: string, source: ImportSource, file: File, onProgress?: (progress: UploadProgress) => void) {
     const body = new FormData();
     body.append('source', source);
     body.append('file', file, 'import.zip');
-    const response = await fetch('/api/cases/import', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body,
+    return new Promise<ImportAccepted>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('POST', '/api/cases/import');
+      request.setRequestHeader('Authorization', `Bearer ${token}`);
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress?.({ loaded: event.loaded, total: event.total });
+        }
+      };
+      request.onerror = () => reject(new Error('上传连接中断，无法确认批次是否已接收'));
+      request.onabort = () => reject(new Error('上传已中断'));
+      request.onload = () => {
+        if (!request.getResponseHeader('content-type')?.includes('application/json')) {
+          reject(new Error(request.status >= 200 && request.status < 300
+            ? '服务响应格式无效' : '服务暂时不可用，请稍后重试'));
+          return;
+        }
+        try {
+          const payload = JSON.parse(request.responseText) as { message?: string } & ImportAccepted;
+          if (request.status < 200 || request.status >= 300) {
+            reject(new Error(payload.message ?? '导入批次创建失败'));
+            return;
+          }
+          if (typeof payload.batch_id !== 'string' || payload.status !== 'queued' ||
+              !['synthetic', 'teacher_provided_teaching'].includes(payload.source)) {
+            reject(new Error('服务响应格式无效'));
+            return;
+          }
+          resolve(payload);
+        } catch {
+          reject(new Error('服务响应格式无效'));
+        }
+      };
+      request.send(body);
     });
-    return jsonResponse<ImportAccepted>(response, '导入批次创建失败');
   },
 
   async progress(token: string, batchId: string) {
