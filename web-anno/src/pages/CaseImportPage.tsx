@@ -7,6 +7,7 @@ import {
   Form,
   Image,
   Modal,
+  Progress,
   Select,
   Space,
   Statistic,
@@ -20,7 +21,7 @@ import {
 import type { UploadFile } from 'antd';
 import { useEffect, useState } from 'react';
 import type { Session } from '../auth/types';
-import { casesImportApi } from '../cases/api';
+import { casesImportApi, type UploadProgress } from '../cases/api';
 import {
   CONFIRM_METHODS,
   IMPORT_SOURCE_OPTIONS,
@@ -86,6 +87,7 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
   const [source, setSource] = useState<ImportSource>();
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress>();
   const [progress, setProgress] = useState<ImportProgress>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -123,13 +125,16 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
       return;
     }
     setUploading(true);
+    setUploadProgress(undefined);
+    setProgress(undefined);
     setError(undefined);
     setNotice(undefined);
     try {
-      const accepted = await casesImportApi.create(session.token, source, file);
+      const accepted = await casesImportApi.create(session.token, source, file, setUploadProgress);
       setNotice('批次已接收，离开页面不会中断服务端处理');
       await refresh(accepted.batch_id);
     } catch (reason: unknown) {
+      setUploadProgress(undefined);
       setError(errorMessage(reason));
     } finally {
       setUploading(false);
@@ -213,6 +218,7 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
           placeholder="请选择数据来源"
           value={source}
           options={[...IMPORT_SOURCE_OPTIONS]}
+          disabled={uploading}
           onChange={setSource}
         />
         <Alert
@@ -231,6 +237,7 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
           fileList={files}
           maxCount={1}
           multiple={false}
+          disabled={uploading}
           showUploadList={false}
           onChange={({ fileList }) => setFiles(fileList.slice(-1))}
           onRemove={() => { setFiles([]); return true; }}
@@ -252,6 +259,23 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
         >
           开始安全导入
         </Button>
+        {uploading ? (
+          <div aria-live="polite" className="case-import-selection">
+            <Typography.Text>文件上传：{uploadProgress
+              ? `${Math.min(uploadProgress.loaded, uploadProgress.total)} / ${uploadProgress.total} 字节`
+              : '正在上传，暂无法计算百分比'}</Typography.Text>
+            {uploadProgress ? (
+              <Progress
+                percent={Math.min(100, Math.floor(uploadProgress.loaded / uploadProgress.total * 100))}
+                status="active"
+                aria-label="文件上传进度"
+              />
+            ) : null}
+            {uploadProgress && uploadProgress.loaded === uploadProgress.total
+              ? <Typography.Text type="secondary">文件已发送，等待服务端接收并安全检查</Typography.Text>
+              : null}
+          </div>
+        ) : null}
       </Card>
 
       {progress ? (
