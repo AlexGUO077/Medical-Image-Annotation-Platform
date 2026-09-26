@@ -13,9 +13,9 @@
 
 ## 尚未宣称完成的验收
 
-- 本阶段真实 Paddle OCR/NER 的完整手工/DICOM 端到端验收尚待 Linux 推理环境完成核验。已知原 macOS ARM Paddle 环境存在 SIGBUS 兼容问题，见既有运行记录；不得关闭识别检查绕过。本轮尝试构建 Linux amd64 环境，但依赖下载约 60–70 kB/s，未完成安装即停止临时构建；未产生真实推理通过结论。
+- Linux `ubuntu-24.04` / Python 3.11、仓库固定 Paddle 依赖的[真实模型合成验证](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/36252977151)通过：`verify_real_inference.py` 即时生成报告、PNG、ZIP/DICOM，仅在临时目录内运行未经 mock 的 UIE-mini 与中文 PP-OCRv3；验证手工报告姓名和影像标识被遮蔽、ZIP/DICOM 身份字段及烧录文字处理、干净附件接受与带标识附件拒绝。首次运行的默认 PP-OCRv4 中文模型在托管 Linux CPU 上 SIGILL；改用当前 Paddle 版本支持的 PP-OCRv3 后通过。此项覆盖 worker，不是带真实模型的 HTTP/数据库/对象存储完整验收；macOS ARM 原生 Paddle 的已知 SIGBUS 仍不作为运行环境。
 - 首轮 CI 发现模块测试依赖本地环境配置，已改为独立配置；CodeQL 报告文件系统路径传播，已在隔离文件系统入口增加规范化后的根目录包含校验并补充越界、悬空符号链接及 macOS canonical 路径回归测试，保留原 UUID/白名单限制，不增加规则豁免。本地回归通过；对应代码提交 CI 的结果链接统一见 STATUS。
-- GitHub 项目/安全 CI 以本 PR 对应提交的 run 为准。另一人评审、组长安全复核和负责人阶段验收尚未取得，本记录不放行新的 SG，也不将 WP-05 标为已完成。
+- GitHub 项目/安全 CI 以 STATUS 中对应代码提交的 run 为准。另一人评审、组长安全复核和负责人阶段验收尚未取得，本记录不放行新的 SG，也不将 WP-05 标为已完成。
 
 ## 运行与回滚
 
