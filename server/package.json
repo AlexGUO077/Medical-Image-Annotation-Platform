@@ -18,7 +18,7 @@
     "auth:reset-mfa": "ts-node src/modules/users/reset-admin-mfa.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1136.0",
+    "@aws-sdk/client-s3": "3.1138.0",
     "@nestjs/common": "12.1.0",
     "@nestjs/core": "12.0.4",
     "@nestjs/jwt": "12.0.2",
