@@ -1,3 +1,4 @@
+import { quarantinePath } from './cases-import.paths';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { readFile } from 'node:fs/promises';
@@ -10,7 +11,7 @@ export class AttachmentObjectService {
   private bucketReady?: Promise<void>;
 
   async storePng(key: string, path: string): Promise<number> {
-    const body = await readFile(path);
+    const body = await readFile(quarantinePath(path));
     await this.ensureBucket();
     await this.s3().send(new PutObjectCommand({
       Bucket: this.bucket(), Key: key, Body: body, ContentType: 'image/png',

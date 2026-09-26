@@ -1,3 +1,4 @@
+import { quarantinePath } from './cases-import.paths';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
@@ -15,7 +16,7 @@ export class MaskMapService {
 
   async storeFromFile(path: string | null, id = randomUUID()): Promise<string | null> {
     if (!path) return null;
-    const plaintext = await readFile(path);
+    const plaintext = await readFile(quarantinePath(path));
     const parsed = JSON.parse(plaintext.toString('utf8')) as unknown;
     if (!Array.isArray(parsed)) throw new ServiceUnavailableException('脱敏映射格式无效');
     if (parsed.length === 0) return null;

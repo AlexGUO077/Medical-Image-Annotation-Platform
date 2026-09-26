@@ -9,7 +9,7 @@ import { DATABASE_SOURCE } from '../database/database.tokens';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AttachmentObjectService } from './attachment-object.service';
 import { CASE_UUID, caseUuid, editableCase } from './cases-clinical.service';
-import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
+import { IMPORT_QUARANTINE_ROOT, quarantinePath } from './cases-import.paths';
 import { DeidWorkerService } from './deid-worker.service';
 import { ObjectCompensationService } from './object-compensation.service';
 import { watermarkPreview } from './case-preview';
@@ -69,7 +69,7 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
           (final ? received !== size : received >= size || size - received > (count - part - 1) * CHUNK)) {
         throw new ConflictException('分片重复、缺失或与上传会话不一致');
       }
-      const dir = join(ROOT, id);
+      const dir = quarantinePath(ROOT, id);
       await mkdir(dir, { recursive: true, mode: 0o700 });
       try {
         await writeFile(join(dir, `part-${part}`), file.buffer, { flag: 'wx', mode: 0o600 });
@@ -98,7 +98,7 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
     const state = await this.state(caseUuid(caseValue), caseUuid(idValue), actor);
     if (state.status !== 'pending_confirmation') throw new NotFoundException('安全预览不存在');
     const page = this.page(pageValue, state.page_count);
-    return watermarkPreview(await readFile(join(ROOT, state.id, 'processed', `page-${page}.png`)), actor);
+    return watermarkPreview(await readFile(quarantinePath(ROOT, state.id, 'processed', `page-${page}.png`)), actor);
   }
 
   async confirm(caseValue: unknown, idValue: unknown, actor: AuthUser, body: Record<string, unknown>, ip: string) {
@@ -125,7 +125,7 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
         await this.compensation.compensate(intent);
         throw error;
       }
-      await Promise.allSettled([this.compensation.complete(intent), this.redis.del(this.key(id)), rm(join(ROOT, id), { recursive: true, force: true })]);
+      await Promise.allSettled([this.compensation.complete(intent), this.redis.del(this.key(id)), rm(quarantinePath(ROOT, id), { recursive: true, force: true })]);
       return { attachment_id: attachmentId, filename, size: String(size), deid_confirmed: true };
     });
   }
@@ -142,7 +142,7 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async process(state: UploadState) {
-    const dir = join(ROOT, state.id), input = join(dir, `input.${state.format}`);
+    const dir = quarantinePath(ROOT, state.id), input = quarantinePath(dir, `input.${state.format}`);
     try {
       await writeFile(input, '', { flag: 'wx', mode: 0o600 });
       for (let i = 0; i < state.part_count; i++) {
@@ -153,7 +153,7 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
       if (!Number.isInteger(result.page_count) || result.page_count < 1 || result.page_count > 100) throw new Error('Invalid processed pages');
       // Keep only the approved pixel pages, never conversion inputs or profile files.
       for (const entry of await readdir(join(dir, 'processed'))) {
-        if (!/^page-[1-9]\d*\.png$/.test(entry)) await rm(join(dir, 'processed', entry), { recursive: true, force: true });
+        if (!/^page-[1-9]\d*\.png$/.test(entry)) await rm(quarantinePath(dir, 'processed', entry), { recursive: true, force: true });
       }
       await rm(input, { force: true });
       state.page_count = result.page_count;

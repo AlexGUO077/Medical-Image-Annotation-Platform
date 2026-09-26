@@ -19,7 +19,7 @@ import { DATABASE_SOURCE } from '../database/database.tokens';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AttachmentObjectService } from './attachment-object.service';
 import { CONFIRM_METHODS, IMPORT_SOURCES, SYSTEM_CODES, type ConfirmMethod, type ImportSource, type SystemCode } from './cases-import.models';
-import { MANUAL_QUARANTINE_ROOT } from './cases-import.paths';
+import { MANUAL_QUARANTINE_ROOT, quarantinePath } from './cases-import.paths';
 import { DeidWorkerService } from './deid-worker.service';
 import { ObjectCompensationService } from './object-compensation.service';
 import { watermarkPreview } from './case-preview';
@@ -67,7 +67,7 @@ export class CasesManualService implements OnModuleInit, OnModuleDestroy {
   }
 
   async prepare(actor: AuthUser, file: Express.Multer.File | undefined, sourceValue: unknown, reportValue: unknown) {
-    const uploadPath = file?.path;
+    const uploadPath = file?.path ? quarantinePath(file.path) : undefined;
     try {
       if (typeof sourceValue !== 'string' || !IMPORT_SOURCES.includes(sourceValue as ImportSource)) {
         throw new BadRequestException('录入来源未获批准');
@@ -283,7 +283,7 @@ export class CasesManualService implements OnModuleInit, OnModuleDestroy {
   }
 
   private key(id: string): string { return `miap:manual:draft:${id}`; }
-  private path(id: string): string { return join(MANUAL_ROOT, id); }
+  private path(id: string): string { return quarantinePath(MANUAL_ROOT, id); }
 
   private async cleanupExpired(): Promise<void> {
     const entries = await readdir(MANUAL_ROOT, { withFileTypes: true });
