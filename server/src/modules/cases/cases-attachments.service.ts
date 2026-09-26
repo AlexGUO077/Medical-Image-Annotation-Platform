@@ -142,8 +142,10 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async process(state: UploadState) {
-    const dir = quarantinePath(ROOT, state.id), input = quarantinePath(dir, `input.${state.format}`);
+    let dir: string | undefined;
     try {
+      dir = quarantinePath(ROOT, state.id);
+      const input = quarantinePath(dir, `input.${state.format}`);
       await writeFile(input, '', { flag: 'wx', mode: 0o600 });
       for (let i = 0; i < state.part_count; i++) {
         await appendFile(input, await readFile(join(dir, `part-${i}`)));
@@ -161,7 +163,8 @@ export class CasesAttachmentsService implements OnModuleInit, OnModuleDestroy {
     } catch {
       state.status = 'failed';
       state.failure_code = 'ATTACHMENT_PROCESSING_FAILED';
-      await rm(dir, { recursive: true, force: true });
+      // Persist failure even if cleanup must be retried by the expiry sweep.
+      if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
     await this.save(state);
   }

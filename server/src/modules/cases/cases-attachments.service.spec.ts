@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { CasesAttachmentsService } from './cases-attachments.service';
+import * as quarantine from './cases-import.paths';
 import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
 const caseId = '00000000-0000-4000-8000-000000000001';
 const actor = { id: caseId, username: 'synthetic', real_name: '合成' } as never;
 const dirs: string[] = [];
-afterEach(async () => { for (const id of dirs.splice(0)) await rm(join(IMPORT_QUARANTINE_ROOT, 'attachments', id), { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); for (const id of dirs.splice(0)) await rm(join(IMPORT_QUARANTINE_ROOT, 'attachments', id), { recursive: true, force: true }); });
 function setup() {
   const values = new Map<string, string>();
   const redis = {
@@ -71,6 +72,25 @@ describe('attachment lifecycle', () => {
     await expect(access(join(IMPORT_QUARANTINE_ROOT, 'attachments', id))).rejects.toThrow();
     await expect(h.service.uploadPreview(caseId, id, '1', actor)).rejects.toThrow();
     expect(h.objects.storePages).not.toHaveBeenCalled();
+  });
+  it.each(['directory', 'input'])('records failure when the processing %s path is rejected', async (stage) => {
+    const h = setup(), original = quarantine.quarantinePath;
+    vi.spyOn(quarantine, 'quarantinePath').mockImplementation((...parts) => {
+      const processing = [...h.values.entries()].some(([key, value]) =>
+        key.startsWith('miap:attachment:') && !key.includes(':lock:') && JSON.parse(value).status === 'processing');
+      const inputPath = parts.at(-1) === 'input.png';
+      if (processing && inputPath === (stage === 'input')) throw new Error('sensitive quarantine path');
+      return original(...parts);
+    });
+    const id = await receive(h, true);
+    await vi.waitFor(async () => expect(await h.service.progress(caseId, id, actor)).toMatchObject({
+      status: 'failed', failure_code: 'ATTACHMENT_PROCESSING_FAILED', page_count: 0,
+    }));
+    expect(JSON.stringify(await h.service.progress(caseId, id, actor))).not.toContain('sensitive');
+    expect(h.worker.processAttachment).not.toHaveBeenCalled();
+    expect(h.objects.storePages).not.toHaveBeenCalled();
+    await expect(h.service.uploadPreview(caseId, id, '1', actor)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(h.service.confirm(caseId, id, actor, { confirmed: true, kind: '其他' }, 'local')).rejects.toBeInstanceOf(ConflictException);
   });
   it('requires explicit review, verifies page bounds and removes formal objects on DB failure', async () => {
     const h = setup(), id = await receive(h, true); await ready(h, id);

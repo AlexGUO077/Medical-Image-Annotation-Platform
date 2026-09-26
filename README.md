@@ -115,6 +115,8 @@ docker compose --env-file .env.local down
 
 附件支持 PDF/JPG/PNG/DOCX/XLSX，每片最多 5 MB、整文件最多 50 MB。后台处理完成后须逐页核对并显式确认，正式存储仅保存处理后的 PNG 页面。Office 外部链接、宏、公式/活动字段、加密文档、超过 100 页或 200 MB 处理结果会安全拒绝；这类文件请先生成静态、已去标识化的版本再上传。预览使用服务端账号/姓名/时间水印，不提供原件下载。
 
+WP-16 容量与备份规划需按转换后的 PNG 总量评估附件放大系数，并计入备份副本、保留周期及隔离暂存峰值，不能只按上传文件大小估算。当前单附件处理结果上限为 200 MB；该上限不包含备份副本与转换中间文件。100 页 PDF 的逐页文本识别和渲染仍可能触及 worker 600 秒时限，超时会标记失败且不得确认入库。后续按真实环境的页数、耗时和输出大小测量结果，再评估降低页数上限或分段处理；本轮不改变现有限制。
+
 运行附件处理的本地 Python 环境除 `server/workers/requirements.txt` 外，还需 PATH 中可调用 `soffice`（LibreOffice Writer/Calc）、`pdfinfo`、`pdftotext`、`pdftoppm`（Poppler）。转换使用独立隔离目录与 Office 用户配置。模型应预先缓存，OCR/NER 或转换不可用时拒绝入库。macOS ARM 原生 Paddle 推理在既有环境有兼容性问题，真实推理须使用已验证的 Linux 环境，不应通过关闭 OCR/NER 绕过。
 
 独立验证入口（只针对合成开发环境）：
