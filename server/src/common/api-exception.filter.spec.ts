@@ -25,7 +25,7 @@ describe('ApiExceptionFilter', () => {
     expect(response.status).toHaveBeenCalledWith(413);
     expect(json).toHaveBeenCalledWith({
       code: 'HTTP_413',
-      message: '上传文件超过 512 MiB 限制',
+      message: '上传文件超过该接口大小限制',
     });
   });
 });

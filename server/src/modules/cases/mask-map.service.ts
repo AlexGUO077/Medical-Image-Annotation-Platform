@@ -13,14 +13,13 @@ export class MaskMapService {
   private client?: S3Client;
   private bucketReady?: Promise<void>;
 
-  async storeFromFile(path: string | null): Promise<string | null> {
+  async storeFromFile(path: string | null, id = randomUUID()): Promise<string | null> {
     if (!path) return null;
     const plaintext = await readFile(path);
     const parsed = JSON.parse(plaintext.toString('utf8')) as unknown;
     if (!Array.isArray(parsed)) throw new ServiceUnavailableException('脱敏映射格式无效');
     if (parsed.length === 0) return null;
 
-    const id = randomUUID();
     const iv = randomBytes(IV_LENGTH);
     const cipher = createCipheriv('aes-256-gcm', this.key(), iv);
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);

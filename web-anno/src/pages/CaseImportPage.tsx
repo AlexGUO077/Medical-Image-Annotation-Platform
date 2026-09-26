@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -21,6 +22,7 @@ import {
 import type { UploadFile } from 'antd';
 import { useEffect, useState } from 'react';
 import type { Session } from '../auth/types';
+import { ManualEntryPanel } from './ManualEntryPanel';
 import { casesImportApi, type UploadProgress } from '../cases/api';
 import {
   CONFIRM_METHODS,
@@ -199,7 +201,7 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
       title: '操作', key: 'action',
       render: (_: unknown, item: ImportProgressItem) => item.status === 'awaiting_confirmation'
         ? <Button size="small" type="primary" onClick={() => void openReview(item)}>脱敏确认</Button>
-        : null,
+        : item.case_id ? <Link to={`/cases/${item.case_id}`}>病例详情</Link> : null,
     },
   ];
 
@@ -318,7 +320,7 @@ export function CaseImportPage({ session }: CaseImportPageProps) {
           {
             key: 'manual',
             label: '手工简版录入',
-            children: <Empty description="关键影像格式与存储方式需按 D-16 确认后实现" />,
+            children: <ManualEntryPanel session={session} />,
           },
         ]}
       />

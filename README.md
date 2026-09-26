@@ -108,3 +108,23 @@ docker compose --env-file .env.local down
 ## 回滚
 
 已共享的提交使用 `git revert <commit>` 创建可追溯的反向提交；禁止对共享分支执行强制推送或用 `git reset --hard` 改写历史。基础设施回退时先停止本地服务，默认不删除命名卷；任何卷删除都必须先确认精确目标和数据性质。
+
+## WP-05 手工录入与附件
+
+管理员在“病例录入 → 手工简版录入”提交来源、报告和一张 JPG/PNG，核对服务端脱敏报告及水印预览后确认，进入病例页补充临床信息和教学字段。批量导入已完成行也可进入病例详情。已发布等处理中/锁定状态不开放编辑。
+
+附件支持 PDF/JPG/PNG/DOCX/XLSX，每片最多 5 MB、整文件最多 50 MB。后台处理完成后须逐页核对并显式确认，正式存储仅保存处理后的 PNG 页面。Office 外部链接、宏、公式/活动字段、加密文档、超过 100 页或 200 MB 处理结果会安全拒绝；这类文件请先生成静态、已去标识化的版本再上传。预览使用服务端账号/姓名/时间水印，不提供原件下载。
+
+运行附件处理的本地 Python 环境除 `server/workers/requirements.txt` 外，还需 PATH 中可调用 `soffice`（LibreOffice Writer/Calc）、`pdfinfo`、`pdftotext`、`pdftoppm`（Poppler）。转换使用独立隔离目录与 Office 用户配置。模型应预先缓存，OCR/NER 或转换不可用时拒绝入库。macOS ARM 原生 Paddle 推理在既有环境有兼容性问题，真实推理须使用已验证的 Linux 环境，不应通过关闭 OCR/NER 绕过。
+
+独立验证入口（只针对合成开发环境）：
+
+```bash
+# 实际 HTTP + PostgreSQL + Redis + MinIO；明确替换 OCR/NER 边界。
+# MIAP_ENV_FILE 指向正在运行的本地开发服务配置，勿启动共用数据卷的第二套服务。
+MIAP_ENV_FILE=/absolute/path/to/.env.local npm run test:case-entry:integration --workspace server
+# 实际五格式转换与元数据剥离；OCR/NER 在这层也显式替换。
+python3 server/workers/verify_attachment_formats.py
+```
+
+隔离暂存最长 24 小时；启动及定时清理过期草稿。`IMPORT_QUARANTINE_DIR/object-compensation` 仅保存服务器生成的对象键和映射 ID，正式写入前登记、事务成功后解除；存储中断时保留并重试，删除前检查数据库引用。不要把此目录当作普通缓存清空，否则会失去未完成补偿记录。集成验证会清除自己创建的病例和对象、停用合成账号，并保留追加式审计。

@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { casesImportApi } from '../cases/api';
@@ -8,19 +9,20 @@ const session = { token: 'admin-token', role: 'admin' as const, quals: {} };
 afterEach(() => vi.restoreAllMocks());
 
 describe('CaseImportPage', () => {
-  it('shows the approved batch workflow and keeps the unresolved manual workflow explicit', () => {
-    render(<CaseImportPage session={session} />);
+  it('shows both approved import workflows', () => {
+    render(<MemoryRouter><CaseImportPage session={session} /></MemoryRouter>);
 
     expect(screen.getByRole('heading', { name: '病例录入' })).toBeInTheDocument();
     expect(screen.getByText(/仅接受 D-31 已批准的数据来源/)).toBeInTheDocument();
     expect(screen.getByText(/有效至项目验收/)).toBeInTheDocument();
     expect(screen.getByText(/浏览器不会解压或预览原始 DICOM/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '手工简版录入' }));
-    expect(screen.getByText(/需按 D-16 确认后实现/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '报告文本' })).toBeInTheDocument();
+    expect(screen.getByText(/不在浏览器预览原图/)).toBeInTheDocument();
   });
 
   it('does not render the selected ZIP filename', async () => {
-    const { container } = render(<CaseImportPage session={session} />);
+    const { container } = render(<MemoryRouter><CaseImportPage session={session} /></MemoryRouter>);
     const input = container.querySelector('input[type="file"]');
     const file = new File(['zip'], 'patient-name-and-id.zip', { type: 'application/zip' });
 
@@ -36,7 +38,7 @@ describe('CaseImportPage', () => {
       onProgress?.({ loaded: 2, total: 10 });
       return new Promise(() => {});
     });
-    const { container } = render(<CaseImportPage session={session} />);
+    const { container } = render(<MemoryRouter><CaseImportPage session={session} /></MemoryRouter>);
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '数据来源' }));
     await screen.findByRole('option', { name: '合成数据' });
     const option = document.querySelector('.ant-select-item-option');
