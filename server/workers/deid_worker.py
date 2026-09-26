@@ -495,7 +495,8 @@ def run_ocr(image, np_module) -> list[dict]:
         from paddleocr import PaddleOCR
     except ImportError as error:
         raise RuntimeError("PaddleOCR unavailable") from error
-    ocr = PaddleOCR(use_angle_cls=False, lang="ch", show_log=False)
+    # PP-OCRv4 Chinese recognition can SIGILL on Linux CPUs supported by Paddle 2.6.2.
+    ocr = PaddleOCR(use_angle_cls=False, lang="ch", ocr_version="PP-OCRv3", show_log=False)
     result = ocr.ocr(np_module.asarray(image), cls=False)
     lines = result[0] if result and isinstance(result[0], list) else []
     hits = []

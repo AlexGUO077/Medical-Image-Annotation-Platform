@@ -23,7 +23,7 @@ assert spec.loader is not None
 spec.loader.exec_module(worker)
 
 
-def synthetic_dicom(path: Path) -> str:
+def synthetic_dicom(path: Path, image: Image.Image) -> str:
     meta = FileMetaDataset()
     meta.MediaStorageSOPClassUID = SecondaryCaptureImageStorage
     meta.MediaStorageSOPInstanceUID = generate_uid()
@@ -39,15 +39,17 @@ def synthetic_dicom(path: Path) -> str:
     dataset.StudyDate = "20260926"
     dataset.Modality = "DX"
     dataset.BodyPartExamined = "CHEST"
-    dataset.Rows = 64
-    dataset.Columns = 64
-    dataset.SamplesPerPixel = 1
-    dataset.PhotometricInterpretation = "MONOCHROME2"
-    dataset.BitsAllocated = 16
-    dataset.BitsStored = 16
-    dataset.HighBit = 15
+    dataset.Rows = image.height
+    dataset.Columns = image.width
+    dataset.SamplesPerPixel = 3
+    dataset.PhotometricInterpretation = "RGB"
+    dataset.PlanarConfiguration = 0
+    dataset.BitsAllocated = 8
+    dataset.BitsStored = 8
+    dataset.HighBit = 7
     dataset.PixelRepresentation = 0
-    dataset.PixelData = np.zeros((64, 64), dtype=np.uint16).tobytes()
+    dataset.BurnedInAnnotation = "YES"
+    dataset.PixelData = np.asarray(image).tobytes()
     dataset.save_as(path, enforce_file_format=True)
     return study_uid
 
@@ -64,6 +66,7 @@ def main() -> None:
         ImageDraw.Draw(image).text((40, 40), "Name: SYNTHETIC TEST", font=ImageFont.load_default(size=36), fill="black")
         image.save(named_image)
 
+        print("RUN manual NER and OCR", flush=True)
         manual = worker.process_manual({
             "report_path": str(report), "image_path": str(named_image), "output_path": str(root / "manual"),
         })
@@ -73,27 +76,31 @@ def main() -> None:
         print("PASS real manual report NER and key-image OCR redaction", flush=True)
 
         dicom = root / "source.dcm"
-        original_uid = synthetic_dicom(dicom)
+        original_uid = synthetic_dicom(dicom, image)
         archive = root / "case.zip"
         with zipfile.ZipFile(archive, "w") as compressed:
             compressed.write(dicom, "one.dcm")
             compressed.write(report, "report.txt")
+        print("RUN ZIP DICOM and report", flush=True)
         extracted = worker.inspect_zip({"zip_path": str(archive), "output_path": str(root / "extracted")})
         assert len(extracted["items"]) == 1
         processed = worker.process_case({
             "case_path": extracted["items"][0]["path"], "output_path": str(root / "dicom-safe"),
         })
         assert not processed["review"]["ocr_failed"] and processed["review"]["masked_count"] >= 1
+        assert len(processed["review"]["ocr_hits"]) >= 1
         assert "张三" not in processed["review"]["masked_report"]
         safe_file = Path(processed["processed"]["series"][0]["dicom_paths"][0])
         safe_dataset = pydicom.dcmread(safe_file)
         assert str(safe_dataset.PatientName) == "ANONYMIZED"
         assert str(safe_dataset.PatientID) == "ANONYMIZED"
         assert str(safe_dataset.StudyInstanceUID) != original_uid
+        assert not np.array_equal(safe_dataset.pixel_array, np.asarray(image))
         print("PASS real ZIP DICOM/report de-identification and OCR check", flush=True)
 
         clean_image = root / "clean.png"
         Image.new("RGB", (800, 400), "white").save(clean_image)
+        print("RUN attachment OCR", flush=True)
         clean = worker.process_attachment({
             "input_path": str(clean_image), "format": "png", "output_path": str(root / "attachment-clean"),
         })
