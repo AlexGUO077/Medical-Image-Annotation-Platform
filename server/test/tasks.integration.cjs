@@ -104,11 +104,60 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.deepEqual(await totals(), beforeFailure);
     assert.equal((await db.query('SELECT status FROM cases WHERE id=$1', [rollbackCase]))[0].status, '已录入');
     await db.query('DROP TRIGGER fail_task_audit ON audit_logs'); await db.query('DROP FUNCTION fail_task_audit()');
+    const get = (suffix, auth = token) => fetch(`${base}/api/tasks${suffix}`, { headers: auth ? { Authorization: `Bearer ${auth}` } : {} });
+    for (const suffix of ['', '/eligible-cases?source=synthetic&system_code=resp', `/${created.id}/cases`]) {
+      assert.equal((await get(suffix, '')).status, 401);
+      assert.equal((await get(suffix, memberToken)).status, 403);
+    }
+    for (const suffix of ['?page=0', '?pageSize=101', '?page=1.5', '?page=9007199254740991', '?source=unknown',
+      '?source=synthetic&source=teacher_provided_teaching', '/eligible-cases', '/eligible-cases?source=synthetic&system_code=unknown', '/invalid/cases']) {
+      assert.equal((await get(suffix)).status, 400, suffix);
+    }
+    assert.equal((await get(`/${randomUUID()}/cases`)).status, 404);
+    const taskResponse = await get('?pageSize=1&source=synthetic&system_code=resp');
+    assert.equal(taskResponse.headers.get('cache-control'), 'no-store, private');
+    const listed = await taskResponse.json(); assert.equal(listed.items.length, 1); assert.equal(listed.total, (await totals()).tasks);
+    assert.deepEqual(Object.keys(listed.items[0]).sort(), ['id','name','source','system_code','review_mode','priority','status','created_at','case_count'].sort());
+    const contents = await (await get(`/${created.id}/cases?pageSize=1`)).json();
+    const contents2 = await (await get(`/${created.id}/cases?pageSize=1&page=2`)).json();
+    assert.equal(contents.total, 2); assert.equal(contents.items.length, 1); assert.equal(contents2.items.length, 1);
+    assert.deepEqual([contents.items[0].id, contents2.items[0].id].sort(), cases);
+    const hidden = [await makeCase({ confirmed: false }), await makeCase({ deleted: true }), await makeCase({ source: 'teacher_provided_teaching' }), await makeCase({ system: 'bone' })];
+    const eligibleResponse = await get('/eligible-cases?source=synthetic&system_code=resp&pageSize=100');
+    assert.equal(eligibleResponse.headers.get('cache-control'), 'no-store, private');
+    const eligible = await eligibleResponse.json();
+    assert(eligible.items.some(c => c.id === rollbackCase));
+    assert(!eligible.items.some(c => [...cases, ...hidden, concurrent].includes(c.id)));
+    assert(eligible.items.every(c => c.source === 'synthetic' && c.system_code === 'resp' && c.status === '已录入'));
+    assert.deepEqual(Object.keys(eligible.items[0]).sort(), ['id','case_no','source','system_code','status'].sort());
+    const page1 = await (await get('/eligible-cases?source=synthetic&system_code=resp&pageSize=1')).json();
+    const page2 = await (await get('/eligible-cases?source=synthetic&system_code=resp&pageSize=1&page=2')).json();
+    assert.equal(page1.total, page2.total); assert.notEqual(page1.items[0].id, page2.items[0].id);
+    // A stale candidate selected by another admin must still fail the write-time check.
+    assert.equal((await req(body([rollbackCase]))).status, 201);
+    assert.equal((await req(body([rollbackCase]))).status, 409);
+    await db.query('UPDATE tasks SET deleted_at=now() WHERE id=$1', [created.id]);
+    assert.equal((await get(`/${created.id}/cases`)).status, 404);
+    assert(!(await (await get('')).json()).items.some(t => t.id === created.id));
+    await db.query('UPDATE tasks SET deleted_at=NULL WHERE id=$1', [created.id]);
+    const longNameCase = await makeCase();
+    assert.equal((await req({ ...body([longNameCase]), name: '名'.repeat(201) })).status, 400);
+    assert.equal((await req({ ...body([longNameCase]), name: '名'.repeat(200) })).status, 201);
+    const largeBatch = Array.from({ length: 2000 }, () => randomUUID());
+    assert.equal((await req(body([...largeBatch, randomUUID()]))).status, 400);
+    await db.query(`INSERT INTO cases (id, case_no, status, source, system_code, confirm_method)
+      SELECT id, 'SYN-' || id::text, '已录入', 'synthetic', 'resp', '临床综合诊断' FROM unnest($1::uuid[]) AS id`, [largeBatch]);
+    await db.query(`INSERT INTO audit_logs (actor, action, target, detail, ip)
+      SELECT $1, 'case_manual.confirmed', 'cases:' || id::text, '{}', '127.0.0.1' FROM unnest($2::uuid[]) AS id`, [users[0].id, largeBatch]);
+    const batchResult = await req(body(largeBatch)); assert.equal(batchResult.status, 201);
+    const largeTask = await batchResult.json(); assert.equal(largeTask.case_ids.length, 2000);
+    const batchAudit = (await db.query("SELECT detail FROM audit_logs WHERE target=$1 AND action='tasks.created'", [`tasks:${largeTask.id}`]))[0];
+    assert.equal(batchAudit.detail.case_ids.length, 2000);
     await db.undoLastMigration();
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 0);
     await db.runMigrations();
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 1);
-    console.log('PASS: task HTTP authorization, input isolation, deidentification gate, atomic state/audit, concurrency, unique index and migration rollback');
+    console.log('PASS: task HTTP authorization, input isolation, deidentification gate, atomic state/audit, concurrency, unique index and migration rollback, paginated admin reads, 200/2000 input boundaries');
   } finally {
     if (app) await app.close();
     if (db?.isInitialized) await db.destroy();

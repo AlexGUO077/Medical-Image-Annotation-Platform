@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { tasksApi } from '../tasks/api';
+vi.mock('../tasks/api', () => ({ tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
+
+beforeEach(() => vi.mocked(tasksApi.list).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }));
 
 const session = { token: 'synthetic-token', role: 'admin' as const, quals: {} };
 
@@ -15,7 +19,6 @@ describe('App', () => {
   });
 
   it.each([
-    ['/tasks', '任务列表'],
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
     ['/workbench/synthetic-case', '标注工作台'],
@@ -26,6 +29,13 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
     expect(screen.getByText('该模块将在对应工作包实现')).toBeInTheDocument();
     expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
+  });
+
+  it('renders the administrator task workflow', async () => {
+    render(<App initialEntries={['/tasks']} initialSession={session} />);
+    expect(await screen.findByRole('button', { name: '新建任务' })).toBeInTheDocument();
+    expect(await screen.findByText('暂无符合条件的任务')).toBeInTheDocument();
+    expect(tasksApi.list).toHaveBeenCalled();
   });
 
   it('renders the administrator batch import workflow', async () => {

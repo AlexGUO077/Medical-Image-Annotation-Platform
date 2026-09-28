@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../auth/auth.models';
@@ -18,6 +19,16 @@ describe('task creation input boundary', () => {
   ])('rejects invalid or unsupported input before a transaction: %j', async (body) => {
     const db = { transaction: vi.fn() };
     await expect(new TasksService(db as never).create(actor, body, '127.0.0.1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts 2000 unique case IDs and rejects 2001 before the transaction', async () => {
+    const db = { transaction: vi.fn().mockResolvedValue({ id: 'created' }) };
+    const service = new TasksService(db as never);
+    const ids = Array.from({ length: 2000 }, () => randomUUID());
+    await expect(service.create(actor, { ...valid, case_ids: ids }, '127.0.0.1')).resolves.toEqual({ id: 'created' });
+    db.transaction.mockClear();
+    await expect(service.create(actor, { ...valid, case_ids: [...ids, randomUUID()] }, '127.0.0.1')).rejects.toBeInstanceOf(BadRequestException);
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
