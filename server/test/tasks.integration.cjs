@@ -153,11 +153,25 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     const largeTask = await batchResult.json(); assert.equal(largeTask.case_ids.length, 2000);
     const batchAudit = (await db.query("SELECT detail FROM audit_logs WHERE target=$1 AND action='tasks.created'", [`tasks:${largeTask.id}`]))[0];
     assert.equal(batchAudit.detail.case_ids.length, 2000);
+    // Unset deadlines remain NULL; rollback must fail without silently filling or deleting them.
+    const [assignment] = await db.query(`INSERT INTO task_assignments (case_id, assignee_id, task_role, state)
+      VALUES ($1,$2,'annotate','active') RETURNING id, due_at`, [cases[0], users[1].id]);
+    assert.equal(assignment.due_at, null);
+    await assert.rejects(db.undoLastMigration(), e => e.code === '23502');
+    assert.equal((await db.query('SELECT due_at FROM task_assignments WHERE id=$1', [assignment.id]))[0].due_at, null);
+    await db.query("UPDATE task_assignments SET due_at='2099-12-31T00:00:00Z' WHERE id=$1", [assignment.id]);
+    await db.undoLastMigration();
+    await assert.rejects(db.query('UPDATE task_assignments SET due_at=NULL WHERE id=$1', [assignment.id]), e => e.code === '23502');
+    await db.runMigrations();
+    assert.equal((await db.query('SELECT due_at FROM task_assignments WHERE id=$1', [assignment.id]))[0].due_at.toISOString(), '2099-12-31T00:00:00.000Z');
+    await db.query('UPDATE task_assignments SET due_at=NULL WHERE id=$1', [assignment.id]);
+    await db.query('DELETE FROM task_assignments WHERE id=$1', [assignment.id]);
+    await db.undoLastMigration();
     await db.undoLastMigration();
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 0);
     await db.runMigrations();
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 1);
-    console.log('PASS: task HTTP authorization, input isolation, deidentification gate, atomic state/audit, concurrency, unique index and migration rollback, paginated admin reads, 200/2000 input boundaries');
+    console.log('PASS: task HTTP authorization, input isolation, deidentification gate, atomic state/audit, concurrency, unique index and migration rollback, nullable deadline preservation and safe rollback, paginated admin reads, 200/2000 input boundaries');
   } finally {
     if (app) await app.close();
     if (db?.isInitialized) await db.destroy();

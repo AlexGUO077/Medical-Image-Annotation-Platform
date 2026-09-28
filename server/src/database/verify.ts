@@ -58,7 +58,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
   task_cases: { task_id: ['uuid', false], case_id: ['uuid', false] },
   task_assignments: {
     case_id: ['uuid', false], assignee_id: ['uuid', false],
-    task_role: ['character varying', false], due_at: ['timestamp with time zone', false],
+    task_role: ['character varying', false], due_at: ['timestamp with time zone', true],
     state: ['character varying', false],
   },
   annotation_objects: {
