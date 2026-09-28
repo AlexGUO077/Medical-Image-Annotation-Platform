@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/worker-inference.yml'
       - 'server/workers/**'
+      - 'server/test/m1-real.integration.cjs'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +15,7 @@ jobs:
   synthetic-inference:
     name: Synthetic ZIP, manual and attachment inference
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -27,3 +28,23 @@ jobs:
           python -m pip install -r server/workers/requirements.txt
       - name: Run real OCR and NER on generated synthetic inputs
         run: python server/workers/verify_real_inference.py
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - name: Start isolated synthetic storage services
+        run: |
+          node scripts/create-local-env.mjs
+          docker compose --env-file .env.local up -d --wait --wait-timeout 180
+      - name: Run actual HTTP and storage acceptance with real OCR/NER
+        run: |
+          set -a
+          source .env.local
+          set +a
+          npm run migration:run --workspace server
+          npm run build --workspace server
+          DEID_WORKER_PYTHON="$(which python)" node server/test/m1-real.integration.cjs
+      - name: Stop synthetic services
+        if: always()
+        run: docker compose --env-file .env.local down --volumes
