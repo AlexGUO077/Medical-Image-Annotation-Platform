@@ -36,7 +36,7 @@ jobs:
       - name: Start isolated synthetic storage services
         run: |
           node scripts/create-local-env.mjs
-          docker compose --env-file .env.local up -d --wait --wait-timeout 180
+          docker compose --env-file .env.local up -d --wait --wait-timeout 180 postgres orthanc minio redis
       - name: Verify Orthanc API authentication boundary
         run: |
           source .env.local
