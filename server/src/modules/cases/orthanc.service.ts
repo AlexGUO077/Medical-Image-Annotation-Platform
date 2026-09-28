@@ -1,5 +1,6 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
+import sharp from 'sharp';
 import { requiredEnv } from '../../config/environment';
 
 interface OrthancUploadResponse {
@@ -13,8 +14,40 @@ export interface OrthancSeriesUpload {
   created: boolean;
 }
 
+export interface FrameWindow {
+  center: number;
+  width: number;
+}
+
 @Injectable()
 export class OrthancService {
+  // Internal rendering only: callers must resolve this instance from an authorized
+  // case/series, and apply ticket checks, watermarking and audit before any output.
+  async renderInstanceFrame(instanceId: string, frameIndex: number, window?: FrameWindow): Promise<Buffer> {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{8}){4}$/.test(instanceId) ||
+        !Number.isSafeInteger(frameIndex) || frameIndex < 0 ||
+        (window !== undefined && (!window || !Number.isFinite(window.center) || !Number.isFinite(window.width) || window.width <= 0))) {
+      throw new BadRequestException('帧渲染参数无效');
+    }
+    const query = window ? `?${new URLSearchParams({
+      'window-center': String(window.center), 'window-width': String(window.width),
+    })}` : '';
+    try {
+      const response = await this.request(`/instances/${instanceId}/frames/${frameIndex}/rendered${query}`, {
+        method: 'GET', headers: { accept: 'image/png' }, redirect: 'error',
+      });
+      if (response.headers.get('content-type')?.split(';')[0]?.trim() !== 'image/png') throw new Error('Unexpected render format');
+      const image = sharp(Buffer.from(await response.arrayBuffer()), { limitInputPixels: 50_000_000 });
+      const metadata = await image.metadata();
+      if (metadata.format !== 'png') throw new Error('Unexpected render bytes');
+      // Re-encoding strips optional embedded metadata; never fall back to raw DICOM
+      // or image-uint16/image-int16 endpoints when rendering fails.
+      return await image.png().toBuffer();
+    } catch {
+      throw new ServiceUnavailableException('单帧渲染不可用');
+    }
+  }
+
   async uploadSeries(paths: string[]): Promise<OrthancSeriesUpload> {
     let seriesId: string | undefined;
     let created = false;
