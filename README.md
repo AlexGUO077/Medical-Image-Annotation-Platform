@@ -125,6 +125,9 @@ WP-16 容量与备份规划需按转换后的 PNG 总量评估附件放大系数
 # 实际 HTTP + PostgreSQL + Redis + MinIO；明确替换 OCR/NER 边界。
 # MIAP_ENV_FILE 指向正在运行的本地开发服务配置，勿启动共用数据卷的第二套服务。
 MIAP_ENV_FILE=/absolute/path/to/.env.local npm run test:case-entry:integration --workspace server
+# WP-06 任务创建：实际 HTTP 认证与 PostgreSQL 事务/并发/迁移回滚。
+# 在合成数据库中新建临时 schema，结束后删除该 schema；不操作既有病例。
+MIAP_ENV_FILE=/absolute/path/to/.env.local npm run test:tasks:integration --workspace server
 # 实际五格式转换与元数据剥离；OCR/NER 在这层也显式替换。
 python3 server/workers/verify_attachment_formats.py
 ```

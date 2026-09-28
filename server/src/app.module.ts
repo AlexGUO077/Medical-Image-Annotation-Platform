@@ -6,6 +6,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { UsersModule } from './modules/users/users.module';
 import { CasesModule } from './modules/cases/cases.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
-@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule] })
+@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule] })
 export class AppModule {}

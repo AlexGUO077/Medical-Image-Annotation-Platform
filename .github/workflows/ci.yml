@@ -27,3 +27,15 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: docker compose --env-file .env.example config --quiet
+      - name: Start synthetic PostgreSQL for task transaction tests
+        run: |
+          node scripts/create-local-env.mjs
+          docker compose --env-file .env.local up -d --wait --wait-timeout 180 postgres
+      - name: Verify task HTTP authorization and database transactions
+        run: node server/test/tasks.integration.cjs
+      - name: Stop synthetic PostgreSQL
+        if: always()
+        run: |
+          if [ -f .env.local ]; then
+            docker compose --env-file .env.local down --volumes
+          fi

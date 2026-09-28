@@ -1,0 +1,105 @@
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import type { DataSource } from 'typeorm';
+import type { AuthUser } from '../auth/auth.models';
+import { IMPORT_SOURCES, SYSTEM_CODES } from '../cases/cases-import.models';
+import { DATABASE_SOURCE } from '../database/database.tokens';
+
+interface CreateTaskInput {
+  name: string;
+  source: string;
+  system_code: string;
+  review_mode: 'self' | 'peer';
+  priority: number;
+  case_ids: string[];
+}
+
+@Injectable()
+export class TasksService {
+  constructor(@Inject(DATABASE_SOURCE) private readonly db: DataSource) {}
+
+  async create(actor: AuthUser, body: unknown, ip: string) {
+    if (actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
+    const input = this.input(body);
+    return this.db.transaction(async (manager) => {
+      // Hold the account stable until the protected write commits.
+      const users = await manager.query(
+        `SELECT "role", "status", "expire_at"::text AS "expire_at", "must_change_password",
+                "mfa_secret_encrypted", "updated_at" FROM "users"
+         WHERE "id" = $1 AND "deleted_at" IS NULL FOR SHARE`, [actor.id],
+      ) as AuthUser[];
+      const current = users[0];
+      if (!current || current.updated_at.getTime() !== actor.updated_at.getTime()) {
+        throw new UnauthorizedException('会话已失效，请重新登录');
+      }
+      if (current.role !== 'admin' || current.status !== 'active' ||
+          current.expire_at < new Date().toISOString().slice(0, 10) ||
+          current.must_change_password || !current.mfa_secret_encrypted) {
+        throw new ForbiddenException('账号无权创建任务');
+      }
+      const cases = await manager.query(
+        `SELECT "id", "source", "system_code", "status" FROM "cases"
+         WHERE "id" = ANY($1::uuid[]) AND "deleted_at" IS NULL ORDER BY "id" FOR UPDATE`,
+        [input.case_ids],
+      ) as Array<{ id: string; source: string; system_code: string; status: string }>;
+      if (cases.length !== input.case_ids.length) throw new NotFoundException('病例不存在');
+      if (cases.some((item) => item.source !== input.source || item.system_code !== input.system_code || item.status !== '已录入')) {
+        throw new ConflictException('病例来源、系统或状态不符合任务要求');
+      }
+      const assigned = await manager.query(
+        'SELECT "id" FROM "task_cases" WHERE "case_id" = ANY($1::uuid[]) AND "deleted_at" IS NULL LIMIT 1',
+        [input.case_ids],
+      ) as unknown[];
+      if (assigned.length) throw new ConflictException('病例已属于其他任务');
+      const confirmed = await manager.query(
+        `SELECT DISTINCT "target" FROM "audit_logs"
+         WHERE "target" = ANY($1::text[]) AND "action" IN ('case_import.deidentification_confirmed', 'case_manual.confirmed')`,
+        [input.case_ids.map((id) => `cases:${id}`)],
+      ) as Array<{ target: string }>;
+      if (confirmed.length !== cases.length) throw new ConflictException('病例缺少脱敏人工确认记录');
+
+      const [task] = await manager.query(
+        `INSERT INTO "tasks" ("name", "source", "system_code", "review_mode", "priority", "status")
+         VALUES ($1, $2, $3, $4, $5, '进行中') RETURNING "id"`,
+        [input.name, input.source, input.system_code, input.review_mode, input.priority],
+      ) as Array<{ id: string }>;
+      if (!task) throw new Error('Task insert returned no id');
+      await manager.query(
+        'INSERT INTO "task_cases" ("task_id", "case_id") SELECT $1::uuid, unnest($2::uuid[])',
+        [task.id, input.case_ids],
+      );
+      await manager.query(
+        `UPDATE "cases" SET "status" = '待分配', "updated_at" = now() WHERE "id" = ANY($1::uuid[])`,
+        [input.case_ids],
+      );
+      await manager.query(
+        `INSERT INTO "audit_logs" ("actor", "action", "target", "detail", "ip")
+         VALUES ($1, 'tasks.created', $2, $3::jsonb, $4)`,
+        [actor.id, `tasks:${task.id}`, JSON.stringify({
+          source: input.source, system_code: input.system_code, review_mode: input.review_mode,
+          priority: input.priority, case_ids: input.case_ids, from: '已录入', to: '待分配',
+        }), ip],
+      );
+      return { id: task.id, ...input, status: '进行中' as const };
+    });
+  }
+
+  private input(body: unknown): CreateTaskInput {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('任务请求无效');
+    const input = body as Record<string, unknown>;
+    const keys = ['name', 'source', 'system_code', 'review_mode', 'priority', 'case_ids'];
+    if (Object.keys(input).some((key) => !keys.includes(key)) ||
+        typeof input.name !== 'string' || !input.name.trim() ||
+        !IMPORT_SOURCES.includes(input.source as never) || !SYSTEM_CODES.includes(input.system_code as never) ||
+        !['self', 'peer'].includes(input.review_mode as string) ||
+        typeof input.priority !== 'number' || !Number.isInteger(input.priority) ||
+        input.priority < -2147483648 || input.priority > 2147483647 ||
+        !Array.isArray(input.case_ids) || input.case_ids.length === 0 ||
+        input.case_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+      throw new BadRequestException('任务字段无效');
+    }
+    const caseIds = (input.case_ids as string[]).map((id) => id.toLowerCase()).sort();
+    if (new Set(caseIds).size !== caseIds.length) throw new BadRequestException('病例不能重复');
+    return { name: input.name.trim(), source: input.source as string, system_code: input.system_code as string,
+      review_mode: input.review_mode as 'self' | 'peer', priority: input.priority, case_ids: caseIds };
+  }
+}
