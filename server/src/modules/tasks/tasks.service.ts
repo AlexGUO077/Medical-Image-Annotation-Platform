@@ -45,6 +45,8 @@ export class TasksService {
       if (cases.some((item) => item.source !== input.source || item.system_code !== input.system_code || item.status !== '已录入')) {
         throw new ConflictException('病例来源、系统或状态不符合任务要求');
       }
+      // Under READ COMMITTED this check relies on the cases FOR UPDATE locks above;
+      // keep the membership check and writes in this same transaction.
       const assigned = await manager.query(
         'SELECT "id" FROM "task_cases" WHERE "case_id" = ANY($1::uuid[]) AND "deleted_at" IS NULL LIMIT 1',
         [input.case_ids],
@@ -88,7 +90,7 @@ export class TasksService {
     const input = body as Record<string, unknown>;
     const keys = ['name', 'source', 'system_code', 'review_mode', 'priority', 'case_ids'];
     if (Object.keys(input).some((key) => !keys.includes(key)) ||
-        typeof input.name !== 'string' || !input.name.trim() ||
+        typeof input.name !== 'string' || !input.name.trim() || [...input.name.trim()].length > 200 ||
         !IMPORT_SOURCES.includes(input.source as never) || !SYSTEM_CODES.includes(input.system_code as never) ||
         !['self', 'peer'].includes(input.review_mode as string) ||
         typeof input.priority !== 'number' || !Number.isInteger(input.priority) ||

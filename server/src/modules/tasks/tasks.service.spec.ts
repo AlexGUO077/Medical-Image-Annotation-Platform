@@ -27,4 +27,20 @@ describe('task creation input boundary', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(db.transaction).not.toHaveBeenCalled();
   });
+
+  it.each(['名', '𠮷'])('accepts a trimmed 200-character name (%s)', async (character) => {
+    const db = { transaction: vi.fn().mockResolvedValue({ id: 'created' }) };
+    await expect(new TasksService(db as never).create(actor, {
+      ...valid, name: `  ${character.repeat(200)}  `,
+    }, '127.0.0.1')).resolves.toEqual({ id: 'created' });
+    expect(db.transaction).toHaveBeenCalledOnce();
+  });
+
+  it.each(['名', '𠮷'])('rejects a 201-character name before accessing the database (%s)', async (character) => {
+    const db = { transaction: vi.fn() };
+    await expect(new TasksService(db as never).create(actor, {
+      ...valid, name: character.repeat(201),
+    }, '127.0.0.1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
 });

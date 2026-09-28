@@ -6,7 +6,7 @@ WP-06 首个实现切片：源手册 §2.4、§4.2 表 4-7/4-8、§5.2 的任务
 
 仅已完成认证和管理员安全设置的有效管理员可调用；沿用 AccessTokenGuard 与 AdminGuard，事务内再次核对账号和会话版本。
 
-请求：`name` 非空字符串；`source` 为已批准来源 `synthetic` 或 `teacher_provided_teaching`；`system_code` 为八系统编码；`review_mode` 为 `self` 或 `peer`；`priority` 为 PostgreSQL int 范围整数（数值越大优先级越高）；`case_ids` 为非空、无重复的 UUID 数组。以上字段必填，不补默认业务参数；未知字段拒绝，防止客户端误以为限额或时长已生效。
+请求：`name` 去除首尾空白后为 1～200 个 Unicode 码点（2026-09-28 用户评审建议的输入边界）；`source` 为已批准来源 `synthetic` 或 `teacher_provided_teaching`；`system_code` 为八系统编码；`review_mode` 为 `self` 或 `peer`；`priority` 为 PostgreSQL int 范围整数（数值越大优先级越高）；`case_ids` 为非空、无重复的 UUID 数组。以上字段必填，不补默认业务参数；未知字段拒绝，防止客户端误以为限额或时长已生效。
 
 成功 201：`{ id, name, source, system_code, review_mode, priority, status: "进行中", case_ids }`。不返回报告、临床文本或影像存储标识。
 
