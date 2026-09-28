@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 
@@ -18,7 +18,6 @@ describe('App', () => {
     ['/tasks', '任务列表'],
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
-    ['/cases/synthetic-case', '病例与临床信息'],
     ['/workbench/synthetic-case', '标注工作台'],
     ['/review/synthetic-case', '审核台'],
   ])('renders a neutral module placeholder for %s', async (path, label) => {
@@ -37,6 +36,24 @@ describe('App', () => {
     expect(screen.queryByText('该模块将在对应工作包实现')).not.toBeInTheDocument();
   });
 
+  it('renders the administrator case detail without exposing storage keys', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => new Response(JSON.stringify(
+      String(input).endsWith('/report')
+        ? { masked_report: '合成报告', sentences: [{ idx: 0, text: '合成报告' }] }
+        : {
+          id: 'synthetic-case', case_no: 'SYN-CASE', status: '已录入', source: 'synthetic',
+          system_code: 'resp', confirm_method: '临床综合诊断', clinical_text: null,
+          age_band: null, sex: null, teaching_fields: null, attachments: [],
+        },
+    ), { status: 200, headers: { 'content-type': 'application/json' } }));
+    render(<App initialEntries={['/cases/synthetic-case']} initialSession={session} />);
+
+    expect(await screen.findByText('SYN-CASE')).toBeInTheDocument();
+    expect(await screen.findByText(/合成报告/)).toBeInTheDocument();
+    expect(screen.queryByText('该模块将在对应工作包实现')).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
   it('redirects members away from the administrator route', async () => {
     render(<App initialEntries={['/admin']} initialSession={{ ...session, role: 'member' }} />);
 
@@ -49,6 +66,13 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '病例录入' })).not.toBeInTheDocument();
+  });
+
+  it('redirects members away from case detail', async () => {
+    render(<App initialEntries={['/cases/synthetic-case']} initialSession={{ ...session, role: 'member' }} />);
+
+    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '病例与临床信息' })).not.toBeInTheDocument();
   });
 
   it('uses the dark workbench theme without presenting business state', () => {

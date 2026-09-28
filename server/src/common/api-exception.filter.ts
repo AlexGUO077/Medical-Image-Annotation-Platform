@@ -15,7 +15,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
         ? HttpStatus.PAYLOAD_TOO_LARGE
         : HttpStatus.BAD_REQUEST;
       const message = exception.code === 'LIMIT_FILE_SIZE'
-        ? '上传文件超过 512 MiB 限制'
+        ? '上传文件超过该接口大小限制'
         : '上传请求不符合限制';
       response.status(status).json({ code: `HTTP_${status}`, message });
       return;

@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import type { CaseProcessingResult, ZipInspectionResult } from './cases-import.models';
 
 interface WorkerRequest {
-  operation: 'inspect_zip' | 'process_case';
+  operation: 'inspect_zip' | 'process_case' | 'process_manual' | 'process_text' | 'process_attachment';
   [key: string]: unknown;
 }
 
@@ -39,6 +39,25 @@ export class DeidWorkerService {
     return this.run<CaseProcessingResult>({ operation: 'process_case', case_path: casePath, output_path: outputPath }, 600_000);
   }
 
+  async processManual(reportPath: string, imagePath: string, outputPath: string): Promise<{
+    masked_report: string;
+    masked_count: number;
+    image_redaction_count: number;
+    masked_report_path: string;
+    mask_map_path: string;
+    image_path: string;
+  }> {
+    return this.run({ operation: 'process_manual', report_path: reportPath, image_path: imagePath, output_path: outputPath }, 180_000);
+  }
+
+  async processText(inputPath: string, outputPath: string): Promise<{ fields: string[]; masked_count: number }> {
+    return this.run({ operation: 'process_text', input_path: inputPath, output_path: outputPath }, 180_000);
+  }
+
+  async processAttachment(inputPath: string, outputPath: string, format: string): Promise<{ page_count: number }> {
+    return this.run({ operation: 'process_attachment', input_path: inputPath, output_path: outputPath, format }, 600_000);
+  }
+
   private run<T>(request: WorkerRequest, timeoutMs: number): Promise<T> {
     const python = process.env.DEID_WORKER_PYTHON ?? 'python3';
     const script = process.env.DEID_WORKER_SCRIPT ?? resolve(__dirname, '../../../workers/deid_worker.py');
@@ -53,12 +72,19 @@ export class DeidWorkerService {
           PADDLE_PDX_MODEL_SOURCE: process.env.PADDLE_PDX_MODEL_SOURCE,
         },
         stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
       });
+      const stopWorker = () => {
+        try {
+          if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL');
+          else child.kill('SIGKILL');
+        } catch { /* The worker may already have exited. */ }
+      };
       let stdout = '';
       let stderr = '';
       let settled = false;
       const timeout = setTimeout(() => {
-        child.kill('SIGKILL');
+        stopWorker();
         finish(new ServiceUnavailableException('本地脱敏进程超时'));
       }, timeoutMs);
 
@@ -74,7 +100,7 @@ export class DeidWorkerService {
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk: string) => {
         stdout += chunk;
-        if (stdout.length > 5_000_000) finish(new ServiceUnavailableException('本地脱敏进程输出过大'));
+        if (stdout.length > 5_000_000) { stopWorker(); finish(new ServiceUnavailableException('本地脱敏进程输出过大')); }
       });
       child.stderr.on('data', (chunk: string) => {
         if (stderr.length < 4_000) stderr += chunk;

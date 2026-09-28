@@ -13,6 +13,8 @@ import re
 import shutil
 import stat
 import sys
+import subprocess
+import xml.etree.ElementTree as ET
 import zipfile
 
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -284,12 +286,217 @@ def process_case(request: dict) -> dict:
     }
 
 
+def process_manual(request: dict) -> dict:
+    """Process one report and key image entirely inside the quarantine tree."""
+    report_path = checked_path(request, "report_path")
+    image_path = checked_path(request, "image_path")
+    output_path = checked_path(request, "output_path")
+    if not report_path.is_file() or report_path.stat().st_size > 2 * 1024 * 1024:
+        raise WorkerError("REPORT_SIZE_LIMIT", "报告不存在或超过限制")
+    if not image_path.is_file() or image_path.stat().st_size > 50 * 1024 * 1024:
+        raise WorkerError("IMAGE_SIZE_LIMIT", "关键影像不存在或超过限制")
+    if output_path.exists():
+        shutil.rmtree(output_path)
+    output_path.mkdir(parents=True, mode=0o700)
+
+    try:
+        import numpy as np
+        from PIL import Image, ImageDraw, UnidentifiedImageError
+    except ImportError as error:
+        raise WorkerError("DEIDENTIFICATION_WORKER_UNAVAILABLE", "影像脱敏依赖不可用") from error
+
+    try:
+        report = report_path.read_text(encoding="utf-8")
+    except (UnicodeError, OSError) as error:
+        raise WorkerError("REPORT_INVALID", "报告必须是 UTF-8 文本") from error
+    if not report.strip():
+        raise WorkerError("REPORT_INVALID", "报告不能为空")
+    masked, mappings = mask_report(report)
+
+    try:
+        with Image.open(image_path) as opened:
+            if opened.format not in {"JPEG", "PNG"} or opened.width * opened.height > 50_000_000:
+                raise WorkerError("IMAGE_INVALID", "关键影像格式或尺寸无效")
+            image = opened.convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
+        raise WorkerError("IMAGE_INVALID", "关键影像无法安全解码") from error
+
+    try:
+        hits = run_ocr(image, np)
+    except Exception as error:
+        raise WorkerError("IMAGE_OCR_FAILED", "关键影像 OCR 检查失败") from error
+    draw = ImageDraw.Draw(image)
+    for hit in hits:
+        box = hit.get("box")
+        if not isinstance(box, list) or len(box) < 3:
+            raise WorkerError("IMAGE_OCR_FAILED", "关键影像 OCR 位置无效")
+        try:
+            points = [(int(point[0]), int(point[1])) for point in box]
+        except (TypeError, ValueError, IndexError) as error:
+            raise WorkerError("IMAGE_OCR_FAILED", "关键影像 OCR 位置无效") from error
+        if any(x < 0 or y < 0 or x >= image.width or y >= image.height for x, y in points) or len(set(points)) < 3:
+            raise WorkerError("IMAGE_OCR_FAILED", "关键影像 OCR 位置无效")
+        area = abs(sum(points[i][0] * points[(i + 1) % len(points)][1] - points[(i + 1) % len(points)][0] * points[i][1] for i in range(len(points))))
+        if area == 0:
+            raise WorkerError("IMAGE_OCR_FAILED", "关键影像 OCR 位置无效")
+        draw.polygon(points, fill=(0, 0, 0))
+
+    masked_report_path = output_path / "masked-report.txt"
+    mask_map_path = output_path / "mask-map.json"
+    image_output_path = output_path / "key-image.png"
+    masked_report_path.write_text(masked, encoding="utf-8")
+    mask_map_path.write_text(json.dumps(mappings, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    clean = Image.new("RGB", image.size)
+    clean.paste(image)
+    clean.save(image_output_path, format="PNG")
+    return {
+        "masked_report": masked,
+        "masked_count": len(mappings),
+        "image_redaction_count": len(hits),
+        "masked_report_path": str(masked_report_path.resolve()),
+        "mask_map_path": str(mask_map_path.resolve()),
+        "image_path": str(image_output_path.resolve()),
+    }
+
+
+def process_text(request: dict) -> dict:
+    path = checked_path(request, "input_path")
+    output = checked_path(request, "output_path")
+    if path.stat().st_size > 13 * 1024 * 1024:
+        raise WorkerError("REPORT_SIZE_LIMIT", "文本超过限制")
+    fields = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(fields, list) or len(fields) > 52 or not all(isinstance(v, str) for v in fields):
+        raise WorkerError("REQUEST_INVALID", "文本请求无效")
+    safe, mappings = [], []
+    for index, field in enumerate(fields):
+        masked, hits = mask_report(field) if field.strip() else (field, [])
+        safe.append(masked)
+        mappings.extend(dict(hit, field_index=index) for hit in hits)
+    (output / "mask-map.json").write_text(json.dumps(mappings, ensure_ascii=False), encoding="utf-8")
+    return {"fields": safe, "masked_count": len(mappings)}
+
+
+def attachment_command(args: list[str]) -> bytes:
+    try:
+        result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=90, check=True,
+                                env={**os.environ, "LC_ALL": "C"})
+        return result.stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise WorkerError("ATTACHMENT_CONVERSION_FAILED", "附件无法安全转换") from error
+
+
+def check_office(path: Path, format_name: str) -> None:
+    """Reject active content, external relationships and archive bombs before conversion."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+            names = [i.filename for i in infos]
+            required = "word/document.xml" if format_name == "docx" else "xl/workbook.xml"
+            if required not in names or "[Content_Types].xml" not in names or len(names) != len(set(names)):
+                raise ValueError("invalid package")
+            if len(infos) > 5000 or sum(i.file_size for i in infos) > 100 * 1024 * 1024:
+                raise ValueError("archive limits")
+            for info in infos:
+                safe_member_path(info)
+                name = info.filename.lower()
+                if info.file_size > 20 * 1024 * 1024 or info.file_size > max(1, info.compress_size) * 100:
+                    raise ValueError("entry limits")
+                if any(v in name for v in ("vbaproject", "activex", "embeddings/", "externallinks/", "connections.xml")):
+                    raise ValueError("active content")
+                if name.endswith((".xml", ".rels")):
+                    data = archive.read(info)
+                    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+                        raise ValueError("entities")
+                    root = ET.fromstring(data)
+                    for element in root.iter():
+                        if element.attrib.get("TargetMode", "").lower() == "external":
+                            raise ValueError("external reference")
+                        local = element.tag.rsplit("}", 1)[-1]
+                        if local in {"instrText", "fldSimple", "f", "ddeLink", "oleObject", "altChunk"}:
+                            raise ValueError("active field")
+    except (OSError, ValueError, ET.ParseError, zipfile.BadZipFile, WorkerError) as error:
+        raise WorkerError("ATTACHMENT_INVALID", "Office 附件包含不支持或不安全的内容") from error
+
+
+def check_attachment_text(text: str) -> None:
+    if len(text.encode("utf-8")) > 2 * 1024 * 1024:
+        raise WorkerError("ATTACHMENT_INVALID", "附件文字量超过限制")
+    _, hits = mask_report(text) if text.strip() else (text, [])
+    if hits or any(suspicious_ocr_text(line) for line in text.splitlines() if line.strip()):
+        raise WorkerError("ATTACHMENT_IDENTIFIERS_FOUND", "附件含疑似身份标识，请提交已去标识化版本")
+
+
+def process_attachment(request: dict) -> dict:
+    path = checked_path(request, "input_path")
+    output = checked_path(request, "output_path")
+    format_name = request.get("format")
+    if format_name not in {"jpg", "png", "pdf", "docx", "xlsx"} or not path.is_file() or not 0 < path.stat().st_size <= 50 * 1024 * 1024:
+        raise WorkerError("ATTACHMENT_INVALID", "附件格式或大小无效")
+    from PIL import Image
+    import numpy as np
+    output.mkdir(mode=0o700, parents=True, exist_ok=True)
+    pages = []
+    if format_name in {"jpg", "png"}:
+        with Image.open(path) as image:
+            if image.format != {"jpg": "JPEG", "png": "PNG"}[format_name] or getattr(image, "n_frames", 1) != 1 or image.width * image.height > 50_000_000:
+                raise WorkerError("ATTACHMENT_INVALID", "附件影像格式或尺寸无效")
+            pages = [path]
+    else:
+        pdf = path
+        if format_name in {"docx", "xlsx"}:
+            check_office(path, format_name)
+            profile = output / "office-profile"
+            profile.mkdir(mode=0o700)
+            # A fresh, quarantine-local profile disables macros and link updates.
+            (profile / "user").mkdir()
+            (profile / "user" / "registrymodifications.xcu").write_text(
+                '<oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item></oor:items>', encoding="utf-8")
+            attachment_command(["soffice", "-env:UserInstallation=" + profile.as_uri(), "--headless", "--norestore", "--convert-to", "pdf", "--outdir", str(output), str(path)])
+            pdf = output / (path.stem + ".pdf")
+        with pdf.open("rb") as handle:
+            if not handle.read(8).startswith(b"%PDF-"):
+                raise WorkerError("ATTACHMENT_INVALID", "PDF 格式无效")
+        info = attachment_command(["pdfinfo", str(pdf)]).decode("utf-8", errors="replace")
+        count = re.search(r"^Pages:\s+(\d+)", info, re.M)
+        if not count or not 1 <= int(count.group(1)) <= 100 or re.search(r"^Encrypted:\s+yes", info, re.M):
+            raise WorkerError("ATTACHMENT_INVALID", "附件加密或页数超过限制")
+        for page in range(1, int(count.group(1)) + 1):
+            text = attachment_command(["pdftotext", "-f", str(page), "-l", str(page), str(pdf), "-"]).decode("utf-8", errors="strict")
+            check_attachment_text(text)
+            prefix = output / f"render-{page}"
+            attachment_command(["pdftoppm", "-f", str(page), "-l", str(page), "-singlefile", "-scale-to", "2400", "-png", str(pdf), str(prefix)])
+            pages.append(prefix.with_suffix(".png"))
+    total = 0
+    for index, page in enumerate(pages, 1):
+        with Image.open(page) as opened:
+            if opened.width * opened.height > 50_000_000:
+                raise WorkerError("ATTACHMENT_INVALID", "附件图像超过限制")
+            image = opened.convert("RGB")
+        try:
+            hits = run_ocr(image, np)
+        except Exception as error:
+            raise WorkerError("ATTACHMENT_OCR_FAILED", "附件 OCR 检查失败") from error
+        if hits:
+            raise WorkerError("ATTACHMENT_IDENTIFIERS_FOUND", "附件含疑似身份标识，请提交已去标识化版本")
+        # Rebuild pixel-only images so neither EXIF nor PNG text chunks survive.
+        clean = Image.new("RGB", image.size)
+        clean.paste(image)
+        target = output / f"page-{index}.png"
+        clean.save(target, format="PNG")
+        total += target.stat().st_size
+        if total > 200 * 1024 * 1024:
+            raise WorkerError("ATTACHMENT_INVALID", "附件预览超过限制")
+    return {"page_count": len(pages)}
+
+
 def run_ocr(image, np_module) -> list[dict]:
     try:
         from paddleocr import PaddleOCR
     except ImportError as error:
         raise RuntimeError("PaddleOCR unavailable") from error
-    ocr = PaddleOCR(use_angle_cls=False, lang="ch", show_log=False)
+    # PP-OCRv4 Chinese recognition can SIGILL on Linux CPUs supported by Paddle 2.6.2.
+    ocr = PaddleOCR(use_angle_cls=False, lang="ch", ocr_version="PP-OCRv3", show_log=False)
     result = ocr.ocr(np_module.asarray(image), cls=False)
     lines = result[0] if result and isinstance(result[0], list) else []
     hits = []
@@ -464,6 +671,12 @@ def main() -> None:
                 result = inspect_zip(request)
             elif request.get("operation") == "process_case":
                 result = process_case(request)
+            elif request.get("operation") == "process_manual":
+                result = process_manual(request)
+            elif request.get("operation") == "process_text":
+                result = process_text(request)
+            elif request.get("operation") == "process_attachment":
+                result = process_attachment(request)
             else:
                 raise WorkerError("REQUEST_INVALID", "未知脱敏进程操作")
         output.write(json.dumps({"ok": True, "result": result}, ensure_ascii=False, separators=(",", ":")))

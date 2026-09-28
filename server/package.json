@@ -15,7 +15,8 @@
     "db:provision-role": "ts-node src/database/provision-role.ts",
     "db:verify": "ts-node src/database/verify.ts",
     "db:verify-cycle": "ts-node src/database/verify-cycle.ts",
-    "auth:reset-mfa": "ts-node src/modules/users/reset-admin-mfa.ts"
+    "auth:reset-mfa": "ts-node src/modules/users/reset-admin-mfa.ts",
+    "test:case-entry:integration": "npm run build && node test/case-entry.integration.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1138.0",
