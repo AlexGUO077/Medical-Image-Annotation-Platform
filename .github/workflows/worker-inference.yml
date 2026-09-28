@@ -45,6 +45,15 @@ jobs:
           npm run migration:run --workspace server
           npm run build --workspace server
           DEID_WORKER_PYTHON="$(which python)" node server/test/m1-real.integration.cjs
+      - name: Diagnose failed synthetic storage startup
+        if: failure()
+        run: |
+          if [ -f .env.local ]; then
+            source .env.local
+            echo "::add-mask::$ORTHANC_PASSWORD"
+            docker compose --env-file .env.local ps
+            docker compose --env-file .env.local logs --tail=80 orthanc
+          fi
       - name: Stop synthetic services
         if: always()
         run: docker compose --env-file .env.local down --volumes
