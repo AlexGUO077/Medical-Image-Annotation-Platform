@@ -37,6 +37,13 @@ jobs:
         run: |
           node scripts/create-local-env.mjs
           docker compose --env-file .env.local up -d --wait --wait-timeout 180
+      - name: Verify Orthanc API authentication boundary
+        run: |
+          source .env.local
+          unauthenticated="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${ORTHANC_PORT}/system")"
+          authenticated="$(curl --silent --output /dev/null --write-out '%{http_code}' --user "${ORTHANC_USERNAME}:${ORTHANC_PASSWORD}" "http://127.0.0.1:${ORTHANC_PORT}/system")"
+          test "$unauthenticated" = 401
+          test "$authenticated" = 200
       - name: Run actual HTTP and storage acceptance with real OCR/NER
         run: |
           set -a

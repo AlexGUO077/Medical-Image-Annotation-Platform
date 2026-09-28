@@ -28,7 +28,8 @@ services:
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
       ORTHANC__AUTHENTICATION_ENABLED: "true"
       ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USERNAME}":"${ORTHANC_PASSWORD}"}'
-      ORTHANC__REMOTE_ACCESS_ALLOWED: "false"
+      # Docker host/network requests are remote to Orthanc; keep host binding loopback-only and require auth.
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "true"
     healthcheck:
       test: ["CMD", "/probes/test-aliveness.py"]
       interval: 5s
