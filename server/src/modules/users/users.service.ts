@@ -29,7 +29,7 @@ export class UsersService {
       this.dataSource.query(
         `SELECT "id", "username", "real_name", "email", "phone", "role", "quals", "status",
                 "expire_at"::text AS "expire_at", "must_change_password", ("mfa_secret_encrypted" IS NOT NULL) AS "mfa_enabled",
-                "created_at", "updated_at"
+                "created_at", "updated_at", "in_flight_limit"
          FROM "users" WHERE "deleted_at" IS NULL
          ORDER BY "created_at", "id" LIMIT $1 OFFSET $2`,
         [pageSize, offset],

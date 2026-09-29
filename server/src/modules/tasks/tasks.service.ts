@@ -93,7 +93,7 @@ export class TasksService {
     const where = `t."deleted_at" IS NULL AND ($1::text IS NULL OR t."source"=$1) AND ($2::text IS NULL OR t."system_code"=$2)`;
     return this.db.transaction('REPEATABLE READ', async (manager) => {
       const items = await manager.query(
-        `SELECT t."id", t."name", t."source", t."system_code", t."review_mode", t."priority", t."status", t."created_at",
+        `SELECT t."id", t."name", t."source", t."system_code", t."review_mode", t."priority", t."in_flight_limit", t."status", t."created_at",
           (SELECT count(*)::int FROM "task_cases" tc JOIN "cases" c ON c."id"=tc."case_id"
            WHERE tc."task_id"=t."id" AND tc."deleted_at" IS NULL AND c."deleted_at" IS NULL) AS "case_count"
          FROM "tasks" t WHERE ${where} ORDER BY t."priority" DESC, t."created_at" DESC, t."id" LIMIT $3 OFFSET $4`,
