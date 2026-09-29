@@ -11,7 +11,7 @@ const valid = { name: '合成任务', source: 'synthetic', system_code: 'resp', 
 describe('task creation input boundary', () => {
   it.each([
     null, [], {}, { ...valid, name: ' ' }, { ...valid, source: 'unapproved' },
-    { ...valid, system_code: 'unknown' }, { ...valid, review_mode: 'other' },
+    { ...valid, dispatch_mode: 'invalid' }, { ...valid, system_code: 'unknown' }, { ...valid, review_mode: 'other' },
     { ...valid, priority: 0.5 }, { ...valid, priority: 2147483648 },
     { ...valid, case_ids: [] }, { ...valid, case_ids: ['not-a-uuid'] },
     { ...valid, case_ids: [valid.case_ids[0], valid.case_ids[0]?.toUpperCase()] },

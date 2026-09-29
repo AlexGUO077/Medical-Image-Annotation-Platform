@@ -10,6 +10,7 @@ interface CreateTaskInput {
   system_code: string;
   review_mode: 'self' | 'peer';
   priority: number;
+  dispatch_mode: 'auto' | 'manual' | 'pool';
   case_ids: string[];
 }
 
@@ -60,9 +61,9 @@ export class TasksService {
       if (confirmed.length !== cases.length) throw new ConflictException('病例缺少脱敏人工确认记录');
 
       const [task] = await manager.query(
-        `INSERT INTO "tasks" ("name", "source", "system_code", "review_mode", "priority", "status")
-         VALUES ($1, $2, $3, $4, $5, '进行中') RETURNING "id"`,
-        [input.name, input.source, input.system_code, input.review_mode, input.priority],
+        `INSERT INTO "tasks" ("name", "source", "system_code", "review_mode", "priority", "dispatch_mode", "status")
+         VALUES ($1, $2, $3, $4, $5, $6, '进行中') RETURNING "id"`,
+        [input.name, input.source, input.system_code, input.review_mode, input.priority, input.dispatch_mode],
       ) as Array<{ id: string }>;
       if (!task) throw new Error('Task insert returned no id');
       await manager.query(
@@ -78,7 +79,7 @@ export class TasksService {
          VALUES ($1, 'tasks.created', $2, $3::jsonb, $4)`,
         [actor.id, `tasks:${task.id}`, JSON.stringify({
           source: input.source, system_code: input.system_code, review_mode: input.review_mode,
-          priority: input.priority, case_ids: input.case_ids, from: '已录入', to: '待分配',
+          priority: input.priority, dispatch_mode: input.dispatch_mode, case_ids: input.case_ids, from: '已录入', to: '待分配',
         }), ip],
       );
       return { id: task.id, ...input, status: '进行中' as const };
@@ -93,7 +94,7 @@ export class TasksService {
     const where = `t."deleted_at" IS NULL AND ($1::text IS NULL OR t."source"=$1) AND ($2::text IS NULL OR t."system_code"=$2)`;
     return this.db.transaction('REPEATABLE READ', async (manager) => {
       const items = await manager.query(
-        `SELECT t."id", t."name", t."source", t."system_code", t."review_mode", t."priority", t."in_flight_limit", t."status", t."created_at",
+        `SELECT t."id", t."name", t."source", t."system_code", t."review_mode", t."priority", t."in_flight_limit", t."dispatch_mode", t."status", t."created_at",
           (SELECT count(*)::int FROM "task_cases" tc JOIN "cases" c ON c."id"=tc."case_id"
            WHERE tc."task_id"=t."id" AND tc."deleted_at" IS NULL AND c."deleted_at" IS NULL) AS "case_count"
          FROM "tasks" t WHERE ${where} ORDER BY t."priority" DESC, t."created_at" DESC, t."id" LIMIT $3 OFFSET $4`,
@@ -135,7 +136,8 @@ export class TasksService {
       const from = `FROM "task_cases" tc JOIN "cases" c ON c."id"=tc."case_id"
         WHERE tc."task_id"=$1 AND tc."deleted_at" IS NULL AND c."deleted_at" IS NULL`;
       const items = await manager.query(
-        `SELECT c."id", c."case_no", c."status", c."source", c."system_code" ${from}
+        `SELECT c."id", c."case_no", c."status", c."source", c."system_code",
+           (SELECT a.id FROM task_assignments a WHERE a.case_id=c.id AND a.task_role='annotate' AND a.state='active' AND a.deleted_at IS NULL) AS assignment_id ${from}
          ORDER BY tc."created_at", c."id" LIMIT $2 OFFSET $3`, [id, pageSize, offset],
       );
       const [count] = await manager.query(`SELECT count(*)::int AS "total" ${from}`, [id]);
@@ -171,11 +173,12 @@ export class TasksService {
   private input(body: unknown): CreateTaskInput {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('任务请求无效');
     const input = body as Record<string, unknown>;
-    const keys = ['name', 'source', 'system_code', 'review_mode', 'priority', 'case_ids'];
+    const keys = ['name', 'source', 'system_code', 'review_mode', 'priority', 'case_ids', 'dispatch_mode'];
     if (Object.keys(input).some((key) => !keys.includes(key)) ||
         typeof input.name !== 'string' || !input.name.trim() || [...input.name.trim()].length > 200 ||
         !IMPORT_SOURCES.includes(input.source as never) || !SYSTEM_CODES.includes(input.system_code as never) ||
         !['self', 'peer'].includes(input.review_mode as string) ||
+        (input.dispatch_mode !== undefined && !['auto', 'manual', 'pool'].includes(input.dispatch_mode as string)) ||
         typeof input.priority !== 'number' || !Number.isInteger(input.priority) ||
         input.priority < -2147483648 || input.priority > 2147483647 ||
         !Array.isArray(input.case_ids) || input.case_ids.length === 0 || input.case_ids.length > 2000 ||
@@ -185,6 +188,6 @@ export class TasksService {
     const caseIds = (input.case_ids as string[]).map((id) => id.toLowerCase()).sort();
     if (new Set(caseIds).size !== caseIds.length) throw new BadRequestException('病例不能重复');
     return { name: input.name.trim(), source: input.source as string, system_code: input.system_code as string,
-      review_mode: input.review_mode as 'self' | 'peer', priority: input.priority, case_ids: caseIds };
+      review_mode: input.review_mode as 'self' | 'peer', priority: input.priority, dispatch_mode: (input.dispatch_mode ?? 'auto') as CreateTaskInput['dispatch_mode'], case_ids: caseIds };
   }
 }

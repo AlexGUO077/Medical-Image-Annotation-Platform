@@ -1,16 +1,17 @@
 import { Alert, Button, Card, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import { MemberTasksPanel } from './MemberTasksPanel';
 import { TaskDispatchPanel } from './TaskDispatchPanel';
 import type { Session } from '../auth/types';
 import { IMPORT_SOURCE_OPTIONS, SYSTEM_OPTIONS, type ImportSource, type SystemCode } from '../cases/types';
-import { tasksApi, type CreateTask, type Page, type Task, type TaskCase } from '../tasks/api';
+import { tasksApi, DISPATCH_MODES, type AutoDispatch, type CreateTask, type Page, type Task, type TaskCase } from '../tasks/api';
 
 const message = (error: unknown) => error instanceof Error ? error.message : '任务请求失败';
 const label = (options: readonly { value: string; label: string }[], value: string) => options.find(option => option.value === value)?.label ?? value;
 const columns = [{ title: '病例编号', dataIndex: 'case_no' }, { title: '病例状态', dataIndex: 'status' }];
 
 export function TasksPage({ session }: { session: Session }) {
-  if (session.role !== 'admin') return <section><Typography.Title level={2}>任务列表</Typography.Title><Empty description="个人任务与领取入口暂未开放" /></section>;
+  if (session.role !== 'admin') return <MemberTasksPanel token={session.token} />;
   return <AdminTasks token={session.token} />;
 }
 
@@ -52,14 +53,14 @@ function AdminTasks({ token }: { token: string }) {
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {data?.items.map(task => <Card key={task.id} size="small" title={task.name} extra={<Space><Button onClick={() => setSelected(task)}>查看病例</Button><Button disabled={task.status !== '进行中'} onClick={() => setManaging(task)}>分派与设置</Button></Space>}>
           <Space wrap><Tag>{task.status}</Tag><span>{label(IMPORT_SOURCE_OPTIONS, task.source)}</span><span>{label(SYSTEM_OPTIONS, task.system_code)}</span>
-            <span>优先级：{task.priority}</span><span>每人在途上限：{task.in_flight_limit ?? '不限制'}</span><span>{task.review_mode === 'self' ? '自审' : '他审'}</span><span>病例数：{task.case_count}</span></Space>
+            <span>{label(DISPATCH_MODES, task.dispatch_mode)}</span><span>优先级：{task.priority}</span><span>每人在途上限：{task.in_flight_limit ?? '不限制'}</span><span>{task.review_mode === 'self' ? '自审' : '他审'}</span><span>病例数：{task.case_count}</span></Space>
         </Card>)}
       </Space>
       {!!data?.total && <Pagination style={{ marginTop: 16 }} current={page} pageSize={20} total={data.total} showSizeChanger={false} onChange={setPage} />}
     </>}
     <Modal title="新建任务" open={creating} footer={null} onCancel={() => { if (!createBusy) setCreating(false); }} closable={!createBusy} maskClosable={!createBusy} keyboard={!createBusy} width={800} destroyOnHidden>
-      {creating && <CreateTaskForm token={token} onBusyChange={setCreateBusy} onCreated={() => {
-        setCreating(false); setNotice('任务已创建，病例进入待分配'); setPage(1); setSource(undefined); setSystem(undefined); setRevision(value => value + 1);
+      {creating && <CreateTaskForm token={token} onBusyChange={setCreateBusy} onCreated={result => {
+        setCreating(false); setNotice(result?.auto_dispatch ? (result.auto_dispatch.status === 'pending' ? '任务已创建，自动派单尚未完成，可在分派与设置中重试' : `任务已创建，自动指派 ${result.auto_dispatch.assigned?.length ?? 0} 例，其余保留待分配`) : '任务已创建，病例进入待分配'); setPage(1); setSource(undefined); setSystem(undefined); setRevision(value => value + 1);
       }} />}
     </Modal>
     <Drawer title={managing ? `${managing.name}：分派与设置` : '分派与设置'} open={!!managing} onClose={() => { if (!manageBusy) setManaging(undefined); }} closable={!manageBusy} maskClosable={!manageBusy} keyboard={!manageBusy} width={900} destroyOnHidden>
@@ -91,7 +92,7 @@ function TaskCases({ token, taskId }: { token: string; taskId: string }) {
 }
 
 type TaskForm = Omit<CreateTask, 'case_ids'>;
-export function CreateTaskForm({ token, onCreated, onBusyChange }: { token: string; onCreated: () => void; onBusyChange?: (busy: boolean) => void }) {
+export function CreateTaskForm({ token, onCreated, onBusyChange }: { token: string; onCreated: (result?: { auto_dispatch?: AutoDispatch }) => void; onBusyChange?: (busy: boolean) => void }) {
   const [form] = Form.useForm<TaskForm>();
   const source = Form.useWatch('source', form) as ImportSource | undefined;
   const system = Form.useWatch('system_code', form) as SystemCode | undefined;
@@ -119,16 +120,17 @@ export function CreateTaskForm({ token, onCreated, onBusyChange }: { token: stri
     if (pending.current) return;
     if (!selected.length || selected.length > 2000) { setSaveError('请选择 1～2000 个病例'); return; }
     pending.current = true; setSaving(true); onBusyChange?.(true); setSaveError(undefined);
-    try { await tasksApi.create(token, { ...values, name: values.name.trim(), case_ids: selected }); onCreated(); }
+    try { const result = await tasksApi.create(token, { ...values, name: values.name.trim(), case_ids: selected }); onCreated(result); }
     catch (reason) { setSaveError(message(reason)); }
     finally { pending.current = false; setSaving(false); onBusyChange?.(false); }
   };
-  return <Form form={form} layout="vertical" initialValues={{ priority: 0 }} onFinish={submit} disabled={saving}>
+  return <Form form={form} layout="vertical" initialValues={{ priority: 0, dispatch_mode: 'auto' }} onFinish={submit} disabled={saving}>
     <Form.Item name="name" label="任务名称" rules={[{ validator: (_, value: unknown) => typeof value === 'string' && value.trim() && [...value.trim()].length <= 200 ? Promise.resolve() : Promise.reject(new Error('任务名称需为 1～200 个字符')) }]}><Input /></Form.Item>
     <Space wrap align="start">
       <Form.Item name="source" label="数据来源" rules={[{ required: true, message: '请选择数据来源' }]}><Select style={{ width: 200 }} options={[...IMPORT_SOURCE_OPTIONS]} onChange={clearScope} /></Form.Item>
       <Form.Item name="system_code" label="系统" rules={[{ required: true, message: '请选择系统' }]}><Select style={{ width: 180 }} options={[...SYSTEM_OPTIONS]} onChange={clearScope} /></Form.Item>
       <Form.Item name="review_mode" label="审核模式" rules={[{ required: true, message: '请选择审核模式' }]}><Select style={{ width: 140 }} options={[{ value: 'self', label: '自审' }, { value: 'peer', label: '他审' }]} /></Form.Item>
+      <Form.Item name="dispatch_mode" label="分发模式" rules={[{ required: true }]}><Select style={{ width: 150 }} options={DISPATCH_MODES} /></Form.Item>
       <Form.Item name="priority" label="优先级" rules={[{ required: true, message: '请填写优先级' }, { type: 'integer', min: -2147483648, max: 2147483647, message: '优先级须为有效整数' }]}><InputNumber precision={0} /></Form.Item>
     </Space>
     {loadError && <Alert type="error" message={loadError} />}

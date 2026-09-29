@@ -9,6 +9,8 @@ const nativeComputedStyle = window.getComputedStyle.bind(window);
 beforeEach(() => {
   // JSDOM has no pseudo-element layout; preserve normal style computation.
   vi.spyOn(window, 'getComputedStyle').mockImplementation(element => nativeComputedStyle(element));
+  vi.spyOn(tasksApi, 'mine').mockResolvedValue(pageOf([]));
+  vi.spyOn(tasksApi, 'pool').mockResolvedValue(pageOf([]));
   vi.spyOn(tasksApi, 'list').mockResolvedValue(pageOf([syntheticTask]));
   vi.spyOn(tasksApi, 'eligible').mockResolvedValue(pageOf([syntheticCase]));
   vi.spyOn(tasksApi, 'cases').mockResolvedValue(pageOf([{ ...syntheticCase, status: '待分配' }]));
@@ -30,7 +32,7 @@ async function prepare() {
 describe('TasksPage', () => {
   it('never loads administrator task or candidate data for a member', () => {
     render(<TasksPage session={{ ...session, role: 'member' }} />);
-    expect(screen.getByText('个人任务与领取入口暂未开放')).toBeInTheDocument();
+    expect(screen.getByText('个人任务与标注领取池')).toBeInTheDocument();
     expect(tasksApi.list).not.toHaveBeenCalled(); expect(tasksApi.eligible).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: '新建任务' })).not.toBeInTheDocument();
   });
@@ -52,7 +54,7 @@ describe('TasksPage', () => {
     expect(await screen.findByText('任务已创建，病例进入待分配')).toBeInTheDocument();
     expect(await screen.findByText('任务列表加载失败：列表不可用')).toBeInTheDocument();
     expect(create).toHaveBeenCalledOnce();
-    expect(create).toHaveBeenCalledWith(session.token, { name: '合成创建任务', source: 'synthetic', system_code: 'resp', review_mode: 'peer', priority: 0, case_ids: [syntheticCase.id] });
+    expect(create).toHaveBeenCalledWith(session.token, { name: '合成创建任务', source: 'synthetic', system_code: 'resp', review_mode: 'peer', priority: 0, dispatch_mode: 'auto', case_ids: [syntheticCase.id] });
   });
   it('preserves the form on a creation conflict and does not report success', async () => {
     vi.spyOn(tasksApi, 'create').mockRejectedValue(new Error('病例已属于其他任务'));

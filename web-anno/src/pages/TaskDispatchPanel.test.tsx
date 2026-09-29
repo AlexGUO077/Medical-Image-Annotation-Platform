@@ -8,7 +8,7 @@ const pageOf = <T,>(items: T[]) => ({ items, total: items.length, page: 1, pageS
 const nativeComputedStyle = window.getComputedStyle.bind(window);
 beforeEach(() => {
   vi.spyOn(window, 'getComputedStyle').mockImplementation(element => nativeComputedStyle(element));
-  vi.spyOn(tasksApi, 'cases').mockResolvedValue(pageOf([{ ...syntheticCase, status: '待分配' }, { ...syntheticCase, id: 'locked', case_no: 'LOCKED', status: '标注中' }]));
+  vi.spyOn(tasksApi, 'cases').mockResolvedValue(pageOf([{ ...syntheticCase, status: '待分配' }, { ...syntheticCase, id: 'locked', case_no: 'LOCKED', status: '标注中', assignment_id: 'assignment-1' }]));
   vi.spyOn(tasksApi, 'assignees').mockResolvedValue(pageOf([user]));
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -71,7 +71,7 @@ describe('dispatch console', () => {
     const person = vi.spyOn(tasksApi, 'personLimit').mockResolvedValue({ id: user.id, in_flight_limit: null });
     show(); await screen.findByText('合成人员（synthetic）');
     fireEvent.click(screen.getByRole('button', { name: '保存任务设置' }));
-    await waitFor(() => expect(settings).toHaveBeenCalledWith('token', syntheticTask.id, { priority: 1, in_flight_limit: null }));
+    await waitFor(() => expect(settings).toHaveBeenCalledWith('token', syntheticTask.id, { priority: 1, in_flight_limit: null, dispatch_mode: 'manual' }));
     await screen.findByText('任务设置已保存');
     fireEvent.click(screen.getByRole('button', { name: '设置 synthetic 全局上限' }));
     fireEvent.click(await screen.findByRole('button', { name: '保存人员上限' }));
@@ -91,6 +91,25 @@ describe('dispatch console', () => {
     await waitFor(() => expect(person).toHaveBeenCalledWith('token', user.id, 12));
     expect((await screen.findAllByText('账号已删除')).length).toBeGreaterThan(0);
     expect(screen.getByLabelText('人员跨任务在途上限')).toHaveValue('12');
+  });
+
+  it('reclaims the exact assignment only after an explicit reason and reports pending automatic work', async () => {
+    const reclaim = vi.spyOn(tasksApi, 'reclaim').mockResolvedValue({ auto_dispatch: { status: 'pending' } });
+    show(); await screen.findByText('LOCKED'); fireEvent.click(screen.getByRole('button', { name: /回\s*收/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认回收' }));
+    expect(await screen.findByText('请选择回收原因')).toBeInTheDocument(); expect(reclaim).not.toHaveBeenCalled();
+    fireEvent.mouseDown(screen.getByLabelText('回收原因'));
+    const choices = await screen.findAllByText('质量问题'); fireEvent.click(choices[choices.length - 1]!);
+    fireEvent.click(screen.getByRole('button', { name: '确认回收' }));
+    expect(await screen.findByText('分派已回收；自动派单尚未完成，请重试自动派单')).toBeInTheDocument();
+    expect(reclaim).toHaveBeenCalledWith('token', 'assignment-1', 'quality');
+  });
+  it('continues automatic dispatch using the returned cursor instead of repeating an unassignable prefix', async () => {
+    const auto = vi.spyOn(tasksApi, 'auto').mockResolvedValueOnce({ assigned: [], unassigned: [], next_case_id: 'cursor-case' }).mockResolvedValue({ assigned: [], unassigned: [], next_case_id: null });
+    render(<TaskDispatchPanel token="token" task={{ ...syntheticTask, dispatch_mode: 'auto' }} onChanged={vi.fn()} onBusyChange={vi.fn()} />);
+    await screen.findByText('LOCKED'); fireEvent.click(screen.getByRole('button', { name: '重试自动派单' }));
+    fireEvent.click(await screen.findByRole('button', { name: '继续下一批自动派单' }));
+    await waitFor(() => expect(auto).toHaveBeenLastCalledWith('token', syntheticTask.id, 'cursor-case'));
   });
 
 });
