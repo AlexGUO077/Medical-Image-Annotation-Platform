@@ -2,13 +2,18 @@ import type { ImportSource, SystemCode } from '../cases/types';
 
 export interface Task {
   id: string; name: string; source: ImportSource; system_code: SystemCode;
-  review_mode: 'self' | 'peer'; priority: number; in_flight_limit: number | null; status: string; created_at: string; case_count: number;
+  review_mode: 'self' | 'peer'; dispatch_mode: 'auto' | 'manual' | 'pool'; priority: number; in_flight_limit: number | null; status: string; created_at: string; case_count: number;
 }
 export interface TaskCase {
+  assignment_id?: string | null;
   id: string; case_no: string; source: ImportSource; system_code: SystemCode; status: string;
 }
 export interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
+export interface AutoDispatch { status: 'completed' | 'pending'; next_case_id?: string | null; assigned?: { case_id: string; assignee_id: string; task_id: string }[]; unassigned?: { case_id: string; reason: string }[] }
+export interface QueueCase { task_id: string; task_name: string; priority: number; source: ImportSource; system_code: SystemCode; review_mode: 'self' | 'peer'; case_id: string; case_no: string; status: string; assignment_id?: string; due_at?: string | null }
+export const DISPATCH_MODES = [{ value: 'auto', label: '自动派单' }, { value: 'manual', label: '手动指派' }, { value: 'pool', label: '领取池' }];
 export interface CreateTask {
+  dispatch_mode?: 'auto' | 'manual' | 'pool';
   name: string; source: ImportSource; system_code: SystemCode; review_mode: 'self' | 'peer';
   priority: number; case_ids: string[];
 }
@@ -34,12 +39,17 @@ function queryString(query: TaskQuery): string {
   return `?${params.toString()}`;
 }
 export const tasksApi = {
+  pool: (token: string, page: number, signal?: AbortSignal) => request<Page<QueueCase>>(`/pool${queryString({ page, pageSize: 20 })}`, token, { signal }),
+  mine: (token: string, page: number, signal?: AbortSignal) => request<Page<QueueCase>>(`/mine${queryString({ page, pageSize: 20 })}`, token, { signal }),
+  claim: (token: string, taskId: string, caseId: string) => request<ManualDispatch>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'pool', task_id: taskId, case_id: caseId }) }),
+  auto: (token: string, taskId: string, after?: string) => request<Required<Pick<AutoDispatch, 'assigned' | 'unassigned'>> & { next_case_id?: string | null }>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'auto', task_id: taskId, ...(after ? { after_case_id: after } : {}) }) }),
+  reclaim: (token: string, assignmentId: string, reason: 'overdue' | 'quality') => request<{ auto_dispatch?: AutoDispatch }>('/reclaim', token, { method: 'POST', body: JSON.stringify({ assignment_id: assignmentId, reason }) }),
   assignees: (token: string, page: number, signal?: AbortSignal) => request<Page<Assignee>>(queryString({ page, pageSize: 20 }), token, { signal }, '/api/users'),
-  settings: (token: string, id: string, input: { priority: number; in_flight_limit: number | null }) => request<{ id: string; priority: number; in_flight_limit: number | null }>(`/${encodeURIComponent(id)}/settings`, token, { method: 'PATCH', body: JSON.stringify(input) }),
+  settings: (token: string, id: string, input: { priority: number; in_flight_limit: number | null; dispatch_mode?: 'auto' | 'manual' | 'pool' }) => request<{ id: string; priority: number; in_flight_limit: number | null; dispatch_mode?: string; auto_dispatch?: AutoDispatch }>(`/${encodeURIComponent(id)}/settings`, token, { method: 'PATCH', body: JSON.stringify(input) }),
   personLimit: (token: string, id: string, limit: number | null) => request<{ id: string; in_flight_limit: number | null }>(`/assignees/${encodeURIComponent(id)}/limit`, token, { method: 'PATCH', body: JSON.stringify({ in_flight_limit: limit }) }),
   dispatch: (token: string, input: ManualDispatch) => request<ManualDispatch & { task_role: 'annotate' }>('/dispatch', token, { method: 'POST', body: JSON.stringify(input) }),
   list: (token: string, query: TaskQuery, signal?: AbortSignal) => request<Page<Task>>(queryString(query), token, { signal }),
   eligible: (token: string, query: TaskQuery, signal?: AbortSignal) => request<Page<TaskCase>>(`/eligible-cases${queryString(query)}`, token, { signal }),
   cases: (token: string, id: string, page: number, signal?: AbortSignal) => request<Page<TaskCase>>(`/${encodeURIComponent(id)}/cases${queryString({ page, pageSize: 20 })}`, token, { signal }),
-  create: (token: string, input: CreateTask) => request<CreateTask & { id: string; status: string }>('', token, { method: 'POST', body: JSON.stringify(input) }),
+  create: (token: string, input: CreateTask) => request<CreateTask & { id: string; status: string; auto_dispatch?: AutoDispatch }>('', token, { method: 'POST', body: JSON.stringify(input) }),
 };

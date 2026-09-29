@@ -54,7 +54,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
   tasks: {
     name: ['character varying', false], source: ['character varying', false],
     system_code: ['character varying', false], review_mode: ['character varying', false],
-    priority: ['integer', false], status: ['character varying', false],
+    dispatch_mode: ['character varying', false], priority: ['integer', false], status: ['character varying', false],
     in_flight_limit: ['integer', true],
   },
   task_cases: { task_id: ['uuid', false], case_id: ['uuid', false] },

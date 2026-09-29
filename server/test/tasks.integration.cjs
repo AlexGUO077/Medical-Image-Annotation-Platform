@@ -56,7 +56,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
       if (confirmed) await db.query(`INSERT INTO audit_logs (actor, action, target, detail, ip) VALUES ($1,$2,$3,'{}','127.0.0.1')`, [users[0].id, action, `cases:${id}`]);
       return id;
     };
-    const body = (ids) => ({ name: '合成任务', source: 'synthetic', system_code: 'resp', review_mode: 'peer', priority: 0, case_ids: ids });
+    const body = (ids) => ({ name: '合成任务', source: 'synthetic', system_code: 'resp', review_mode: 'peer', priority: 0, dispatch_mode: 'manual', case_ids: ids });
     const req = (payload, auth = token) => fetch(`${base}/api/tasks`, { method: 'POST', headers: {
       'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
     }, body: JSON.stringify(payload) });
@@ -120,7 +120,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     const taskResponse = await get('?pageSize=1&source=synthetic&system_code=resp');
     assert.equal(taskResponse.headers.get('cache-control'), 'no-store, private');
     const listed = await taskResponse.json(); assert.equal(listed.items.length, 1); assert.equal(listed.total, (await totals()).tasks);
-    assert.deepEqual(Object.keys(listed.items[0]).sort(), ['id','name','source','system_code','review_mode','priority','in_flight_limit','status','created_at','case_count'].sort());
+    assert.deepEqual(Object.keys(listed.items[0]).sort(), ['id','name','source','system_code','review_mode','priority','in_flight_limit','dispatch_mode','status','created_at','case_count'].sort());
     const contents = await (await get(`/${created.id}/cases?pageSize=1`)).json();
     const contents2 = await (await get(`/${created.id}/cases?pageSize=1&page=2`)).json();
     assert.equal(contents.total, 2); assert.equal(contents.items.length, 1); assert.equal(contents2.items.length, 1);
@@ -212,10 +212,14 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.equal((await call('/dispatch', dispatchBody(dispatchTask, [dispatchCases[1]], { due_at: '2099-12-31T00:00:00Z' }))).status, 201);
     const selfCase = await makeCase(); const selfTask = await (await req({ ...body([selfCase]), review_mode: 'self' })).json();
     assert.equal((await call('/dispatch', dispatchBody(selfTask, [selfCase]))).status, 403);
+    await require('./task-lifecycle.assertions.cjs')({ db, app, base, token, memberToken, otherAdminToken, users, makeCase, body, req, call, get, largeTask, largeBatch });
+    await assert.rejects(db.undoLastMigration(), /Set tasks to manual/);
+    await db.query("UPDATE tasks SET dispatch_mode='manual'");
+    await db.undoLastMigration();
     // Explicitly configured limits must not disappear on migration rollback.
-    await call(settingsPath, { in_flight_limit: 1 }, token, 'PATCH');
+    await db.query('UPDATE tasks SET in_flight_limit=1 WHERE id=$1', [dispatchTask.id]);
     await assert.rejects(db.undoLastMigration(), /Clear configured capacity limits/);
-    await call(settingsPath, { in_flight_limit: null }, token, 'PATCH');
+    await db.query('UPDATE tasks SET in_flight_limit=NULL WHERE id=$1', [dispatchTask.id]);
     await db.query('DELETE FROM task_assignments');
     await db.undoLastMigration();
     // Unset deadlines remain NULL; rollback must fail without silently filling or deleting them.
@@ -231,6 +235,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.equal((await db.query('SELECT due_at FROM task_assignments WHERE id=$1', [assignment.id]))[0].due_at.toISOString(), '2099-12-31T00:00:00.000Z');
     await db.query('UPDATE task_assignments SET due_at=NULL WHERE id=$1', [assignment.id]);
     await db.query('DELETE FROM task_assignments WHERE id=$1', [assignment.id]);
+    await db.undoLastMigration(); // dispatch mode
     await db.undoLastMigration();
     await db.undoLastMigration();
     await db.undoLastMigration();
@@ -243,4 +248,4 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     if (db?.isInitialized) await db.destroy();
     await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); await admin.end();
   }
-})().catch(error => { console.error(error.message); process.exitCode = 1; });
+})().catch(error => { console.error(error.stack ?? error.message); process.exitCode = 1; });

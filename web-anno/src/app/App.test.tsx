@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { tasksApi } from '../tasks/api';
-vi.mock('../tasks/api', () => ({ tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
+vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
 
-beforeEach(() => vi.mocked(tasksApi.list).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }));
+beforeEach(() => {
+  for (const api of [tasksApi.list, tasksApi.mine, tasksApi.pool]) vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
+});
 
 const session = { token: 'synthetic-token', role: 'admin' as const, quals: {} };
 
@@ -67,21 +69,21 @@ describe('App', () => {
   it('redirects members away from the administrator route', async () => {
     render(<App initialEntries={['/admin']} initialSession={{ ...session, role: 'member' }} />);
 
-    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '个人任务与标注领取池' })).toBeInTheDocument();
     expect(screen.queryByText('标签树与征象规范')).not.toBeInTheDocument();
   });
 
   it('redirects members away from case import', async () => {
     render(<App initialEntries={['/cases/import']} initialSession={{ ...session, role: 'member' }} />);
 
-    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '个人任务与标注领取池' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '病例录入' })).not.toBeInTheDocument();
   });
 
   it('redirects members away from case detail', async () => {
     render(<App initialEntries={['/cases/synthetic-case']} initialSession={{ ...session, role: 'member' }} />);
 
-    expect(await screen.findByRole('heading', { name: '任务列表' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '个人任务与标注领取池' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '病例与临床信息' })).not.toBeInTheDocument();
   });
 

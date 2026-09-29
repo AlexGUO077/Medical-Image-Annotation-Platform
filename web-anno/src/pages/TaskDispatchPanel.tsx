@@ -1,6 +1,6 @@
-import { Alert, Button, Form, Input, InputNumber, Modal, Space, Table, Typography } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
-import { tasksApi, type Assignee, type Page, type Task, type TaskCase } from '../tasks/api';
+import { tasksApi, DISPATCH_MODES, type AutoDispatch, type Assignee, type Page, type Task, type TaskCase } from '../tasks/api';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '操作失败';
 const limitRules = [{ validator: (_: unknown, value: unknown) => value == null || (typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 2147483647) ? Promise.resolve() : Promise.reject(new Error('上限须为正整数或留空')) }];
@@ -24,6 +24,9 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
   const [busy, setBusy] = useState(false), pending = useRef(false);
   const [error, setError] = useState<string>(), [notice, setNotice] = useState<string>();
   const [editingUser, setEditingUser] = useState<Assignee>();
+  const [reclaiming, setReclaiming] = useState<TaskCase>();
+  const [mode, setMode] = useState(task.dispatch_mode);
+  const [autoCursor, setAutoCursor] = useState<string>();
   const refresh = () => { setSelectedCases([]); setAssignee(undefined); setRevision(value => value + 1); };
   useEffect(() => {
     const controller = new AbortController(); setCases(undefined); setCaseError(undefined);
@@ -42,7 +45,14 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
   async function save(action: () => Promise<unknown>, success: string, done?: () => void) {
     if (pending.current) return;
     pending.current = true; setBusy(true); onBusyChange(true); setError(undefined); setNotice(undefined);
-    try { await action(); setNotice(success); done?.(); onChanged(); }
+    try {
+      const result = await action() as { auto_dispatch?: AutoDispatch; dispatch_mode?: Task['dispatch_mode'] };
+      if (result.dispatch_mode) setMode(result.dispatch_mode);
+      if (result.auto_dispatch) setAutoCursor(result.auto_dispatch.next_case_id ?? undefined);
+      setNotice(result.auto_dispatch?.status === 'pending' ? `${success}；自动派单尚未完成，请重试自动派单` :
+        result.auto_dispatch ? `${success}；自动指派 ${result.auto_dispatch.assigned?.length ?? 0} 例，其余保留待分配` : success);
+      done?.(); onChanged();
+    }
     catch (reason) { setError(errorMessage(reason)); }
     finally { pending.current = false; setBusy(false); onBusyChange(false); }
   }
@@ -60,17 +70,20 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     {notice && <Alert type="success" message={notice} showIcon />}
     {error && <Alert type="error" message={error} showIcon />}
     <Typography.Title level={4}>任务设置</Typography.Title>
-    <Form layout="vertical" disabled={busy} initialValues={{ priority: task.priority, in_flight_limit: task.in_flight_limit }} onFinish={values => void save(() => tasksApi.settings(token, task.id, { priority: values.priority as number, in_flight_limit: (values.in_flight_limit as number | null) ?? null }), '任务设置已保存')}>
+    <Form layout="vertical" disabled={busy} initialValues={{ priority: task.priority, in_flight_limit: task.in_flight_limit, dispatch_mode: task.dispatch_mode }} onFinish={values => void save(() => tasksApi.settings(token, task.id, { priority: values.priority as number, in_flight_limit: (values.in_flight_limit as number | null) ?? null, dispatch_mode: values.dispatch_mode as Task['dispatch_mode'] }), '任务设置已保存', refresh)}>
+      <Form.Item name="dispatch_mode" label="分发模式" rules={[{ required: true }]}><Select options={DISPATCH_MODES} /></Form.Item>
       <Form.Item name="priority" label="任务优先级" rules={[{ required: true, type: 'integer', min: -2147483648, max: 2147483647, message: '请填写 int32 范围的整数' }]}><InputNumber /></Form.Item>
       <Form.Item name="in_flight_limit" label="每人每任务在途上限" rules={limitRules}><InputNumber placeholder="留空不限制" /></Form.Item>
       <Typography.Paragraph type="secondary">限额留空不限制；降低限额不会回收已有分派。</Typography.Paragraph>
       <Button htmlType="submit" loading={busy}>保存任务设置</Button>
     </Form>
+    {mode === 'auto' && <Button disabled={busy} onClick={() => void save(async () => ({ auto_dispatch: { status: 'completed', ...await tasksApi.auto(token, task.id, autoCursor) } }), '自动派单已执行', refresh)}>{autoCursor ? '继续下一批自动派单' : '重试自动派单'}</Button>}
+    {mode === 'auto' && autoCursor && <Button disabled={busy} onClick={() => void save(async () => ({ auto_dispatch: { status: 'completed', ...await tasksApi.auto(token, task.id) } }), '自动派单已执行', refresh)}>从头重新派单</Button>}
     <Typography.Title level={4}>手动指派标注</Typography.Title>
     <Button disabled={busy} onClick={refresh}>刷新分派数据</Button>
     {caseError && <Alert type="error" message={`病例加载失败：${caseError}`} />}
     <Table<TaskCase> size="small" rowKey="id" loading={!cases && !caseError} dataSource={cases?.items ?? []}
-      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }]}
+      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }, { title: '回收', render: (_, row) => row.assignment_id && row.status === '标注中' ? <Button disabled={busy} onClick={() => { setError(undefined); setReclaiming(row); }}>回收</Button> : null }]}
       rowSelection={{ selectedRowKeys: selectedCases, onChange: keys => setSelectedCases(keys.map(String)), getCheckboxProps: row => ({ disabled: busy || row.status !== '待分配' }) }}
       pagination={{ current: casePage, pageSize: 20, total: cases?.total ?? 0, disabled: busy, showSizeChanger: false, onChange: page => { setSelectedCases([]); setCases(undefined); setCasePage(page); } }} />
     <Typography.Text>已选 {selectedCases.length} 例；仅可选择待分配病例。</Typography.Text>
@@ -88,6 +101,14 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     <label>分派截止时间（本地时间，可留空）<Input aria-label="分派截止时间" type="datetime-local" value={due} disabled={busy} onChange={event => setDue(event.target.value)} /></label>
     <Typography.Text type="secondary">截止时间留空不自动超时。人员资格与两级容量以服务端提交校验为准。</Typography.Text>
     <Button type="primary" disabled={busy || !selectedCases.length || !assignee || !cases || !users || !!caseError || !!userError} loading={busy} onClick={dispatch}>确认指派</Button>
+    <Modal title={`回收分派：${reclaiming?.case_no ?? ''}`} open={!!reclaiming} footer={null} onCancel={() => { if (!busy) setReclaiming(undefined); }} closable={!busy} maskClosable={!busy} keyboard={!busy} destroyOnHidden>
+      {reclaiming && <Form layout="vertical" disabled={busy} onFinish={values => void save(() => tasksApi.reclaim(token, reclaiming.assignment_id!, values.reason as 'overdue' | 'quality'), '分派已回收', () => { setReclaiming(undefined); refresh(); })}>
+        <Typography.Paragraph>原分派将失效，已有标注保留。自动模式会再次派单；定向改派请先切换为手动模式。</Typography.Paragraph>
+        <Form.Item name="reason" label="回收原因" rules={[{ required: true, message: '请选择回收原因' }]}><Select options={[{ value: 'overdue', label: '逾期' }, { value: 'quality', label: '质量问题' }]} /></Form.Item>
+        {error && <Alert type="error" message={error} />}
+        <Button htmlType="submit" loading={busy}>确认回收</Button>
+      </Form>}
+    </Modal>
     <Modal title={editingUser ? `人员全局上限：${editingUser.real_name}` : '人员全局上限'} open={!!editingUser} footer={null} onCancel={() => { if (!busy) setEditingUser(undefined); }} closable={!busy} maskClosable={!busy} keyboard={!busy} destroyOnHidden>
       {editingUser && error && <Alert type="error" message={error} showIcon />}
       {editingUser && <Form key={editingUser.id} layout="vertical" disabled={busy} initialValues={{ limit: editingUser.in_flight_limit }} onFinish={values => void save(() => tasksApi.personLimit(token, editingUser.id, (values.limit as number | null) ?? null), '人员全局上限已保存', () => { setEditingUser(undefined); refresh(); })}>
