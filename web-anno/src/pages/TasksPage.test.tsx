@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tasksApi, type Page, type TaskCase } from '../tasks/api';
 import { syntheticCase, syntheticTask } from '../tasks/fixtures';
 import { CreateTaskForm, TasksPage } from './TasksPage';
+// AntD form/modal behavior tests need headroom on shared CI runners.
+// This file-level budget preserves assertions without changing product timing.
+vi.setConfig({ testTimeout: 20_000 });
 const session = { token: 'synthetic-token', role: 'admin' as const, quals: {} };
 const pageOf = <T,>(items: T[]) => ({ items, total: items.length, page: 1, pageSize: 20 });
 const nativeComputedStyle = window.getComputedStyle.bind(window);
@@ -42,8 +45,6 @@ describe('TasksPage', () => {
     expect(await screen.findByText('SYN-TASK-1')).toBeInTheDocument();
     expect(tasksApi.cases).toHaveBeenCalledWith(session.token, syntheticTask.id, 1, expect.any(AbortSignal));
   });
-  // This full AntD modal/form flow took 6.3s on the CI runner; it is a behavior
-  // test, not a product latency assertion. Keep the other tests' default timeout.
   it('keeps successful creation distinct from a failed list refresh', async () => {
     vi.mocked(tasksApi.list).mockResolvedValueOnce(pageOf([])).mockRejectedValue(new Error('列表不可用'));
     const create = vi.spyOn(tasksApi, 'create').mockImplementation(async (_token, input) => ({ ...input, id: syntheticTask.id, status: '进行中' }));
@@ -55,7 +56,7 @@ describe('TasksPage', () => {
     expect(await screen.findByText('任务列表加载失败：列表不可用')).toBeInTheDocument();
     expect(create).toHaveBeenCalledOnce();
     expect(create).toHaveBeenCalledWith(session.token, { name: '合成创建任务', source: 'synthetic', system_code: 'resp', review_mode: 'peer', priority: 0, case_ids: [syntheticCase.id] });
-  }, 10_000);
+  });
   it('preserves the form on a creation conflict and does not report success', async () => {
     vi.spyOn(tasksApi, 'create').mockRejectedValue(new Error('病例已属于其他任务'));
     const done = vi.fn(); render(<CreateTaskForm token={session.token} onCreated={done} />); await prepare();
