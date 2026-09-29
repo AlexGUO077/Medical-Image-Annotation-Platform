@@ -3,9 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tasksApi, type Page, type TaskCase } from '../tasks/api';
 import { syntheticCase, syntheticTask } from '../tasks/fixtures';
 import { CreateTaskForm, TasksPage } from './TasksPage';
-// AntD form/modal behavior tests need headroom on shared CI runners.
-// This file-level budget preserves assertions without changing product timing.
-vi.setConfig({ testTimeout: 20_000 });
 const session = { token: 'synthetic-token', role: 'admin' as const, quals: {} };
 const pageOf = <T,>(items: T[]) => ({ items, total: items.length, page: 1, pageSize: 20 });
 const nativeComputedStyle = window.getComputedStyle.bind(window);
