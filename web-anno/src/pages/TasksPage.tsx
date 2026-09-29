@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import { TaskDispatchPanel } from './TaskDispatchPanel';
 import type { Session } from '../auth/types';
 import { IMPORT_SOURCE_OPTIONS, SYSTEM_OPTIONS, type ImportSource, type SystemCode } from '../cases/types';
 import { tasksApi, type CreateTask, type Page, type Task, type TaskCase } from '../tasks/api';
@@ -25,6 +26,8 @@ function AdminTasks({ token }: { token: string }) {
   const [createBusy, setCreateBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Task>();
+  const [managing, setManaging] = useState<Task>();
+  const [manageBusy, setManageBusy] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(undefined); setData(undefined);
@@ -47,9 +50,9 @@ function AdminTasks({ token }: { token: string }) {
     {loading ? <Spin aria-label="加载任务" /> : !error && <>
       {!data?.items.length && <Empty description="暂无符合条件的任务" />}
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {data?.items.map(task => <Card key={task.id} size="small" title={task.name} extra={<Button onClick={() => setSelected(task)}>查看病例</Button>}>
+        {data?.items.map(task => <Card key={task.id} size="small" title={task.name} extra={<Space><Button onClick={() => setSelected(task)}>查看病例</Button><Button disabled={task.status !== '进行中'} onClick={() => setManaging(task)}>分派与设置</Button></Space>}>
           <Space wrap><Tag>{task.status}</Tag><span>{label(IMPORT_SOURCE_OPTIONS, task.source)}</span><span>{label(SYSTEM_OPTIONS, task.system_code)}</span>
-            <span>优先级：{task.priority}</span><span>{task.review_mode === 'self' ? '自审' : '他审'}</span><span>病例数：{task.case_count}</span></Space>
+            <span>优先级：{task.priority}</span><span>每人在途上限：{task.in_flight_limit ?? '不限制'}</span><span>{task.review_mode === 'self' ? '自审' : '他审'}</span><span>病例数：{task.case_count}</span></Space>
         </Card>)}
       </Space>
       {!!data?.total && <Pagination style={{ marginTop: 16 }} current={page} pageSize={20} total={data.total} showSizeChanger={false} onChange={setPage} />}
@@ -59,6 +62,9 @@ function AdminTasks({ token }: { token: string }) {
         setCreating(false); setNotice('任务已创建，病例进入待分配'); setPage(1); setSource(undefined); setSystem(undefined); setRevision(value => value + 1);
       }} />}
     </Modal>
+    <Drawer title={managing ? `${managing.name}：分派与设置` : '分派与设置'} open={!!managing} onClose={() => { if (!manageBusy) setManaging(undefined); }} closable={!manageBusy} maskClosable={!manageBusy} keyboard={!manageBusy} width={900} destroyOnHidden>
+      {managing && <TaskDispatchPanel key={managing.id} token={token} task={managing} onBusyChange={setManageBusy} onChanged={() => setRevision(value => value + 1)} />}
+    </Drawer>
     <Drawer title={selected?.name ?? '任务病例'} open={!!selected} onClose={() => setSelected(undefined)} width={650} destroyOnHidden>
       {selected && <TaskCases key={selected.id} token={token} taskId={selected.id} />}
     </Drawer>
