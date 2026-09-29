@@ -12,6 +12,8 @@ const { JwtModule } = require('@nestjs/jwt');
 const { TasksService } = require('../dist/modules/tasks/tasks.service');
 const { TaskDispatchService } = require('../dist/modules/tasks/task-dispatch.service');
 const { PermissionService } = require('../dist/modules/auth/permission.service');
+const { UsersService } = require('../dist/modules/users/users.service');
+const { UsersController } = require('../dist/modules/users/users.controller');
 const { TasksController } = require('../dist/modules/tasks/tasks.controller');
 const { AccessTokenGuard } = require('../dist/modules/auth/access-token.guard');
 const { AdminGuard } = require('../dist/modules/auth/admin.guard');
@@ -34,7 +36,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     await db.initialize(); await db.runMigrations();
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: randomBytes(32).toString('hex') })],
-      controllers: [TasksController], providers: [TasksService, TaskDispatchService, PermissionService, AccessTokenGuard, AdminGuard, AuthTokenService,
+      controllers: [TasksController, UsersController], providers: [UsersService, TasksService, TaskDispatchService, PermissionService, AccessTokenGuard, AdminGuard, AuthTokenService,
         { provide: DATABASE_SOURCE, useValue: db }],
     }).compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
@@ -213,6 +215,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     const selfCase = await makeCase(); const selfTask = await (await req({ ...body([selfCase]), review_mode: 'self' })).json();
     assert.equal((await call('/dispatch', dispatchBody(selfTask, [selfCase]))).status, 403);
     await require('./task-lifecycle.assertions.cjs')({ db, app, base, token, memberToken, otherAdminToken, users, makeCase, body, req, call, get, largeTask, largeBatch });
+    await db.undoLastMigration(); // system audit: no anonymous events yet
     await assert.rejects(db.undoLastMigration(), /Set tasks to manual/);
     await db.query("UPDATE tasks SET dispatch_mode='manual'");
     await db.undoLastMigration();
@@ -235,6 +238,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.equal((await db.query('SELECT due_at FROM task_assignments WHERE id=$1', [assignment.id]))[0].due_at.toISOString(), '2099-12-31T00:00:00.000Z');
     await db.query('UPDATE task_assignments SET due_at=NULL WHERE id=$1', [assignment.id]);
     await db.query('DELETE FROM task_assignments WHERE id=$1', [assignment.id]);
+    await db.undoLastMigration(); // system audit
     await db.undoLastMigration(); // dispatch mode
     await db.undoLastMigration();
     await db.undoLastMigration();
@@ -242,6 +246,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 0);
     await db.runMigrations();
     assert.equal((await db.query(`SELECT 1 FROM pg_indexes WHERE schemaname=$1 AND indexname='task_cases_case_active_uq'`, [schema])).length, 1);
+    await require('./task-maintenance.assertions.cjs')({ db, app, base, token, users, makeCase, body, req, call });
     console.log('PASS: task HTTP authorization, input isolation, deidentification gate, atomic state/audit, manual dispatch and settings, cross-admin/global-capacity concurrency, inactive/expired assignment denial, unique indices and safe migration rollback, paginated admin reads, 200/2000 input boundaries');
   } finally {
     if (app) await app.close();

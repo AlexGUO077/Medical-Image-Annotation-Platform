@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from './auth.models';
 import { PermissionService } from './permission.service';
@@ -28,12 +28,10 @@ describe('PermissionService', () => {
     expect(query).toHaveBeenCalledTimes(1);
   });
 
-  it('returns not found only after qualification and assignment pass', async () => {
-    const query = vi.fn().mockResolvedValueOnce([{ id: 'assignment-1' }]).mockResolvedValueOnce([]);
+  it('uses a single live-state lookup for a valid assignment', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{ id: 'assignment-1' }]);
     const service = new PermissionService({ query } as never);
-
-    await expect(service.assertCaseAssignment(user, 'case-1', 'resp', 'annotate'))
-      .rejects.toBeInstanceOf(NotFoundException);
-    expect(query).toHaveBeenCalledTimes(2);
+    await expect(service.assertCaseAssignment(user, 'case-1', 'resp', 'annotate')).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledTimes(1);
   });
 });

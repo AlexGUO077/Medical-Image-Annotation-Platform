@@ -78,7 +78,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     is_spotcheck: ['boolean', false],
   },
   audit_logs: {
-    actor: ['uuid', false], action: ['character varying', false],
+    actor: ['uuid', true], action: ['character varying', false],
     target: ['character varying', false], detail: ['jsonb', false],
     ip: ['character varying', false],
   },
