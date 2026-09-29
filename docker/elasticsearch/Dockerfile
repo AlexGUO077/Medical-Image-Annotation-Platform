@@ -21,4 +21,11 @@ RUN find /usr/share/elasticsearch/modules -type f -name '*-4.1.135.Final.jar' \
       -exec sh -c 'for old do artifact="$(basename "$old" -4.1.135.Final.jar)"; install -m 0644 -o 1000 -g 0 "/tmp/netty/${artifact}-4.1.137.Final.jar" "$old"; done' sh {} + \
     && rm -rf /tmp/netty
 
+# CVE-2026-68497: patch every bundled databind copy, preserving Elastic's paths.
+ADD --checksum=sha256:ead55a0c649b11af6148a0c097323f5438afc5f563e7139681ad8277fff520bf https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.10/jackson-databind-2.18.10.jar /tmp/jackson-databind-2.18.10.jar
+RUN test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' | wc -l)" -eq 4 \
+    && find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' \
+      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-databind-2.18.10.jar {} \; \
+    && rm /tmp/jackson-databind-2.18.10.jar
+
 USER 1000:0

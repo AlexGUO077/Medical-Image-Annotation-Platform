@@ -22,6 +22,16 @@ published by the Elastic registry. Elastic's 8.x Docker guide specifies
 4.1.137 artifacts from Maven Central, the compatible release containing the
 Trivy-reported fixes.
 
+On 2026-09-29, the blocking scan identified CVE-2026-68497 (HIGH) in four
+bundled Jackson Databind 2.18.9 copies. The hardened image additionally replaces
+all four with Maven Central's 2.18.10 patch, which the
+[upstream release notes](https://github.com/FasterXML/jackson/wiki/Jackson-Release-2.18.10)
+identify as fixed. The downloaded JAR was checked against Maven Central's SHA512
+and its SHA256 is pinned in the Dockerfile. Existing JAR paths are preserved for
+Elastic's module loading/policies; the embedded implementation and Maven metadata
+are 2.18.10. The build fails if the expected four old paths are absent. This is a
+dependency patch, not a vulnerability waiver; HIGH/CRITICAL remain blocking.
+
 On 2026-09-19, Redis moved from `redis:7` to the exact Redis 7 Alpine release
 below. Local image inspection confirmed the manifest digest, and the existing
 synthetic `miap-redis-data` volume was reused without deletion. Redis 7.4.11
@@ -46,4 +56,4 @@ Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 | Orthanc | `miap/orthanc:26.9.0-hardened` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
 | MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
 | Redis | `miap/redis:7.4.11-alpine3.21` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
-| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
+| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.10` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
