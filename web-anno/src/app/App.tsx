@@ -6,6 +6,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { AdminTaxonomyPage } from '../pages/AdminTaxonomyPage';
 import { CaseImportPage } from '../pages/CaseImportPage';
 import { CaseClinicalPage } from '../pages/CaseClinicalPage';
+import { TasksPage } from '../pages/TasksPage';
 import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
@@ -32,7 +33,9 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                 ? <Navigate replace to="/tasks" />
                 : (
                   <AuthenticatedLayout session={session} onLogout={() => setSession(null)}>
-                    {route.path === '/admin'
+                    {route.path === '/tasks'
+                      ? <TasksPage session={session} />
+                      : route.path === '/admin'
                       ? <AdminTaxonomyPage session={session} />
                       : route.path === '/cases/import'
                         ? <CaseImportPage session={session} />

@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { casesManualApi } from '../cases/manual-api';
 import { ManualEntryPanel } from './ManualEntryPanel';
 
+// AntD form behavior tests share a file-level budget for slower CI runners.
+vi.setConfig({ testTimeout: 20_000 });
+
 const session = { token: 'admin-token', role: 'admin' as const, quals: {} };
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });

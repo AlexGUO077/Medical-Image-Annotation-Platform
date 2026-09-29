@@ -19,7 +19,7 @@
 
 | 表 | 业务字段及类型 | 关键约束 |
 | --- | --- | --- |
-| `users` | `username varchar`、`password_hash varchar`、`real_name varchar`、`email varchar?`、`phone varchar?`、`role varchar`、`quals jsonb`、`status varchar`、`expire_at date`、`must_change_password bool`、`mfa_secret_encrypted varchar?` | `username` 活跃记录唯一；`role=admin/member`；`status=active/disabled`；`quals` 使用 GIN；新增认证状态字段依据已批准 D-03，不新增业务表 |
+| `users` | `username varchar`、`password_hash varchar`、`real_name varchar`、`email varchar?`、`phone varchar?`、`role varchar`、`quals jsonb`、`status varchar`、`expire_at date`、`must_change_password bool`、`mfa_secret_encrypted varchar?` | `username` 活跃记录唯一；`role=admin/member`；`status=active/disabled`；`quals` 使用 GIN；新增认证状态字段依据已批准 D-03；新增可空 in_flight_limit 正整数列，表示人员跨任务在途上限 |
 | `cases` | `case_no varchar`、`status varchar`、`source varchar`、`system_code varchar`、`disease_tag_id uuid?`、`clinical_text text?`、`age_band varchar?`、`sex varchar?`、`confirm_method varchar`、`teaching_fields jsonb?` | `case_no` 活跃记录唯一；状态、八大系统编码和三种确诊方式受检查约束；`disease_tag_id → taxonomy_nodes.id` |
 | `studies` | `case_id uuid`、`study_uid varchar`、`study_date date` | `study_uid` 活跃记录唯一；`case_id → cases.id` |
 | `series` | `study_id uuid`、`modality varchar`、`series_uid varchar`、`orthanc_id varchar`、`frame_count int`、`default_window jsonb?` | UID 和 Orthanc ID 活跃记录唯一；CT 的 `default_window` 必填；`study_id → studies.id` |
@@ -27,9 +27,9 @@
 | `attachments` | `case_id uuid`、`kind varchar`、`object_key varchar`、`filename varchar`、`size varchar`、`deid_confirmed bool` | `case_id → cases.id`；`kind=检查报告/病理/其他`；50MB 限制由上传服务执行 |
 | `taxonomy_nodes` | `parent_id uuid?`、`level int`、`name varchar`、`synonyms jsonb`、`icd varchar?` | 四级树；根节点 `parent_id` 为空；自引用外键；活跃的层级和名称唯一 |
 | `sign_tags` | `name varchar`、`system_code varchar`、`definition text` | 八大系统编码；活跃的系统和名称组合唯一 |
-| `tasks` | `name varchar`、`source varchar`、`system_code varchar`、`review_mode varchar`、`priority int`、`status varchar` | `review_mode=self/peer`；状态为进行中/已完成/已归档 |
+| `tasks` | `name varchar`、`source varchar`、`system_code varchar`、`review_mode varchar`、`priority int`、`status varchar` | `review_mode=self/peer`；状态为进行中/已完成/已归档；新增可空 in_flight_limit 正整数列，表示每人每任务在途上限 |
 | `task_cases` | `task_id uuid`、`case_id uuid` | 两个字段分别外键到 `tasks`、`cases`；活跃组合唯一；WP-06 增量迁移增加活跃 `case_id` 唯一索引，落实任务间病例隔离，不自动清理旧冲突数据 |
-| `task_assignments` | `case_id uuid`、`assignee_id uuid`、`task_role varchar`、`due_at timestamptz`、`state varchar` | 外键到 `cases`、`users`；`task_role=annotate/review` |
+| `task_assignments` | `case_id uuid`、`assignee_id uuid`、`task_role varchar`、`due_at timestamptz NULL`、`state varchar` | 外键到 `cases`、`users`；`task_role=annotate/review`；D-09 已确认 NULL 表示未配置期限、不自动超时；有 NULL 时回滚非空约束失败，不补默认值；active 且未删除的 (case_id,task_role) 唯一 |
 | `annotation_objects` | `case_id uuid`、`series_id uuid`、`tool varchar`、`geometry jsonb`、`frame_start int`、`frame_end int`、`window_preset varchar?`、`report_sent_ids jsonb`、`part_id uuid`、`confidence varchar`、`measurements jsonb?`、`version int`、`is_gold bool`、`created_by uuid`、`task_id uuid` | 工具、帧范围、置信度受检查约束；`report_sent_ids` 使用 GIN；`part_id` 的目标表源手册未明确，因此暂不添加外键 |
 | `annotation_tags` | `annotation_id uuid`、`sign_tag_id uuid` | 外键到 `annotation_objects`、`sign_tags`；活跃组合唯一；至少一条由保存标注业务事务校验 |
 | `reviews` | `case_id uuid`、`reviewer_id uuid`、`result varchar`、`comments jsonb`、`is_spotcheck bool` | 外键到 `cases`、`users`；`result=通过/打回` |
@@ -66,3 +66,5 @@ npm run db:verify --workspace server
 ```
 
 `db:verify-cycle` 会执行全部迁移、seed、全量回滚并重建，只能用于空的一次性数据库，且必须显式设置 `WP01_VERIFY_EMPTY_DATABASE=1`。
+
+任务/人员容量列均无默认数值；回滚容量迁移前必须明确清空已配置值，否则迁移失败，不静默丢失业务设置。

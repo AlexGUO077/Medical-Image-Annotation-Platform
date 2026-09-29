@@ -17,6 +17,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     phone: ['character varying', true], role: ['character varying', false],
     quals: ['jsonb', false], status: ['character varying', false], expire_at: ['date', false],
     must_change_password: ['boolean', false], mfa_secret_encrypted: ['character varying', true],
+    in_flight_limit: ['integer', true],
   },
   cases: {
     case_no: ['character varying', false], status: ['character varying', false],
@@ -54,11 +55,12 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     name: ['character varying', false], source: ['character varying', false],
     system_code: ['character varying', false], review_mode: ['character varying', false],
     priority: ['integer', false], status: ['character varying', false],
+    in_flight_limit: ['integer', true],
   },
   task_cases: { task_id: ['uuid', false], case_id: ['uuid', false] },
   task_assignments: {
     case_id: ['uuid', false], assignee_id: ['uuid', false],
-    task_role: ['character varying', false], due_at: ['timestamp with time zone', false],
+    task_role: ['character varying', false], due_at: ['timestamp with time zone', true],
     state: ['character varying', false],
   },
   annotation_objects: {
