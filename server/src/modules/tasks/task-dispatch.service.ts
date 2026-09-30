@@ -157,15 +157,19 @@ export class TaskDispatchService {
     catch { return { status: 'pending' }; } // The preceding operation committed; never report creation failure.
   }
 
-  private async auto(actor: AuthUser, body: unknown, ip: string) {
-    if (actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
+  async maintainAutomatic(after?: string) {
+    return this.auto(null, { mode: 'auto', ...(after ? { after_case_id: after } : {}) }, 'system');
+  }
+
+  private async auto(actor: AuthUser | null, body: unknown, ip: string) {
+    if (actor && actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
     const input = this.object(body, ['mode', 'task_id', 'after_case_id']);
     const taskId = input.task_id === undefined ? null : this.id(input.task_id);
     const after = input.after_case_id === undefined ? null : this.id(input.after_case_id);
     return this.db.transaction(async manager => {
       // A fixed user lock order also serializes auto against manual/pool and capacity changes.
       const users = await manager.query(`SELECT *, expire_at::text FROM users WHERE deleted_at IS NULL ORDER BY id FOR UPDATE`) as CapacityUser[];
-      this.actor(users, actor, true);
+      if (actor) this.actor(users, actor, true);
       const tasks = await manager.query(`SELECT * FROM tasks WHERE deleted_at IS NULL AND status='进行中'
         AND ($1::uuid IS NULL OR id=$1) ORDER BY id FOR UPDATE`, [taskId]);
       if (taskId && !tasks.length) throw new NotFoundException('任务不存在或不在进行中');
@@ -207,7 +211,7 @@ export class TaskDispatchService {
         await manager.query(`INSERT INTO task_assignments (case_id,assignee_id,task_role,due_at,state) VALUES ($1,$2,'annotate',NULL,'active')`, [item.id, user.id]);
         await manager.query(`UPDATE cases SET status='标注中', updated_at=now() WHERE id=$1`, [item.id]);
         const assignment = { case_id: item.id as string, task_id: task.id as string, assignee_id: user.id };
-        await this.audit(manager, actor, 'tasks.dispatched', `tasks:${task.id}`, { ...assignment, mode: 'auto', from: '待分配', to: '标注中', due_at: null, task_role: 'annotate' }, ip);
+        await this.audit(manager, actor, actor ? 'tasks.dispatched' : 'tasks.auto_dispatched', `tasks:${task.id}`, { ...assignment, mode: 'auto', from: '待分配', to: '标注中', due_at: null, task_role: 'annotate' }, ip);
         assigned.push(assignment); global.set(user.id, (global.get(user.id) ?? 0) + 1);
         local.set(`${user.id}:${task.id}`, (local.get(`${user.id}:${task.id}`) ?? 0) + 1);
       }
@@ -286,8 +290,8 @@ export class TaskDispatchService {
     }
   }
 
-  private async audit(manager: EntityManager, actor: AuthUser, action: string, target: string, detail: unknown, ip: string) {
+  private async audit(manager: EntityManager, actor: AuthUser | null, action: string, target: string, detail: unknown, ip: string) {
     await manager.query('INSERT INTO audit_logs (actor, action, target, detail, ip) VALUES ($1,$2,$3,$4::jsonb,$5)',
-      [actor.id, action, target, JSON.stringify(detail), ip]);
+      [actor?.id ?? null, action, target, JSON.stringify(actor ? detail : { ...(detail as Record<string, unknown>), executor: 'task-worker' }), ip]);
   }
 }

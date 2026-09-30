@@ -33,7 +33,7 @@
 | `annotation_objects` | `case_id uuid`、`series_id uuid`、`tool varchar`、`geometry jsonb`、`frame_start int`、`frame_end int`、`window_preset varchar?`、`report_sent_ids jsonb`、`part_id uuid`、`confidence varchar`、`measurements jsonb?`、`version int`、`is_gold bool`、`created_by uuid`、`task_id uuid` | 工具、帧范围、置信度受检查约束；`report_sent_ids` 使用 GIN；`part_id` 的目标表源手册未明确，因此暂不添加外键 |
 | `annotation_tags` | `annotation_id uuid`、`sign_tag_id uuid` | 外键到 `annotation_objects`、`sign_tags`；活跃组合唯一；至少一条由保存标注业务事务校验 |
 | `reviews` | `case_id uuid`、`reviewer_id uuid`、`result varchar`、`comments jsonb`、`is_spotcheck bool` | 外键到 `cases`、`users`；`result=通过/打回` |
-| `audit_logs` | `actor uuid`、`action varchar`、`target varchar`、`detail jsonb`、`ip varchar` | `actor → users.id`；触发器和角色权限共同保证只增不改不删 |
+| `audit_logs` | `actor uuid?`、`action varchar`、`target varchar`、`detail jsonb`、`ip varchar` | 非空 `actor → users.id`；仅已批准的任务后台事件允许空 actor，见下文；触发器和角色权限共同保证只增不改不删 |
 | `export_requests` | `status varchar`、`approver_id uuid?`、`expire_at timestamptz?`、`url varchar?` | 申请初始阶段审批人、链接和过期时间可为空；`approver_id → users.id`；申请人与审批人不同由导出业务事务校验 |
 
 ## 种子数据
@@ -68,3 +68,7 @@ npm run db:verify --workspace server
 `db:verify-cycle` 会执行全部迁移、seed、全量回滚并重建，只能用于空的一次性数据库，且必须显式设置 `WP01_VERIFY_EMPTY_DATABASE=1`。
 
 任务/人员容量列均无默认数值；回滚容量迁移前必须明确清空已配置值，否则迁移失败，不静默丢失业务设置。
+
+## 任务后台系统审计增量（2026-09-29）
+
+按[已批准分派决策](../decisions/D-09-D-10-D-23-task-dispatch.md)，迁移 `1790640000002` 允许 audit_logs.actor 为 NULL，但 CHECK 限制仅 `tasks.assignment_released` / `tasks.auto_dispatched` 且 `detail.executor="task-worker"`、`ip="system"`；人工事件继续记录真实用户外键，追加约束和角色权限不变。已有空 actor 审计时 down 拒绝，不删除历史或补造操作者；应用回退可保留兼容 schema 后向前修复。
