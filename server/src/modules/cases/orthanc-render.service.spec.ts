@@ -58,3 +58,26 @@ describe('Orthanc internal frame renderer', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 });
+
+describe('authorized series frame mapping', () => {
+  const uid = '2.25.123';
+  const other = 'aaaaaaaa-bbbbbbbb-cccccccc-dddddddd-eeeeeeee';
+  it('maps a flattened index to the selected instance frame', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ MainDicomTags: { SeriesInstanceUID: uid }, Instances: [instance, other] }))
+      .mockResolvedValueOnce(Response.json({ Slices: [`/instances/${instance}/frames/0`, `/instances/${other}/frames/3`] }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await new OrthancService().resolveSeriesFrame(instance, uid, 1, 2)).toEqual({ instance_id: other, frame_index: 3 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it.each(['https://private/raw', `/instances/${other}/frames/0`, `/instances/${instance}/file`, `/instances/${instance}/frames/-1`])('rejects foreign or non-frame mapping %s', slice => {
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ MainDicomTags: { SeriesInstanceUID: uid }, Instances: [instance] }))
+      .mockResolvedValueOnce(Response.json({ Slices: [slice] }));
+    vi.stubGlobal('fetch', fetch);
+    return expect(new OrthancService().resolveSeriesFrame(instance, uid, 0, 1)).rejects.toThrow('序列帧映射不可用');
+  });
+  it('rejects a changed frame total', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ MainDicomTags: { SeriesInstanceUID: uid }, Instances: [instance] }))
+      .mockResolvedValueOnce(Response.json({ Slices: [] })));
+    await expect(new OrthancService().resolveSeriesFrame(instance, uid, 0, 1)).rejects.toThrow('序列帧映射不可用');
+  });
+});

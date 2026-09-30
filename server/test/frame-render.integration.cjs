@@ -38,6 +38,11 @@ async function request(route, options = {}) {
     }) })).json();
     assert.match(created.ID, /^[0-9a-f]{8}(?:-[0-9a-f]{8}){4}$/); instance = created.ID;
     const service = new OrthancService();
+    const instanceInfo = await (await request(`/instances/${instance}`)).json();
+    const seriesInfo = await (await request(`/series/${instanceInfo.ParentSeries}`)).json();
+    const resolved = await service.resolveSeriesFrame(instanceInfo.ParentSeries, seriesInfo.MainDicomTags.SeriesInstanceUID, 0, 1);
+    assert.deepEqual(resolved, { instance_id: instance, frame_index: 0 });
+    await assert.rejects(service.resolveSeriesFrame(instanceInfo.ParentSeries, '2.25.999', 0, 1), /序列帧映射不可用/);
     // Internal composition only: synthetic bearer/IDs are not a public authorization test.
     process.env.FRAME_TOKEN_SECRET = randomBytes(32).toString('hex');
     process.env.JWT_SECRET = randomBytes(32).toString('hex');

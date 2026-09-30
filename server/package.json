@@ -18,6 +18,7 @@
     "auth:reset-mfa": "ts-node src/modules/users/reset-admin-mfa.ts",
     "test:case-entry:integration": "npm run build && node test/case-entry.integration.cjs",
     "test:tasks:integration": "npm run build && node test/tasks.integration.cjs",
+    "test:frames:api": "npm run build && node test/frame-api.integration.cjs",
     "test:frames:render": "npm run build && node test/frame-render.integration.cjs"
   },
   "dependencies": {
