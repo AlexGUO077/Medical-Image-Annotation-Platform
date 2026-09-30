@@ -107,7 +107,7 @@ describe('TaxonomyService', () => {
 
   it('rejects deletion when a node has children or business references', async () => {
     const manager = {
-      query: vi.fn()
+      query: vi.fn().mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ id: partId, parent_id: rootId, level: 2, name: '合成部位', synonyms: [], icd: null }])
         .mockResolvedValueOnce([{ has_children: true, used_by_cases: false, used_by_annotations: false }]),
     };
@@ -115,7 +115,7 @@ describe('TaxonomyService', () => {
 
     await expect(new TaxonomyService(dataSource as never).deleteNode(admin, partId, '127.0.0.1'))
       .rejects.toBeInstanceOf(ConflictException);
-    expect(manager.query).toHaveBeenCalledTimes(2);
+    expect(manager.query).toHaveBeenCalledTimes(3);
   });
 
   it('rejects management pagination above 100 before querying', async () => {
@@ -138,7 +138,7 @@ describe('TaxonomyService', () => {
   it('rejects deleting a sign that is referenced by an annotation', async () => {
     const signId = '20000000-0000-4000-8000-000000000001';
     const manager = {
-      query: vi.fn()
+      query: vi.fn().mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ id: signId, name: '合成征象', system_code: 'resp', definition: '仅用于合成验证' }])
         .mockResolvedValueOnce([{ used: true }]),
     };
@@ -146,6 +146,6 @@ describe('TaxonomyService', () => {
 
     await expect(new TaxonomyService(dataSource as never).deleteSignTag(admin, signId, '127.0.0.1'))
       .rejects.toBeInstanceOf(ConflictException);
-    expect(manager.query).toHaveBeenCalledTimes(2);
+    expect(manager.query).toHaveBeenCalledTimes(3);
   });
 });

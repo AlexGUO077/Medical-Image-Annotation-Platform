@@ -18,6 +18,7 @@ const { createClient } = require('redis');
 const { Test } = require('@nestjs/testing');
 const { JwtService } = require('@nestjs/jwt');
 const { WorkbenchModule } = require('../dist/modules/workbench/workbench.module');
+const { AnnotationsModule } = require('../dist/modules/annotations/annotations.module');
 const { FramesModule } = require('../dist/modules/frames/frames.module');
 const { FrameRateService } = require('../dist/modules/frames/frame-rate.service');
 const { AuditService } = require('../dist/modules/audit/audit.service');
@@ -51,12 +52,14 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
       database: connection.database, schema, extra: { options: `-c search_path=${schema}` }, synchronize: false, logging: false,
       migrations: [path.resolve(__dirname, '../dist/database/migrations/*.js')] });
     await db.initialize(); await db.runMigrations();
+    // The new version migration must round-trip before any annotation saves exist.
+    await db.undoLastMigration(); await db.runMigrations();
     // Supply globals explicitly for this isolated Nest module graph.
     const { Global, Module } = require('@nestjs/common');
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule] }).overrideProvider(OrthancService).useValue(upstream).compile();
+    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule] }).overrideProvider(OrthancService).useValue(upstream).compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
     await app.listen(0, '127.0.0.1'); const base = await app.getUrl();
     const fresh = async id => (await db.query('SELECT *,expire_at::text FROM users WHERE id=$1', [id]))[0];
@@ -77,6 +80,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     const issue = (body = payload, auth = token) => fetch(`${base}/api/frames/ticket`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, body: JSON.stringify(body) });
     const get = (url, auth = token) => fetch(`${base}${url}`, { headers: auth ? { Authorization: `Bearer ${auth}` } : {} });
     await require('./workbench.assertions.cjs')({ db, get, caseId, actor, assignment, taskId, seriesId, studyId, otherToken, adminToken });
+    await require('./annotations.assertions.cjs')({ db, base, get, caseId, actor, assignment, taskId, seriesId, token, otherToken, adminToken });
     const ticket = async (auth = token) => { const response = await issue(payload, auth); assert.equal(response.status, 201); return response.json(); };
     assert.equal((await issue(payload, '')).status, 401);
     assert.equal((await issue(payload, otherToken)).status, 403);

@@ -1,0 +1,27 @@
+# 标注版本化保存（本地切片）
+
+源手册 §4-9、§5.2/§5.3、§7.4/§7.5；[D-05～D-08 已批准决定](../decisions/D-05-D-08-annotation-storage.md)。仅开放 synthetic 病例的本人有效标注分派，不开放管理员旁路或提交/审核权限。本切片不改页面布局。
+
+## 保存与读取
+
+`PUT /api/cases/{id}/annotations` 接收 `{expected_version,annotations:[...]}`，全量替换当前对象集合，成功返回 `{version,annotations}`。首次 expected_version=0；以后使用上次读取版本。相同旧版本的并发请求只允许一个成功，其余 409；重试先重新读取，不自动覆盖。空数组也增加版本，表示当前无对象，不删除旧版本。
+
+对象字段：`id`（跨版本稳定 UUID，首次可省略，由服务端生成并返回）、`series_id`、`tool`（box/point/polygon/brush）、`geometry`、`frame_start/frame_end/key_frame_index`、`window_preset`（CT 必须非空）、`part_id`、`sign_tag_ids`（至少一个）、`confidence`、`report_sent_ids`。API 返回置信度 typical/atypical，与手册请求例一致；写入兼容 typical/atypical 或现有数据库的典型/不典型。版本、操作者、任务和金标准状态由服务端决定，不接受客户端覆盖；不接收尚未核验物理标定的 measurements。
+
+`GET /api/cases/{id}/annotations` 返回 `{version,current_version,annotations}`；可用 `?version=N` 读取历史，包括已记录的空版本。缺失版本 404；权限失效后不能继续读历史。返回稳定对象 ID，不暴露内部版本行 ID。已有工作台返回结构暂不改变，由后续标注工具接入这些接口。
+
+## 几何与引用
+
+- box `{x,y,w,h}`、point `{x,y}`、polygon `{points:[[x,y],...]}`；兼容可选 `type`，必须与工具相同，存储时归一化。坐标非负有限数，矩形有面积，多边形至少三个不同顶点。图像空间变换接入及实际 DICOM 宽高边界核验仍是后续工具切片要求，本接口不能证明客户端所传坐标已经正确映射。
+- brush `{rle,width,height,frames?:[{frame_index,rle,width,height}]}`；本体属于代表帧，frames 仅保存其他补充帧，索引唯一、在起止范围内、尺寸一致。RLE 规则见[基础逻辑](annotation-primitives.md)，服务端只验证行程，不按输入分配像素数组。
+- 序列必须属于本病例，起止范围不能超过序列帧数，代表帧必须在范围内；单帧自然限定为 0。
+- 部位必须为当前系统下有效二级节点；征象为当前系统有效征象。沿用已批准的标签管理能力，不新增标签审批规则。读取历史保留当时的标识与关联，不用当前字典重新生成旧几何或旧标签集合。
+- `report_sent_ids` 的非负句号必须存在于本病例当前报告；`[-1]` 仅表示用户显式选定“报告未提及”，禁止与实际句号混用；`[]` 是未关联草稿，不表示豁免。本切片尚不执行提交完整性判断。
+
+## 事务与历史
+
+用户 → 任务 → 病例行锁顺序与分派回收一致；保存及历史读取实时复核账号、资格、期限、会话版本、分派、病例/任务状态及脱敏确认。保存结束前再次核对资格和期限。病例行锁串行化整体版本；新版本创建新的 annotation_objects/annotation_tags 行，保留旧行及旧征象关联。cases.annotation_version 支持空版本，logical_id 支持跨版本比较，不新增历史表。
+
+版本推进、对象/关联和 annotations.saved 审计在同一事务；审计失败整体回滚。审计仅存版本和对象数量，不复制全量几何与报告。当前金标准锁定时拒绝保存。读写响应 no-store, private。请求体沿用服务器现有大小限制，本切片不新增对象数量或业务配额。
+
+迁移回填已有对象行的当前版本、稳定标识及代表帧；新系统此前尚未提供标注写入。已使用新保存接口后，不通过 down 丢弃版本身份或空版本状态；回滚须使用兼容版本及备份。真实数据库迁移验证只在独立合成 schema 中运行。

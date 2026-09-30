@@ -194,6 +194,7 @@ export class TaxonomyService {
   async deleteNode(actor: AuthUser, idValue: unknown, ip: string) {
     const id = this.uuid(idValue, 'id');
     return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT id FROM taxonomy_nodes WHERE id=$1 FOR UPDATE', [id]);
       const existing = await this.findNode(manager, id, '标签节点不存在');
       if (existing.level === 1) throw new ForbiddenException('系统根节点不可删除');
       const refs = await manager.query(
@@ -263,6 +264,7 @@ export class TaxonomyService {
   async deleteSignTag(actor: AuthUser, idValue: unknown, ip: string) {
     const id = this.uuid(idValue, 'id');
     return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT id FROM sign_tags WHERE id=$1 FOR UPDATE', [id]);
       const existing = await this.findSignTag(manager, id);
       const refs = await manager.query(
         `SELECT EXISTS(
