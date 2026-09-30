@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Alert, Button } from 'antd';
+import { allowAccountDrafts, clearAccountDrafts, draftAccountId } from '../annotations/drafts';
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import type { Session } from '../auth/types';
@@ -21,19 +23,36 @@ interface AppProps {
 
 function AppRoutes({ initialSession }: { initialSession?: Session }) {
   const [session, setSession] = useState<Session | null>(initialSession ?? null);
+  const [cleanupFailed, setCleanupFailed] = useState<string>();
+  const cleanup = useRef<Promise<void>>(Promise.resolve());
+  const clearDrafts = (accountId: string) => {
+    cleanup.current = clearAccountDrafts(accountId).then(() => setCleanupFailed(undefined), () => setCleanupFailed(accountId));
+  };
+  const logout = () => {
+    const accountId = session && draftAccountId(session.token);
+    if (accountId) clearDrafts(accountId);
+    setSession(null);
+  };
+  const authenticated = async (next: Session) => {
+    await cleanup.current;
+    const accountId = draftAccountId(next.token);
+    if (accountId) allowAccountDrafts(accountId);
+    setSession(next);
+  };
   return (
     <ThemeBoundary>
+      {cleanupFailed && <Alert type="error" message="上次退出时，本机标注草稿清理失败" action={<Button onClick={() => { if (session && draftAccountId(session.token) === cleanupFailed) setSession(null); clearDrafts(cleanupFailed); }}>重试清理（当前账号会退出）</Button>} />}
       <Routes>
         <Route path="/login" element={session
           ? <Navigate replace to="/tasks" />
-          : <LoginPage onAuthenticated={setSession} />} />
+          : <LoginPage onAuthenticated={authenticated} />} />
         {appRoutes.filter((route) => route.path !== '/login').map((route) => (
           <Route key={route.path} path={route.path} element={session
             ? (
               ['/admin', '/cases/import', '/cases/:id'].includes(route.path) && session.role !== 'admin'
                 ? <Navigate replace to="/tasks" />
                 : (
-                  <AuthenticatedLayout session={session} onLogout={() => setSession(null)}>
+                  <AuthenticatedLayout session={session} onLogout={logout}>
                     {route.path === '/workbench/:caseId'
                       ? <WorkbenchPage key={session.token} session={session} />
                       : route.path === '/tasks'

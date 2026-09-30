@@ -2,12 +2,15 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { clearAccountDrafts } from '../annotations/drafts';
+vi.mock('../annotations/drafts', async importOriginal => ({ ...await importOriginal<typeof import('../annotations/drafts')>(), clearAccountDrafts: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../viewer/api', () => ({ viewerApi: { workbench: vi.fn().mockRejectedValue(new Error('工作台病例不可访问')) } }));
 import { viewerApi } from '../viewer/api';
 import { tasksApi } from '../tasks/api';
 vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
 
 beforeEach(() => {
+  vi.mocked(clearAccountDrafts).mockReset().mockResolvedValue(undefined);
   vi.mocked(viewerApi.workbench).mockRejectedValue(new Error('工作台病例不可访问'));
   for (const api of [tasksApi.list, tasksApi.mine, tasksApi.pool]) vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
 });
@@ -129,4 +132,22 @@ describe('App', () => {
       expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'light');
     },
   );
+});
+
+const draftAccount='12345678-1234-4234-8234-123456789abc';
+const draftSession={...session,token:`e30.${btoa(JSON.stringify({sub:draftAccount}))}.signature`};
+it('clears only the signed-in account drafts when logging out',async()=>{
+ render(<App initialEntries={['/library']} initialSession={draftSession}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'退出登录'}));
+ expect(clearAccountDrafts).toHaveBeenCalledWith(draftAccount);
+ expect(await screen.findByLabelText('用户名')).toBeInTheDocument();
+});
+it('still exits the session and reports failed local draft cleanup with retry',async()=>{
+ vi.mocked(clearAccountDrafts).mockRejectedValueOnce(new Error('disk unavailable'));
+ render(<App initialEntries={['/library']} initialSession={draftSession}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'退出登录'}));
+ expect(await screen.findByLabelText('用户名')).toBeInTheDocument();
+ expect(await screen.findByText('上次退出时，本机标注草稿清理失败')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'重试清理（当前账号会退出）'}));
+ expect(clearAccountDrafts).toHaveBeenCalledTimes(2);
 });
