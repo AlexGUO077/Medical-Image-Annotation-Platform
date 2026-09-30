@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { cleanup, fireEvent, render as baseRender, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tasksApi, type QueueCase } from '../tasks/api';
 import { MemberTasksPanel } from './MemberTasksPanel';
@@ -38,3 +40,5 @@ describe('member task pool', () => {
     expect(tasksApi.pool).toHaveBeenCalledWith('new', 1, expect.any(AbortSignal));
   });
 });
+
+function render(ui: ReactElement) { return baseRender(ui, { wrapper: MemoryRouter }); }

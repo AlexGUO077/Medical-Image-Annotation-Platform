@@ -1,11 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+vi.mock('../viewer/api', () => ({ viewerApi: { workbench: vi.fn().mockRejectedValue(new Error('工作台病例不可访问')) } }));
+import { viewerApi } from '../viewer/api';
 import { tasksApi } from '../tasks/api';
 vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
 
 beforeEach(() => {
+  vi.mocked(viewerApi.workbench).mockRejectedValue(new Error('工作台病例不可访问'));
   for (const api of [tasksApi.list, tasksApi.mine, tasksApi.pool]) vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
 });
 
@@ -23,7 +26,6 @@ describe('App', () => {
   it.each([
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
-    ['/workbench/synthetic-case', '标注工作台'],
     ['/review/synthetic-case', '审核台'],
   ])('renders a neutral module placeholder for %s', async (path, label) => {
     render(<App initialEntries={[path]} initialSession={session} />);
@@ -31,6 +33,15 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
     expect(screen.getByText('该模块将在对应工作包实现')).toBeInTheDocument();
     expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
+  });
+
+  it('enters a member workbench through client navigation without losing the session', async () => {
+    vi.mocked(tasksApi.mine).mockResolvedValue({ items: [{ task_id: 'task', task_name: '合成任务', priority: 0, source: 'synthetic', system_code: 'resp', review_mode: 'peer', case_id: 'case', case_no: 'SYN-ASSIGNED', status: '标注中' }], total: 1, page: 1, pageSize: 20 });
+    render(<App initialEntries={['/tasks']} initialSession={{ ...session, role: 'member' }} />);
+    fireEvent.click(await screen.findByRole('link', { name: '进入工作台' }));
+    expect(await screen.findByText('工作台病例不可访问')).toBeInTheDocument();
+    expect(viewerApi.workbench).toHaveBeenCalledWith('case', session.token, expect.any(AbortSignal));
+    expect(screen.queryByLabelText('用户名')).not.toBeInTheDocument();
   });
 
   it('renders the administrator task workflow', async () => {
@@ -87,15 +98,14 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: '病例与临床信息' })).not.toBeInTheDocument();
   });
 
-  it('uses the dark workbench theme without presenting business state', () => {
+  it('uses the dark workbench theme and reports denied access', async () => {
     render(<App initialEntries={['/workbench/synthetic-case']} initialSession={session} />);
 
     expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'dark');
-    expect(screen.queryByText(/患者|权限|状态|数量/)).not.toBeInTheDocument();
+    expect(await screen.findByText('工作台病例不可访问')).toBeInTheDocument();
   });
 
   it.each([
-    ['/workbench/synthetic-case/', '标注工作台'],
     ['/review/synthetic-case/', '审核台'],
   ])('uses the dark theme for valid trailing-slash route %s', async (path, label) => {
     render(<App initialEntries={[path]} initialSession={session} />);
