@@ -4,13 +4,14 @@ import type { AuthUser } from '../auth/auth.models';
 import { PermissionService } from '../auth/permission.service';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import { accountAvailable } from '../tasks/assignment-release';
+import { OrthancService } from '../cases/orthanc.service';
 import { parseAnnotations, integer, uuid, REPORT_NOT_MENTIONED, type AnnotationInput } from './annotation-input';
 
 const ROOT_NAMES: Record<string, string> = { cns:'中枢神经系统', headneck:'头颈', resp:'呼吸', circ:'循环', digest:'消化', uro:'泌尿', repro:'生殖', bone:'骨骼' };
 interface Context { user: AuthUser; item: { id: string; system_code: string; annotation_version: number }; taskId: string }
 @Injectable()
 export class AnnotationsService {
-  constructor(@Inject(DATABASE_SOURCE) private readonly db: DataSource) {}
+  constructor(@Inject(DATABASE_SOURCE) private readonly db: DataSource, private readonly orthanc: OrthancService) {}
 
   async save(actor: AuthUser, caseId: string, body: unknown, ip: string) {
     const id = uuid(caseId), input = parseAnnotations(body);
@@ -81,10 +82,10 @@ export class AnnotationsService {
 
   private async validateReferences(manager: EntityManager, context: Context, annotations: AnnotationInput[]) {
     const seriesIds = [...new Set(annotations.map(a => a.series_id))].sort();
-    const series = await manager.query(`SELECT s.id,s.modality,s.frame_count FROM series s JOIN studies st ON st.id=s.study_id
+    const series = await manager.query(`SELECT s.id,s.modality,s.frame_count,s.orthanc_id,s.series_uid FROM series s JOIN studies st ON st.id=s.study_id
       WHERE st.case_id=$1 AND st.deleted_at IS NULL AND s.deleted_at IS NULL AND s.id=ANY($2::uuid[])
-      ORDER BY s.id FOR SHARE OF s,st`, [context.item.id,seriesIds]) as { id:string; modality:string; frame_count:number }[];
-    const partIds = [...new Set(annotations.map(a => a.part_id))].sort();
+      ORDER BY s.id FOR SHARE OF s,st`, [context.item.id,seriesIds]) as { id:string; modality:string; frame_count:number; orthanc_id:string; series_uid:string }[];
+    const partIds = [...new Set(annotations.flatMap(a => a.part_id ? [a.part_id] : []))].sort();
     const parts = await manager.query(`SELECT n.id FROM taxonomy_nodes n JOIN taxonomy_nodes root ON root.id=n.parent_id
       WHERE n.id=ANY($1::uuid[]) AND n.level=2 AND n.deleted_at IS NULL AND root.level=1
         AND root.deleted_at IS NULL AND root.name=$2 ORDER BY n.id FOR SHARE OF n`, [partIds,ROOT_NAMES[context.item.system_code]]) as { id:string }[];
@@ -94,10 +95,27 @@ export class AnnotationsService {
     if (series.length !== seriesIds.length || parts.length !== partIds.length || signs.length !== signIds.length) throw new BadRequestException('序列、部位或征象不属于当前病例系统或已失效');
     const [report] = await manager.query('SELECT sentences FROM reports WHERE case_id=$1 AND deleted_at IS NULL FOR SHARE', [context.item.id]) as { sentences:{ idx:number }[] }[];
     const sentenceIds = new Set((report?.sentences ?? []).map(s => s.idx));
+    const dimensions = new Map<string, Awaited<ReturnType<OrthancService['frameGeometry']>>>();
     for (const item of annotations) {
       const source = series.find(s => s.id === item.series_id)!;
       if (item.frame_end >= source.frame_count) throw new BadRequestException('标注帧超出序列范围');
       if (source.modality === 'CT' && !item.window_preset) throw new BadRequestException('CT 标注必须记录窗预设');
+      const frames = [item.key_frame_index, ...((item.geometry.frames ?? []) as {frame_index:number}[]).map(f=>f.frame_index)];
+      for (const frame of frames) {
+        const cacheKey = `${source.id}:${frame}`;
+        let size = dimensions.get(cacheKey);
+        if (!size) {
+          const resolved = await this.orthanc.resolveSeriesFrame(source.orthanc_id,source.series_uid,frame,source.frame_count);
+          size = await this.orthanc.frameGeometry(resolved.instance_id,resolved.frame_index);dimensions.set(cacheKey,size);
+        }
+        const g = item.geometry;
+        const inside=(x:unknown,y:unknown)=>typeof x==='number'&&typeof y==='number'&&x>=0&&y>=0&&x<size!.width&&y<size!.height;
+        if (item.tool==='brush' ? g.width!==size.width||g.height!==size.height :
+            item.tool==='polygon' ? (g.points as number[][]).some(p=>!inside(p[0],p[1])) :
+            !inside(g.x,g.y)||(item.tool==='box'&&((g.x as number)+(g.w as number)>size.width||(g.y as number)+(g.h as number)>size.height))) {
+          throw new BadRequestException('标注几何超出 DICOM 尺寸或掩膜尺寸不一致');
+        }
+      }
       if (item.report_sent_ids.some(v => v !== REPORT_NOT_MENTIONED && !sentenceIds.has(v))) throw new BadRequestException('关联报告句号不存在');
     }
   }
@@ -108,7 +126,7 @@ export class AnnotationsService {
       COALESCE((SELECT jsonb_agg(t.sign_tag_id ORDER BY t.sign_tag_id) FROM annotation_tags t
         WHERE t.annotation_id=a.id AND t.deleted_at IS NULL),'[]'::jsonb) AS sign_tag_ids
       FROM annotation_objects a WHERE a.case_id=$1 AND a.version=$2 AND a.deleted_at IS NULL ORDER BY a.logical_id`, [id,version]);
-    return rows.map((row: { confidence: string }) => ({ ...row, confidence: row.confidence === '典型' ? 'typical' : 'atypical' }));
+    return rows.map((row: { confidence: string | null }) => ({ ...row, confidence: row.confidence === null ? null : row.confidence === '典型' ? 'typical' : 'atypical' }));
   }
   private async audit(manager: EntityManager, actor: string, action: string, caseId: string, detail: Record<string,unknown>, ip: string) {
     await manager.query('INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,$2,$3,$4::jsonb,$5)', [actor,action,`cases:${caseId}`,JSON.stringify(detail),ip]);

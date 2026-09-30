@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import sharp from 'sharp';
 import type { DataSource, EntityManager } from 'typeorm';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import type { AuthUser } from '../auth/auth.models';
@@ -38,7 +39,7 @@ export class FramesService {
     return result;
   }
 
-  async read(actor: AuthUser, bearer: string, token: string, ip: string): Promise<Buffer> {
+  async read(actor: AuthUser, bearer: string, token: string, ip: string) {
     this.rate.configuration();
     const target = this.tickets().verify(token, this.session(actor, bearer));
     const admitted = await this.authorized(actor, target, async (manager, current, series) => {
@@ -46,7 +47,10 @@ export class FramesService {
     });
     if (!admitted) throw new HttpException('帧请求超限，账号已停用，请联系管理员复核', 429);
     const resolved = await this.orthanc.resolveSeriesFrame(admitted.orthanc_id, target.series_uid, target.frame_index, admitted.frame_count);
+    const geometry = await this.orthanc.frameGeometry(resolved.instance_id, resolved.frame_index);
     const rendered = await this.cache.render({ ...target, ...resolved });
+    const dimensions = await sharp(rendered).metadata();
+    if (dimensions.width !== geometry.width || dimensions.height !== geometry.height) throw new ServiceUnavailableException('渲染尺寸与 DICOM 坐标不一致');
     let marked: Buffer;
     try { marked = await watermarkFrame(rendered, actor); }
     catch { throw new ServiceUnavailableException('帧水印不可用'); }
@@ -58,7 +62,7 @@ export class FramesService {
       }
       await this.audit(manager, current, 'frames.viewed', target, series, ip);
     });
-    return marked;
+    return { bytes: marked, geometry };
   }
 
   private async authorized<T>(actor: AuthUser, target: FrameTarget,

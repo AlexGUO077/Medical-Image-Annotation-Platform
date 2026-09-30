@@ -54,7 +54,7 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                 : (
                   <AuthenticatedLayout session={session} onLogout={logout}>
                     {route.path === '/workbench/:caseId'
-                      ? <WorkbenchPage key={session.token} session={session} />
+                      ? <WorkbenchPage key={session.token} session={session} onExpired={() => setSession(null)} />
                       : route.path === '/tasks'
                       ? <TasksPage session={session} />
                       : route.path === '/admin'

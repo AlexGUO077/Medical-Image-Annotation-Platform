@@ -4,11 +4,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { WorkbenchPage } from './WorkbenchPage';
 import { viewerApi, type Workbench } from '../viewer/api';
 import { mountFrame } from '../viewer/cornerstone';
-vi.mock('../viewer/api', () => ({ viewerApi: { workbench: vi.fn() } }));
+vi.mock('../viewer/api', async original => ({...await original<typeof import('../viewer/api')>(),viewerApi:{workbench:vi.fn(),clearPreloads:vi.fn()}}));
 vi.mock('../viewer/cornerstone', () => ({ mountFrame: vi.fn() }));
 const data: Workbench = { case: { id: 'case', case_no: 'SYN-WORKBENCH', source: 'synthetic', system_code: 'resp', status: '标注中', clinical_text: null, age_band: null, sex: null, confirm_method: '临床综合诊断' }, series: [{ id: 'series', series_uid: '2.25.1', modality: 'CT', frame_count: 300, default_window: { center: 40, width: 400 } }], sentences: [{ idx: 0, text: '合成报告句子' }], attachments: [] };
 const session = { token: 'synthetic-token', role: 'member' as const, quals: { resp: ['annotate' as const] } };
-const controls = { zoom: vi.fn(), pan: vi.fn(), reset: vi.fn(), dispose: vi.fn() };
+const controls = { geometry:{width:640,height:480,row_spacing:1,column_spacing:1},toCanvas:(x:number,y:number):[number,number]=>[x,y],toImage:(x:number,y:number):[number,number]=>[x,y],subscribe:()=>()=>{}, zoom: vi.fn(), pan: vi.fn(), reset: vi.fn(), dispose: vi.fn() };
 beforeEach(() => {
   vi.mocked(viewerApi.workbench).mockResolvedValue(data);
   vi.mocked(mountFrame).mockResolvedValue(controls);

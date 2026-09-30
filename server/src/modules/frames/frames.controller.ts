@@ -21,7 +21,8 @@ export class FramesController {
     response.set({ 'Cache-Control': 'no-store, private', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
     if (Object.keys(query).length) throw new BadRequestException('帧接口不接受查询参数');
     if (!request.user) throw new Error('Authenticated user missing');
-    const bytes = await this.frames.read(request.user, this.bearer(request), token, request.ip ?? 'unknown');
+    const { bytes, geometry } = await this.frames.read(request.user, this.bearer(request), token, request.ip ?? 'unknown');
+    response.set('X-Frame-Geometry', JSON.stringify(geometry));
     response.type('image/png').send(bytes);
   }
   private bearer(request: AuthenticatedRequest) { return request.headers.authorization!.match(/^Bearer (\S+)$/)![1]!; }

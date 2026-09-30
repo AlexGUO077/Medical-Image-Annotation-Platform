@@ -3,6 +3,7 @@ import type { AnnotationDraft, DraftStore } from './drafts';
 import { annotationPayload, type Annotation, type AnnotationRead, type AnnotationVersion } from './types';
 export type SaveStatus = 'loading'|'saved'|'dirty'|'saving'|'offline'|'conflict'|'blocked'|'error';
 export interface SaveState {
+  checking:boolean; initialized:boolean;
   status:SaveStatus; version:number; annotations:Annotation[]; dirty:boolean;
   error?:string; storageError?:string; savedAt?:number; server?:AnnotationRead;
 }
@@ -12,7 +13,7 @@ export interface SaveTransport {
 }
 /** One case/session instance. Persistence contains annotations only; bearer credentials stay in its transport closure. */
 export class AnnotationSaveSession {
-  private state:SaveState={status:'loading',version:0,annotations:[],dirty:false};
+  private state:Omit<SaveState,'checking'|'initialized'>={status:'loading',version:0,annotations:[],dirty:false};
   private controller=new AbortController();
   private timer?:ReturnType<typeof setTimeout>;
   private pending?:Promise<void>;
@@ -25,7 +26,7 @@ export class AnnotationSaveSession {
   private checking=false;
   private immediate=false;
   constructor(private transport:SaveTransport,private store:DraftStore,private notify:(state:SaveState)=>void) {}
-  snapshot():SaveState {return structuredClone(this.state);}
+  snapshot():SaveState {return structuredClone({...this.state,checking:this.checking,initialized:this.loaded});}
   private publish() {if(!this.disposed)this.notify(this.snapshot());}
   private cancelTimer(){clearTimeout(this.timer);this.timer=undefined;}
   private persist(draft?:AnnotationDraft) {
@@ -39,7 +40,7 @@ export class AnnotationSaveSession {
   }
   async start():Promise<void> {
     if(this.loaded||this.checking||this.disposed)return;
-    this.checking=true;
+    this.checking=true;this.publish();
     try {
       // Do not expose a persisted case draft until current account/assignment checks succeed.
       const server=await this.transport.read(this.controller.signal);
@@ -78,7 +79,7 @@ export class AnnotationSaveSession {
         const result=await this.transport.save(version,annotations,this.controller.signal);
         if(this.disposed)return;
         this.state.version=result.version;this.state.error=undefined;this.state.savedAt=Date.now();
-        if(this.revision===revision){this.state.annotations=annotationPayload(result.annotations);this.state.dirty=false;this.persist();}
+        if(this.revision===revision){this.state.annotations=annotationPayload(annotations.map(a=>result.annotations.find(saved=>saved.id===a.id)??a));this.state.dirty=false;this.persist();}
         else this.keepDraft();
         this.state.status=!this.online?'offline':this.state.dirty?'dirty':'saved';
       }catch(error){if(!this.disposed)this.fail(error);}
@@ -102,7 +103,7 @@ export class AnnotationSaveSession {
   async recover():Promise<void> {
     if(this.disposed||this.checking||!this.online)return;
     if(!this.loaded){await this.start();return;}
-    this.checking=true;this.cancelTimer();
+    this.checking=true;this.cancelTimer();this.publish();
     try {
       await this.pending;
       if(this.disposed)return;
@@ -118,7 +119,7 @@ export class AnnotationSaveSession {
   /** Explicit discard only; always fetch again rather than trusting an earlier conflict preview. */
   async useServer():Promise<void> {
     if(this.disposed||this.checking||!this.online)return;
-    this.checking=true;this.cancelTimer();
+    this.checking=true;this.cancelTimer();this.publish();
     try{
       await this.pending;
       if(this.disposed)return;

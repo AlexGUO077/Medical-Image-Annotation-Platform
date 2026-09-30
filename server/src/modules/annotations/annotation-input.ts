@@ -6,8 +6,8 @@ export type AnnotationTool = 'box' | 'point' | 'polygon' | 'brush';
 export interface AnnotationInput {
   id: string; series_id: string; tool: AnnotationTool; geometry: Record<string, unknown>;
   frame_start: number; frame_end: number; key_frame_index: number;
-  window_preset: string | null; part_id: string; sign_tag_ids: string[];
-  confidence: '典型' | '不典型'; report_sent_ids: number[];
+  window_preset: string | null; part_id: string | null; sign_tag_ids: string[];
+  confidence: '典型' | '不典型' | null; report_sent_ids: number[];
 }
 function invalid(message: string): never { throw new BadRequestException(message); }
 export function object(value: unknown, keys: string[]): Record<string, unknown> {
@@ -88,19 +88,19 @@ export function parseAnnotations(body: unknown): { expected_version: number; ann
     const tool = item.tool as AnnotationTool;
     const start = integer(item.frame_start), end = integer(item.frame_end), key = integer(item.key_frame_index);
     if (end < start || key < start || key > end) invalid('代表帧或起止范围无效');
-    if (!Array.isArray(item.sign_tag_ids) || !item.sign_tag_ids.length) invalid('标注至少需要一个征象');
+    if (!Array.isArray(item.sign_tag_ids)) invalid('征象必须为数组');
     const signs = item.sign_tag_ids.map(uuid);
     if (new Set(signs).size !== signs.length) invalid('征象不能重复');
     if (!Array.isArray(item.report_sent_ids)) invalid('报告句号必须为数组');
     const sentences = item.report_sent_ids.map(v => v === REPORT_NOT_MENTIONED ? v : integer(v));
     if (new Set(sentences).size !== sentences.length || (sentences.includes(REPORT_NOT_MENTIONED) && sentences.length !== 1)) invalid('报告未提及不能与句号混用，句号不能重复');
     const confidence = item.confidence === 'typical' ? '典型' : item.confidence === 'atypical' ? '不典型' : item.confidence;
-    if (confidence !== '典型' && confidence !== '不典型') invalid('置信度无效');
+    if (confidence !== null && confidence !== '典型' && confidence !== '不典型') invalid('置信度无效');
     if (item.window_preset !== undefined && item.window_preset !== null && (typeof item.window_preset !== 'string' || !item.window_preset.trim())) invalid('窗预设无效');
     return { id: item.id === undefined ? randomUUID() : uuid(item.id), series_id: uuid(item.series_id), tool,
       geometry: geometry(tool, item.geometry, start, end, key), frame_start: start, frame_end: end, key_frame_index: key,
       window_preset: typeof item.window_preset === 'string' ? item.window_preset.trim() : null,
-      part_id: uuid(item.part_id), sign_tag_ids: signs, confidence, report_sent_ids: sentences } as AnnotationInput;
+      part_id: item.part_id === null ? null : uuid(item.part_id), sign_tag_ids: signs, confidence, report_sent_ids: sentences } as AnnotationInput;
   });
   if (new Set(annotations.map(a => a.id)).size !== annotations.length) invalid('对象标识不能重复');
   return { expected_version, annotations };

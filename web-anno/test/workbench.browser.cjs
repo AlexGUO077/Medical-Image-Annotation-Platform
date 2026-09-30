@@ -15,9 +15,10 @@ const sharp = require(repo+'/node_modules/sharp');
  await page.route('**/api/**',async route=>{
  const req=route.request(), url=new URL(req.url());
  assert.equal(req.headers()['authorization'],'Bearer synthetic-test');
+ if(url.pathname==='/api/taxonomy/tree')return route.fulfill({json:{tree:[],sign_tags:[]}});
  if(url.pathname==='/api/workbench/case') return route.fulfill({json:{case:{id:'case',case_no:'SYN-BROWSER',source:'synthetic',status:'标注中',system_code:'resp',confirm_method:'临床综合诊断'},series:[{id:'s',series_uid:'2.25.1',modality:'CT',frame_count:300,default_window:{center:40,width:400}}],sentences:[{idx:0,text:'合成报告：用于本地浏览器阅片验证。'}],attachments:[]}});
- if(url.pathname==='/api/frames/ticket')return route.fulfill({json:{url:'/api/frames/a.b.c'}});
- if(url.pathname==='/api/frames/a.b.c'){if(denyReads)return route.fulfill({status:429,json:{message:'合成账号已停用'}});frames++;return route.fulfill({contentType:'image/png',body:png});}
+ if(url.pathname==='/api/frames/ticket')return denyReads?route.fulfill({status:429,json:{message:'合成账号已停用'}}):route.fulfill({json:{url:'/api/frames/a.b.c'}});
+ if(url.pathname==='/api/frames/a.b.c'){if(denyReads)return route.fulfill({status:429,json:{message:'合成账号已停用'}});frames++;return route.fulfill({contentType:'image/png',headers:{'X-Frame-Geometry':JSON.stringify({width:640,height:480,row_spacing:1,column_spacing:1})},body:png});}
  return route.fulfill({json:{items:[],total:0,page:1,pageSize:20}});
  });
  await page.route('**/workbench-smoke', route => route.fulfill({contentType:'text/html', body:`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
@@ -45,7 +46,7 @@ const sharp = require(repo+'/node_modules/sharp');
  await page.screenshot({path:path.join(output,'three-panels.png')});
  await page.getByRole('button',{name:'下一帧'}).click();await page.getByText('第 2 / 300 帧').waitFor();
  await page.getByRole('button',{name:/放\s*大/}).click();
- const beforeFocus=frames;await page.getByRole('button',{name:'影像专注模式'}).click();
+ await page.waitForTimeout(200);const beforeFocus=frames;await page.getByRole('button',{name:'影像专注模式'}).click();
  assert.equal(await page.getByText('标注对象').count(),0);
  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.replace(/\s/g,'')==='放大'&&!b.disabled));
  await page.waitForTimeout(500); await page.screenshot({path:path.join(output,'focus.png')});

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, Module, Param, Put, Query, Req, UseGuard
 import { AuthModule } from '../auth/auth.module';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import type { AuthenticatedRequest } from '../auth/auth.models';
+import { OrthancService } from '../cases/orthanc.service';
 import { AnnotationsService } from './annotations.service';
 @Controller('cases/:caseId/annotations')
 @UseGuards(AccessTokenGuard)
@@ -20,5 +21,5 @@ export class AnnotationsController {
     return this.annotations.save(req.user,id,body,req.ip ?? 'unknown');
   }
 }
-@Module({ imports: [AuthModule], controllers: [AnnotationsController], providers: [AnnotationsService] })
+@Module({ imports: [AuthModule], controllers: [AnnotationsController], providers: [AnnotationsService, OrthancService] })
 export class AnnotationsModule {}

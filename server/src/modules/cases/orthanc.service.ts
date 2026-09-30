@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
+import { frameGeometry } from './frame-geometry';
 import { requiredEnv } from '../../config/environment';
 
 interface OrthancUploadResponse {
@@ -69,6 +70,14 @@ export class OrthancService {
       if (!Number.isSafeInteger(frame)) throw new Error('Invalid frame');
       return { instance_id: match[1]!, frame_index: frame };
     } catch { throw new ServiceUnavailableException('序列帧映射不可用'); }
+  }
+
+  async frameGeometry(instanceId: string, frameIndex: number) {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{8}){4}$/.test(instanceId) || !Number.isSafeInteger(frameIndex) || frameIndex < 0) throw new BadRequestException('帧几何参数无效');
+    try {
+      const tags = await (await this.request(`/instances/${instanceId}/simplified-tags`, { method:'GET', redirect:'error' })).json() as Record<string,unknown>;
+      return frameGeometry(tags, frameIndex);
+    } catch { throw new ServiceUnavailableException('帧几何信息不可用'); }
   }
 
   async uploadSeries(paths: string[]): Promise<OrthancSeriesUpload> {

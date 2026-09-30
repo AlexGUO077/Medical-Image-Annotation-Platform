@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { clearAccountDrafts } from '../annotations/drafts';
 vi.mock('../annotations/drafts', async importOriginal => ({ ...await importOriginal<typeof import('../annotations/drafts')>(), clearAccountDrafts: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../viewer/api', () => ({ viewerApi: { workbench: vi.fn().mockRejectedValue(new Error('工作台病例不可访问')) } }));
+vi.mock('../viewer/api', async original => ({...await original<typeof import('../viewer/api')>(),viewerApi:{workbench:vi.fn().mockRejectedValue(new Error('工作台病例不可访问')),clearPreloads:vi.fn()}}));
 import { viewerApi } from '../viewer/api';
 import { tasksApi } from '../tasks/api';
 vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));

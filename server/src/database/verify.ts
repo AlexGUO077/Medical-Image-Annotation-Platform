@@ -68,7 +68,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     case_id: ['uuid', false], series_id: ['uuid', false], tool: ['character varying', false],
     geometry: ['jsonb', false], frame_start: ['integer', false], frame_end: ['integer', false],
     window_preset: ['character varying', true], report_sent_ids: ['jsonb', false],
-    part_id: ['uuid', false], confidence: ['character varying', false],
+    part_id: ['uuid', true], confidence: ['character varying', true],
     measurements: ['jsonb', true], version: ['integer', false], is_gold: ['boolean', false],
     created_by: ['uuid', false], task_id: ['uuid', false],
     logical_id: ['uuid', false], key_frame_index: ['integer', false],

@@ -3,7 +3,7 @@ export type Geometry = { x: number; y: number } | { x: number; y: number; w: num
 export interface Annotation {
   id: string; series_id: string; tool: 'point' | 'box' | 'polygon' | 'brush'; geometry: Geometry;
   frame_start: number; frame_end: number; key_frame_index: number; window_preset: string | null;
-  part_id: string; sign_tag_ids: string[]; confidence: 'typical' | 'atypical'; report_sent_ids: number[];
+  part_id: string | null; sign_tag_ids: string[]; confidence: 'typical' | 'atypical' | null; report_sent_ids: number[];
 }
 export interface AnnotationVersion { version: number; annotations: Annotation[] }
 export interface AnnotationRead extends AnnotationVersion { current_version: number }

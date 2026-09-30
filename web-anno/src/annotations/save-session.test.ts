@@ -32,7 +32,7 @@ it('keeps offline changes locally and reauthorizes before sending after reconnec
  session.setOnline(true);await vi.advanceTimersByTimeAsync(2000);expect(transport.read).toHaveBeenCalledTimes(2);expect(transport.save).toHaveBeenCalledOnce();await session.dispose();
 });
 it('does not blindly retry a possibly committed request after a lost response',async()=>{
- const {session,transport}=fixture();await session.start();transport.save.mockRejectedValueOnce(new TypeError('network'));session.change([point()]);await session.saveNow();expect(session.snapshot().status).toBe('error');
+ const {session,transport}=fixture();await session.start();transport.save.mockRejectedValueOnce(new TypeError('network'));session.change([point()]);await session.saveNow();expect(session.snapshot()).toMatchObject({status:'error',initialized:true});
  transport.read.mockResolvedValue(read(1,[point(7)]));await session.recover();await vi.advanceTimersByTimeAsync(5000);expect(session.snapshot()).toMatchObject({status:'conflict',annotations:[point()],server:read(1,[point(7)])});expect(transport.save).toHaveBeenCalledOnce();await session.dispose();
 });
 it('loads persisted drafts only after authorization and blocks stale versions',async()=>{
@@ -55,5 +55,9 @@ it('keeps empty snapshots and never retries conflict on further edits',async()=>
  const {session,transport,store}=fixture();await session.start();transport.save.mockRejectedValueOnce(new AnnotationRequestError(409,'冲突'));session.change([]);await session.saveNow();session.change([point()]);await vi.advanceTimersByTimeAsync(9000);expect(transport.save).toHaveBeenCalledOnce();expect(store.write).toHaveBeenCalledWith({baseVersion:0,annotations:[]});await session.dispose();
 });
 it('does not permit editing when an existing draft cannot be read',async()=>{
- const {session,store,transport}=fixture();store.read.mockRejectedValue(new Error('unavailable'));await session.start();session.change([point()]);await session.saveNow();expect(session.snapshot().status).toBe('error');expect(transport.save).not.toHaveBeenCalled();expect(store.write).not.toHaveBeenCalled();await session.dispose();
+ const {session,store,transport}=fixture();store.read.mockRejectedValue(new Error('unavailable'));await session.start();session.change([point()]);await session.saveNow();expect(session.snapshot().status).toBe('error');expect(session.snapshot().initialized).toBe(false);expect(transport.save).not.toHaveBeenCalled();expect(store.write).not.toHaveBeenCalled();await session.dispose();
+});
+
+it('keeps initialization closed after a failed initial request and opens after recovery',async()=>{
+ const {session,transport,store}=fixture();transport.read.mockRejectedValueOnce(new TypeError('network'));await session.start();expect(session.snapshot()).toMatchObject({initialized:false,checking:false,status:'error'});session.change([point()]);expect(store.write).not.toHaveBeenCalled();await session.recover();expect(session.snapshot().initialized).toBe(true);session.change([point()]);await session.saveNow();expect(transport.save).toHaveBeenCalledOnce();await session.dispose();
 });

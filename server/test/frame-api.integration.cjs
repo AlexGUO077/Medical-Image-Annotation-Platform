@@ -38,6 +38,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
   const raw = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#808080' } }).png().toBuffer();
   const upstream = {
     resolveSeriesFrame: async () => ({ instance_id: '11111111-22222222-33333333-44444444-55555555', frame_index: 0 }),
+    frameGeometry: async () => ({width:640,height:480,row_spacing:1,column_spacing:1}),
     renderInstanceFrame: async () => { renders++; if (renderHook) await renderHook(); return raw; },
   };
   const instrumented = {

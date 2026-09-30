@@ -6,13 +6,13 @@
 
 `PUT /api/cases/{id}/annotations` 接收 `{expected_version,annotations:[...]}`，全量替换当前对象集合，成功返回 `{version,annotations}`。首次 expected_version=0；以后使用上次读取版本。相同旧版本的并发请求只允许一个成功，其余 409；重试先重新读取，不自动覆盖。空数组也增加版本，表示当前无对象，不删除旧版本。
 
-对象字段：`id`（跨版本稳定 UUID，首次可省略，由服务端生成并返回）、`series_id`、`tool`（box/point/polygon/brush）、`geometry`、`frame_start/frame_end/key_frame_index`、`window_preset`（CT 必须非空）、`part_id`、`sign_tag_ids`（至少一个）、`confidence`、`report_sent_ids`。API 返回置信度 typical/atypical，与手册请求例一致；写入兼容 typical/atypical 或现有数据库的典型/不典型。版本、操作者、任务和金标准状态由服务端决定，不接受客户端覆盖；不接收尚未核验物理标定的 measurements。
+对象字段：`id`（跨版本稳定 UUID，首次可省略，由服务端生成并返回）、`series_id`、`tool`（box/point/polygon/brush）、`geometry`、`frame_start/frame_end/key_frame_index`、`window_preset`（CT 必须非空）、`part_id`（草稿可为 null）、`sign_tag_ids`（草稿可空，提交至少一个）、`confidence`（草稿可为 null）、`report_sent_ids`。API 返回置信度 typical/atypical，与手册请求例一致；写入兼容 typical/atypical 或现有数据库的典型/不典型。版本、操作者、任务和金标准状态由服务端决定，不接受客户端覆盖；不接收尚未核验物理标定的 measurements。
 
-`GET /api/cases/{id}/annotations` 返回 `{version,current_version,annotations}`；可用 `?version=N` 读取历史，包括已记录的空版本。缺失版本 404；权限失效后不能继续读历史。返回稳定对象 ID，不暴露内部版本行 ID。已有工作台返回结构暂不改变，由后续标注工具接入这些接口。
+`GET /api/cases/{id}/annotations` 返回 `{version,current_version,annotations}`；可用 `?version=N` 读取历史，包括已记录的空版本。缺失版本 404；权限失效后不能继续读历史。返回稳定对象 ID，不暴露内部版本行 ID。工作台绘图、保存状态、版本比较与历史轮廓预览已接入这些接口。
 
 ## 几何与引用
 
-- box `{x,y,w,h}`、point `{x,y}`、polygon `{points:[[x,y],...]}`；兼容可选 `type`，必须与工具相同，存储时归一化。坐标非负有限数，矩形有面积，多边形至少三个不同顶点。图像空间变换接入及实际 DICOM 宽高边界核验仍是后续工具切片要求，本接口不能证明客户端所传坐标已经正确映射。
+- box `{x,y,w,h}`、point `{x,y}`、polygon `{points:[[x,y],...]}`；兼容可选 `type`，必须与工具相同，存储时归一化。坐标非负有限数，矩形有面积，多边形至少三个不同顶点。工作台通过渲染视口的正逆变换保留原始 DICOM 像素坐标；服务器根据已授权实例重新读取宽高，拒绝越界点/顶点/矩形及尺寸不符的掩膜。
 - brush `{rle,width,height,frames?:[{frame_index,rle,width,height}]}`；本体属于代表帧，frames 仅保存其他补充帧，索引唯一、在起止范围内、尺寸一致。RLE 规则见[基础逻辑](annotation-primitives.md)，服务端只验证行程，不按输入分配像素数组。
 - 序列必须属于本病例，起止范围不能超过序列帧数，代表帧必须在范围内；单帧自然限定为 0。
 - 部位必须为当前系统下有效二级节点；征象为当前系统有效征象。沿用已批准的标签管理能力，不新增标签审批规则。读取历史保留当时的标识与关联，不用当前字典重新生成旧几何或旧标签集合。
@@ -34,4 +34,8 @@
 - 新页面先通过服务端授权读取，才读取本地病例草稿。网络恢复/手动重试先读取当前版本；不确定上次写入是否提交时也不盲目重发。版本不同进入冲突状态，保留本地对象；采用服务器版本必须显式调用并再次读取。
 - 同账号病例的多个页面通过草稿修订号阻止覆盖或误删另一页面的新修改；登出事务更新共享账号代次并清理该账号，旧页面句柄不能复活草稿。显式登出已接入 App，清理失败可见且可重试。
 - 本地存储失败不宣称“已暂存”，保留页面内存并显示错误；仍可尝试在线服务器保存。恢复时本地草稿无法读取则暂停编辑，防止覆盖未恢复内容。
-- 本切片是保存客户端与草稿基础能力，尚未接入工作台编辑控件、保存状态栏、冲突差异界面、会话过期跳转或绘图工具；不据此宣称离线界面或 WP-09 验收完成。
+- 工作台已接入四工具、属性/报告关联、保存状态、冲突字段比较与显式采用服务器版本、历史轮廓只读预览。保存或取帧 401 时保留草稿并返回登录；显式登出仍清理该账号。未完成轮廓在切换工具/帧/序列或 Esc 时取消；撤销/重做作用于已完成的编辑。毫米测量仅用于阅片显示，不写入尚未定义的 measurements 字段。提交及审核分派仍待 WP-10，不宣称 M2 放行。
+
+按手册 §2.5 的“完善三项属性才可提交”及 UI §10.4，草稿允许 part_id/confidence 为 null、sign_tag_ids 为空；不填虚构默认值。提交时统一校验完整性。迁移仅放宽现有两列可空；已有不完整草稿/历史时 down 由 PostgreSQL 拒绝，不删除草稿。
+
+非画笔轮廓复制到相邻帧创建新的稳定对象，保留原对象；画笔在同一对象的 frames 中复制掩膜，替换已有目标帧前确认。修改代表帧时保留原帧掩膜，不扩大到整段序列。

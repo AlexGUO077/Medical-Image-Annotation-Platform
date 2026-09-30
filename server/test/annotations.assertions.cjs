@@ -14,7 +14,7 @@ module.exports = async ({ db, base, get, caseId, actor, assignment, taskId, seri
   assert.equal((await get(url,'')).status,401);assert.equal((await get(url,otherToken)).status,403);assert.equal((await get(url,adminToken)).status,403);
   assert.equal((await save(0,[original],'')).status,401);assert.equal((await save(0,[original],otherToken)).status,403);assert.equal((await save(0,[original],adminToken)).status,403);
   assert.deepEqual(await current(),{version:0,current_version:0,annotations:[]});
-  for(const changes of [{series_id:randomUUID()},{frame_end:1},{part_id:root},{sign_tag_ids:[foreignSign]}, {report_sent_ids:[999]},{report_sent_ids:[-1,0]}]) assert.equal((await save(0,[{...original,...changes}])).status,400);
+  for(const changes of [{series_id:randomUUID()},{frame_end:1},{part_id:root},{sign_tag_ids:[foreignSign]}, {report_sent_ids:[999]},{report_sent_ids:[-1,0]},{geometry:{x:630,y:20,w:30,h:40}},{tool:'point',geometry:{x:640,y:1}},{tool:'brush',geometry:{width:2,height:2,rle:[4]}}]) assert.equal((await save(0,[{...original,...changes}])).status,400);
   await db.query(`UPDATE series SET modality='CT',default_window='{"center":40,"width":400}' WHERE id=$1`,[seriesId]);assert.equal((await save(0,[original])).status,400);
   await db.query("UPDATE series SET modality='DX',default_window=NULL WHERE id=$1",[seriesId]);
   let response=await save(0,[original]);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store, private');
@@ -52,12 +52,16 @@ module.exports = async ({ db, base, get, caseId, actor, assignment, taskId, seri
   const shapes=[
     {tool:'box',geometry:{x:1,y:2,w:3,h:4}}, {tool:'point',geometry:{x:1.25,y:2.5}},
     {tool:'polygon',geometry:{points:[[0,0],[3,0],[0,3]]}},
-    {tool:'brush',geometry:{width:2,height:2,rle:[0,4],frames:[{frame_index:2,width:2,height:2,rle:[1,2,1]}]}},
+    {tool:'brush',geometry:{width:640,height:480,rle:[0,307200],frames:[{frame_index:2,width:640,height:480,rle:[1,2,307197]}]}},
   ];
   response=await save(4,shapes.map(shape=>({...original,...shape,id:randomUUID(),frame_end:2,key_frame_index:1,window_preset:'lung'})));
   assert.equal(response.status,200);result=await response.json();assert.equal(result.version,5);
   for(const shape of shapes)assert.deepEqual(result.annotations.find(a=>a.tool===shape.tool).geometry,shape.geometry);
   await db.query("UPDATE series SET modality='DX',frame_count=1,default_window=NULL WHERE id=$1",[seriesId]);
-  await assert.rejects(db.undoLastMigration(),/Annotation history exists/);
+  response=await save(5,[{...original,part_id:null,confidence:null,sign_tag_ids:[]}]);assert.equal(response.status,200);
+  const draft=(await response.json()).annotations[0];assert.equal(draft.part_id,null);assert.equal(draft.confidence,null);assert.deepEqual(draft.sign_tag_ids,[]);
+  await assert.rejects(db.undoLastMigration(),/null values/);
+  const {AnnotationVersionState1790726400000}=require('../dist/database/migrations/1790726400000-AnnotationVersionState');
+  await assert.rejects(db.transaction(manager=>new AnnotationVersionState1790726400000().down({query:manager.query.bind(manager)})),/Annotation history exists/);
   console.log('PASS: annotation save/history/session/scope boundaries, stable identity and old tags, empty versions, concurrent 409, gold lock, audit rollback, expired/released access, guarded downgrade');
 };

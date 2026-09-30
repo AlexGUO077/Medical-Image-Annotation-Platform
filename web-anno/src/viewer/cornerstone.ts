@@ -1,5 +1,5 @@
 import { cache, Enums, imageLoader, init, metaData, RenderingEngine, utilities, type Types } from '@cornerstonejs/core';
-import { viewerApi, type FrameWindow, type Series } from './api';
+import { viewerApi, type FrameWindow, type Series, type FrameGeometry } from './api';
 
 const pending = new Map<string, () => Promise<Types.IImage>>();
 const metadata = new Map<string, Record<string, unknown>>();
@@ -15,6 +15,7 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
   }
   const id = crypto.randomUUID(), imageId = `miap:${id}`, engine = new RenderingEngine(id);
   let disposed = false;
+  let geometry: FrameGeometry;
   let resize: ResizeObserver | undefined;
   const dispose = () => {
     if (disposed) return;
@@ -29,10 +30,12 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
   };
   signal.addEventListener('abort', dispose, { once: true });
   pending.set(imageId, async () => {
-    const blob = await viewerApi.frame(token, caseId, series, index, window, signal);
+    const receipt = await viewerApi.frame(token, caseId, series, index, window, signal);
+    const {blob} = receipt;geometry=receipt.geometry;
     const bitmap = await createImageBitmap(blob);
     try {
       if (disposed || signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      if(bitmap.width!==geometry.width||bitmap.height!==geometry.height)throw new Error('帧尺寸与 DICOM 坐标不一致');
       const canvas = document.createElement('canvas');
       canvas.width = bitmap.width; canvas.height = bitmap.height;
       const context = canvas.getContext('2d');
@@ -46,7 +49,7 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
       }
       // Metadata describes the returned PNG, never patient geometry or original DICOM intensities.
       metadata.set(imageId, {
-        imagePlaneModule: { rows: canvas.height, columns: canvas.width, usingDefaultValues: true, rowCosines: [1, 0, 0], columnCosines: [0, 1, 0], imagePositionPatient: [0, 0, 0], imageOrientationPatient: [1, 0, 0, 0, 1, 0], rowPixelSpacing: 1, columnPixelSpacing: 1 },
+        imagePlaneModule: { rows: canvas.height, columns: canvas.width, usingDefaultValues: true, rowCosines: [1, 0, 0], columnCosines: [0, 1, 0], imagePositionPatient: [0, 0, 0], imageOrientationPatient: [1, 0, 0, 0, 1, 0], rowPixelSpacing: geometry.row_spacing??1, columnPixelSpacing: geometry.column_spacing??1 },
         imagePixelModule: { bitsAllocated: 8, bitsStored: 8, highBit: 7, pixelRepresentation: 0, samplesPerPixel: 3, photometricInterpretation: 'RGB' },
         generalSeriesModule: { modality: 'OT' },
       });
@@ -54,7 +57,7 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
         imageId, width: canvas.width, height: canvas.height, rows: canvas.height, columns: canvas.width,
         minPixelValue: 0, maxPixelValue: 255, slope: 1, intercept: 0, windowCenter: 128, windowWidth: 256,
         voiLUTFunction: Enums.VOILUTFunctionType.LINEAR, color: true, rgba: false, numberOfComponents: 3,
-        columnPixelSpacing: 1, rowPixelSpacing: 1, invert: false, sizeInBytes: pixels.byteLength, dataType: 'Uint8Array',
+        columnPixelSpacing: geometry.column_spacing??1, rowPixelSpacing: geometry.row_spacing??1, invert: false, sizeInBytes: pixels.byteLength, dataType: 'Uint8Array',
         voxelManager: utilities.VoxelManager.createImageVoxelManager({ scalarData: pixels, width: canvas.width, height: canvas.height, numberOfComponents: 3 }),
         getPixelData: () => pixels, getCanvas: () => canvas,
       } satisfies Types.IImage;
@@ -74,7 +77,18 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
     viewport.render();
     resize = new ResizeObserver(() => { if (!disposed) engine.resize(true, true); });
     resize.observe(element);
+    viewerApi.preload(token,caseId,series,index+1,window);
+    const toCanvas = (x:number,y:number):Types.Point2 => viewport.worldToCanvas(utilities.transformIndexToWorld(viewport.getImageData().imageData,[x-.5,y-.5,0]));
+    const toImage = (x:number,y:number):[number,number] => {
+      const point=utilities.transformWorldToIndexContinuous(viewport.getImageData().imageData,viewport.canvasToWorld([x,y]));
+      return [point[0]+.5,point[1]+.5];
+    };
     return {
+      geometry: geometry!, toCanvas, toImage,
+      subscribe: (listener:()=>void) => {
+        element.addEventListener(Enums.Events.IMAGE_RENDERED,listener);
+        return ()=>element.removeEventListener(Enums.Events.IMAGE_RENDERED,listener);
+      },
       zoom: (factor: number) => { viewport.setZoom(viewport.getZoom() * factor); viewport.render(); },
       pan: (x: number, y: number) => { const old = viewport.getPan(); viewport.setPan([old[0] + x, old[1] + y]); viewport.render(); },
       reset: () => { viewport.resetCamera(); viewport.render(); },

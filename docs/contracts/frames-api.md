@@ -17,3 +17,11 @@
 审计 frames.ticket_issued / frames.viewed 记录真实用户、病例、序列 UID、帧索引、窗、模态、IP、时间；不存 token、凭据或影像。重复取帧在有效会话/票据期间允许，但每次计数与审计；跨用户/会话、改参、过期或分派失效拒绝。
 
 映射调用采用部署版本已验证的 [Orthanc REST API](https://orthanc.uclouvain.be/book/users/rest-cheatsheet.html) `/series/{id}/ordered-slices`；上游将该接口标为 deprecated，升级 Orthanc 时需复核映射契约，不以任意实例排序替代。
+
+## 工作台坐标与标定
+
+授权帧 PNG 响应增加 `X-Frame-Geometry` JSON 头：`width/height` 为原 DICOM Columns/Rows，`row_spacing/column_spacing` 为毫米像素间距或 null。取值仅来自已授权实例的尺寸与 PixelSpacing（优先逐帧，其次共享功能组，再顶层），不向浏览器暴露完整标签、实例存储标识或患者信息。参考 [Orthanc 标签接口](https://orthanc.uclouvain.be/book/users/rest.html)。
+
+输出必须在现有帧资格、票据、限流、水印、审计及输出前再次校验边界内完成；PNG 尺寸与 DICOM 不一致则失败，不猜测缩放比例。缺少有效 PixelSpacing 时禁用毫米画笔及物理测量，不用 ImagerPixelSpacing 或 1mm 冒充标定。普通点、框、多边形仍使用原图像素坐标。保存服务按授权病例与序列重新核验几何范围/掩膜尺寸，不信任客户端头副本。
+
+客户端仅保留一个相邻帧的已水印 PNG 预加载结果在内存；消费前重新申请票据，实时复核账号/分派和限流，失败不显示该预取帧。退出工作台、病例切换或登出取消预加载并清除引用；不写 CacheStorage、IndexedDB 或浏览器磁盘缓存。300 帧客户端合成测试不代替真实部署链路或 SG-4 人工验收。
