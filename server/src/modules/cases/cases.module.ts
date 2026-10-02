@@ -11,9 +11,10 @@ import { MaskMapService } from './mask-map.service';
 import { OrthancService } from './orthanc.service';
 import { CasesManualService } from './cases-manual.service';
 import { AttachmentObjectService } from './attachment-object.service';
+import { CasesLifecycleModule } from './cases-lifecycle.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CasesLifecycleModule],
   controllers: [CasesController],
   providers: [ObjectCompensationService, CasesClinicalService, CasesAttachmentsService, CasesImportService, CasesManualService, AttachmentObjectService, DeidWorkerService, ImportStoreService, MaskMapService, OrthancService],
 })

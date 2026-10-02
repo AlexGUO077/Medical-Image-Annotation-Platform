@@ -10,6 +10,7 @@ export interface CaseDetail {
   id: string;
   case_no: string;
   status: string;
+  annotation_version: number;
   source: string;
   system_code: string;
   confirm_method: string;

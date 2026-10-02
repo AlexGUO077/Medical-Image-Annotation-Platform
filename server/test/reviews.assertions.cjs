@@ -98,5 +98,7 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken})=
  await db.query("UPDATE users SET updated_at=updated_at+interval '1 second' WHERE id=$1",[other.id]);assert.equal((await boundary.decide()).status,401);await db.query('UPDATE users SET updated_at=$2 WHERE id=$1',[other.id,u.updated_at]);
  // No leftover active fixtures alter existing frame budgets/capacity checks.
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
+ await require('./case-lifecycle.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken});
+ await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
  console.log('PASS: review HTTP read/attachments, self/peer isolation, veto checks, optimistic/concurrent decisions, atomic audit rollback, DX/CT publication gold lock, return/re-submit history, self capacity and unavailable/qualification/capacity fallback');
 };
