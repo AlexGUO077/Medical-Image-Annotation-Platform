@@ -24,6 +24,16 @@ async function choose() {
   fireEvent.click(screen.getByRole('radio'));
 }
 describe('dispatch console', () => {
+  it('preserves administrator manual review assignment with no default deadline', async () => {
+    vi.mocked(tasksApi.cases).mockResolvedValue(pageOf([{...syntheticCase,status:'待审核'}]));
+    vi.mocked(tasksApi.assignees).mockResolvedValue(pageOf([{...user,quals:{resp:['review']}}]));
+    const dispatch=vi.spyOn(tasksApi,'dispatch').mockResolvedValue({mode:'manual',task_id:syntheticTask.id,case_ids:[syntheticCase.id],assignee_id:user.id,due_at:null,task_role:'review'});
+    show();await screen.findByText('SYN-TASK-1');await screen.findByText('合成人员（synthetic）');
+    fireEvent.mouseDown(screen.getByRole('combobox',{name:'指派角色'}));fireEvent.click(await screen.findByTitle('审核'));
+    fireEvent.click(screen.getAllByRole('checkbox')[1]!);fireEvent.click(screen.getByRole('radio'));fireEvent.click(screen.getByRole('button',{name:'确认指派'}));
+    expect(await screen.findByText('审核指派成功，等待审核人开始')).toBeInTheDocument();
+    expect(dispatch).toHaveBeenCalledWith('token',{mode:'manual',task_id:syntheticTask.id,case_ids:[syntheticCase.id],assignee_id:user.id,due_at:null,task_role:'review'});
+  });
   it('matches account and self-review qualification hints without inventing capacity limits', () => {
     expect(unavailableReason(user, syntheticTask)).toBeUndefined();
     expect(unavailableReason(user, { ...syntheticTask, review_mode: 'self' })).toContain('资格');

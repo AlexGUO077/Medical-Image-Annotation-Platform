@@ -38,14 +38,14 @@ export class TaskMaintenanceService implements OnApplicationBootstrap, OnModuleD
       JOIN task_assignments a ON a.assignee_id=u.id
       JOIN task_cases tc ON tc.case_id=a.case_id AND tc.deleted_at IS NULL
       JOIN tasks t ON t.id=tc.task_id AND t.deleted_at IS NULL AND t.status='进行中'
-      JOIN cases c ON c.id=a.case_id AND c.deleted_at IS NULL AND c.status='标注中'
-      WHERE u.deleted_at IS NULL AND a.deleted_at IS NULL AND a.state='active' AND a.task_role='annotate'
+      JOIN cases c ON c.id=a.case_id AND c.deleted_at IS NULL AND c.status IN ('标注中','待审核','审核中')
+      WHERE u.deleted_at IS NULL AND a.deleted_at IS NULL AND a.state='active' AND a.task_role IN ('annotate','review')
         AND c.source=t.source AND c.system_code=t.system_code AND ($1::uuid IS NULL OR u.id>$1)
         AND ((a.due_at IS NOT NULL AND a.due_at<=clock_timestamp()) OR u.status<>'active'
           OR u.expire_at<(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date OR u.must_change_password
           OR (u.role='admin' AND u.mfa_secret_encrypted IS NULL)
-          OR NOT COALESCE((u.quals->t.system_code) @> '["annotate"]'::jsonb,false)
-          OR (t.review_mode='self' AND NOT COALESCE((u.quals->t.system_code) @> '["review"]'::jsonb,false)))
+          OR NOT COALESCE((u.quals->t.system_code) @> jsonb_build_array(a.task_role),false)
+          OR (t.review_mode='self' AND NOT COALESCE((u.quals->t.system_code) @> '["annotate","review"]'::jsonb,false)))
       ORDER BY u.id LIMIT 100`, [this.afterUser ?? null]) as { id: string }[];
     for (const candidate of candidates) {
       try {

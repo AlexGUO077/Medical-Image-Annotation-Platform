@@ -1,5 +1,6 @@
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
+import { reviewAuthorSql } from '../tasks/review-assignment';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import type { AuthUser, Qualification } from './auth.models';
 
@@ -31,7 +32,8 @@ export class PermissionService {
          AND c.status=$5 AND u.status='active' AND u.expire_at>=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
          AND NOT u.must_change_password AND (u.role<>'admin' OR u.mfa_secret_encrypted IS NOT NULL)
          AND date_trunc('milliseconds',u.updated_at)=$6 AND (u.quals->$4) @> jsonb_build_array($3::text)
-         AND ($3<>'annotate' OR t.review_mode<>'self' OR (u.quals->$4) @> '["review"]'::jsonb)
+         AND (t.review_mode<>'self' OR (u.quals->$4) @> '["annotate","review"]'::jsonb)
+         AND ($3<>'review' OR (CASE WHEN t.review_mode='self' THEN ${reviewAuthorSql}=u.id ELSE ${reviewAuthorSql}<>u.id END))
        LIMIT 1`,
       [caseId, user.id, taskRole, systemCode, taskRole === 'annotate' ? '标注中' : '审核中', user.updated_at],
     ) as Array<{ id: string }>;

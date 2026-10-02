@@ -1,11 +1,12 @@
 import { Alert, Button, Checkbox, Empty, InputNumber, Select, Space, Spin, Tabs, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate,useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
 import { ViewerRequestError, viewerApi, type FrameGeometry, type FrameWindow, type Series, type Workbench } from '../viewer/api';
 import { AnnotationLayer } from '../annotations/AnnotationLayer';
 import { AnnotationPanel, toolNames } from '../annotations/AnnotationPanel';
 import { SaveIndicator } from '../annotations/SaveIndicator';
+import { annotationsApi, AnnotationRequestError, type SubmissionIssues } from '../annotations/api';
 import { useAnnotations } from '../annotations/useAnnotations';
 import { HistoryPanel } from '../annotations/HistoryPanel';
 import type { AnnotationRead } from '../annotations/types';
@@ -54,7 +55,11 @@ function WorkbenchContent({session,data,onExpired}:{session:Session;data:Workben
   const [center,setCenter]=useState<number|null>(null),[width,setWidth]=useState<number|null>(null),[focus,setFocus]=useState(false);
   const {state,engine,editable:canEdit}=useAnnotations(session,caseId,data.case.source,onExpired);
   const [history,setHistory]=useState<AnnotationRead>();
-  const editable=canEdit&&!history,displayAnnotations=history?.annotations??state.annotations;
+  const [submitting,setSubmitting]=useState(false),[submitError,setSubmitError]=useState<string>(),[issues,setIssues]=useState<SubmissionIssues>();
+  const submitPending=useRef(false),route=useNavigate();
+  const submitController=useRef<AbortController>();
+  useEffect(()=>()=>submitController.current?.abort(),[]);
+  const editable=canEdit&&!history&&!submitting,displayAnnotations=history?.annotations??state.annotations;
   const [tool,setTool]=useState<DrawingTool>('pan'),[diameter,setDiameter]=useState(5),[erase,setErase]=useState(false),[freehand,setFreehand]=useState(false);
   const [selected,setSelected]=useState<string>(),[hidden,setHidden]=useState(new Set<string>()),[locked,setLocked]=useState(new Set<string>());
   const [dictionary,setDictionary]=useState<TaxonomyTreeResponse>(),[dictionaryError,setDictionaryError]=useState<string>(),[geometry,setGeometry]=useState<FrameGeometry>();
@@ -78,9 +83,28 @@ function WorkbenchContent({session,data,onExpired}:{session:Session;data:Workben
   const travel=(back:boolean)=>{const from=back?undo:redo,to=back?redo:undo;const next=from.current.pop();if(next){to.current.push(structuredClone(state.annotations));engine.current?.change(next);setHistoryTick(n=>n+1);}};
   const series=data.series.find(s=>s.id===seriesId);
   const navigate=(delta:number)=>{if(series)setFrame(n=>Math.max(0,Math.min(series.frame_count-1,n+delta)));};
+  const submit=async()=>{
+    if(submitPending.current||!engine.current||!editable||!navigator.onLine)return;
+    submitPending.current=true;setSubmitting(true);setSubmitError(undefined);setIssues(undefined);
+    const controller=new AbortController();submitController.current=controller;
+    try{
+      await engine.current.saveNow();
+      const saved=engine.current.snapshot();
+      if(controller.signal.aborted)return;
+      if(saved.dirty||saved.checking||!saved.initialized||saved.status!=='saved')throw new Error('请先恢复网络并处理保存错误或版本冲突');
+      await annotationsApi.submit(caseId,session.token,controller.signal,saved.version);
+      await engine.current.dispose();route('/tasks');
+    }catch(error){
+      if(controller.signal.aborted)return;
+      setSubmitError(message(error));
+      if(error instanceof AnnotationRequestError){setIssues(error.issues);if(error.status===401){await engine.current?.dispose();onExpired?.();}}
+    }finally{if(!controller.signal.aborted){submitPending.current=false;setSubmitting(false);}}
+  };
   return <section className="workbench" tabIndex={0} onKeyDown={e=>{if((e.target as HTMLElement).matches('input,textarea,[role=combobox]'))return;if(e.key==='Escape')setFocus(false);if(['1','2','3','4'].includes(e.key)&&editable){const next=({1:'box',2:'brush',3:'polygon',4:'point'} as const)[e.key as '1'|'2'|'3'|'4'];if(next!=='brush'||(geometry?.row_spacing&&geometry?.column_spacing))setTool(next);}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&editable){e.preventDefault();travel(!e.shiftKey);}if(['ArrowDown','ArrowRight','ArrowUp','ArrowLeft'].includes(e.key)){e.preventDefault();navigate(['ArrowDown','ArrowRight'].includes(e.key)?1:-1);}}}>
     <Space className="workbench-heading"><Typography.Title level={3}>{data.case.case_no}</Typography.Title><span>{data.case.status} · {data.case.system_code}</span><Button onClick={()=>setFocus(!focus)}>{focus?'退出专注模式':'影像专注模式'}</Button></Space>
-    <SaveIndicator state={state} engine={engine.current} onAdopt={()=>{undo.current=[];redo.current=[];setSelected(undefined);setHistoryTick(n=>n+1);}}/>{dictionaryError&&<Alert type="error" message={dictionaryError}/>}
+    <Button type="primary" loading={submitting} disabled={!editable||['offline','conflict','blocked','loading','error'].includes(state.status)} onClick={()=>void submit()}>提交审核</Button>
+    {submitError&&<Alert type="error" message={submitError} description={<>{issues?.objects.map(item=><div key={item.id}>对象 {state.annotations.findIndex(a=>a.id===item.id)+1}：{item.fields.map(field=>({part_id:'部位',sign_tag_ids:'征象',confidence:'置信度',report_sent_ids:'报告关联'})[field as 'part_id']).join('、')}未完成</div>)}{issues?.sentence_ids.map(id=><div key={id}>报告 [{id}]：{data.sentences.find(s=>s.idx===id)?.text} 尚未关联</div>)}</>}/>}
+    <SaveIndicator disabled={submitting} state={state} engine={engine.current} onAdopt={()=>{undo.current=[];redo.current=[];setSelected(undefined);setHistoryTick(n=>n+1);}}/>{dictionaryError&&<Alert type="error" message={dictionaryError}/>}
     <HistoryPanel caseId={caseId} token={session.token} version={state.version} current={state.annotations} onExpired={()=>{void engine.current?.dispose().then(()=>onExpired?.());}} onPreview={value=>{setHistory(value);setSelected(undefined);setTool('pan');}}/>{history&&<Alert type="info" message={`正在查看历史版本 ${history.version}，轮廓只读`} action={<Button onClick={()=>{setHistory(undefined);setSelected(undefined);}}>返回当前标注</Button>}/>}
     <div className={`workbench-columns${focus?' is-focused':''}`}>
       {!focus&&<aside key="context"><Tabs defaultActiveKey="report" items={[

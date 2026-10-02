@@ -5,7 +5,11 @@ import { PermissionService } from '../auth/permission.service';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import { accountAvailable } from '../tasks/assignment-release';
 import { OrthancService } from '../cases/orthanc.service';
-import { parseAnnotations, integer, uuid, REPORT_NOT_MENTIONED, type AnnotationInput } from './annotation-input';
+import { parseAnnotations, integer, uuid, REPORT_NOT_MENTIONED, object, type AnnotationInput } from './annotation-input';
+
+import { SubmissionValidationException } from '../../common/submission-validation.exception';
+import { submissionIssues, type SubmissionSentence } from './submission-check';
+import { assignSubmittedReview, type CapacityUser } from '../tasks/review-assignment';
 
 const ROOT_NAMES: Record<string, string> = { cns:'中枢神经系统', headneck:'头颈', resp:'呼吸', circ:'循环', digest:'消化', uro:'泌尿', repro:'生殖', bone:'骨骼' };
 interface Context { user: AuthUser; item: { id: string; system_code: string; annotation_version: number }; taskId: string }
@@ -40,6 +44,34 @@ export class AnnotationsService {
       await manager.query('UPDATE cases SET annotation_version=$2,updated_at=now() WHERE id=$1', [id,version]);
       await this.audit(manager, actor.id, 'annotations.saved', id, { version, previous_version: input.expected_version, object_count: input.annotations.length }, ip);
       return { version, annotations: await this.objects(manager, id, version) };
+    });
+  }
+
+  async submit(actor:AuthUser,caseId:string,body:unknown,ip:string){
+    const id=uuid(caseId),expected=integer(object(body,['expected_version']).expected_version);
+    return this.db.transaction(async manager=>{
+      // All users precede task/case locks: review selection and cross-task capacity must serialize.
+      const users=await manager.query('SELECT *,expire_at::text FROM users WHERE deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE') as CapacityUser[];
+      const context=await this.lockContext(manager,actor,id);
+      if(context.item.annotation_version!==expected)throw new ConflictException('标注版本已变化，请重新读取');
+      const [task]=await manager.query('SELECT * FROM tasks WHERE id=$1',[context.taskId]);
+      const rows=await this.objects(manager,id,expected);
+      if(rows.some((a:{is_gold:boolean})=>a.is_gold))throw new ConflictException('金标准版本已锁定');
+      const annotations=parseAnnotations({expected_version:expected,annotations:rows.map(({version:_version,is_gold:_gold,...a}:Record<string,unknown>)=>a)}).annotations;
+      await this.validateReferences(manager,context,annotations);
+      const [report]=await manager.query('SELECT sentences FROM reports WHERE case_id=$1 AND deleted_at IS NULL FOR SHARE',[id]) as {sentences:SubmissionSentence[]}[];
+      if(!report)throw new BadRequestException('病例报告不存在');
+      const issues=submissionIssues(annotations,report.sentences);
+      if(issues.objects.length||issues.sentence_ids.length)throw new SubmissionValidationException(issues);
+      await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(context.user,id,context.item.system_code,'annotate');
+      if(task.review_mode==='self'&&!context.user.quals[task.system_code]?.includes('review'))throw new ForbiddenException('自审缺少审核资格，请联系管理员处理');
+      const active=await manager.query("SELECT id,task_role FROM task_assignments WHERE case_id=$1 AND state='active' AND deleted_at IS NULL FOR UPDATE",[id]);
+      if(active.length!==1||active[0].task_role!=='annotate')throw new ConflictException('病例分派已变化');
+      await manager.query("UPDATE task_assignments SET state='completed',updated_at=now() WHERE id=$1",[active[0].id]);
+      await manager.query("UPDATE cases SET status='待审核',updated_at=now() WHERE id=$1",[id]);
+      const review=await assignSubmittedReview(manager,users,task,id,actor.id);
+      await this.audit(manager,actor.id,'annotations.submitted',id,{version:expected,object_count:annotations.length,task_id:task.id,review,from:'标注中',to:'待审核'},ip);
+      return {case_id:id,version:expected,status:'待审核',review};
     });
   }
 

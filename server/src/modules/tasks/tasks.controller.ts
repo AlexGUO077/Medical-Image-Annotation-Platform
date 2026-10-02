@@ -30,6 +30,12 @@ export class TasksController {
     return this.dispatches.queue(request.user, query, true);
   }
 
+  @Post('start-review')
+  startReview(@Body() body:unknown,@Req() request:AuthenticatedRequest){
+    if(!request.user)throw new Error('Authenticated user missing');
+    return this.dispatches.startReview(request.user,body,request.ip??'unknown');
+  }
+
   @Post('reclaim')
   @UseGuards(AdminGuard)
   async reclaim(@Body() body: unknown, @Req() request: AuthenticatedRequest) {

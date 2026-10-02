@@ -4,11 +4,11 @@ import { tasksApi, DISPATCH_MODES, type AutoDispatch, type Assignee, type Page, 
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '操作失败';
 const limitRules = [{ validator: (_: unknown, value: unknown) => value == null || (typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 2147483647) ? Promise.resolve() : Promise.reject(new Error('上限须为正整数或留空')) }];
-export function unavailableReason(user: Assignee, task: Task): string | undefined {
+export function unavailableReason(user: Assignee, task: Task,role:'annotate'|'review'='annotate'): string | undefined {
   if (user.status !== 'active' || user.expire_at < new Date().toISOString().slice(0, 10)) return '账号不可用';
   if (user.must_change_password || (user.role === 'admin' && !user.mfa_enabled)) return '未完成安全设置';
   const quals = user.quals[task.system_code] ?? [];
-  if (!quals.includes('annotate') || (task.review_mode === 'self' && !quals.includes('review'))) return '缺少任务所需资格';
+  if (!quals.includes(role) || (task.review_mode === 'self' && !quals.includes(role==='annotate'?'review':'annotate'))) return '缺少任务所需资格';
   return undefined;
 }
 
@@ -20,6 +20,7 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
   const [caseError, setCaseError] = useState<string>(), [userError, setUserError] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [selectedCases, setSelectedCases] = useState<string[]>([]), [assignee, setAssignee] = useState<Assignee>();
+  const [role,setRole]=useState<'annotate'|'review'>('annotate');
   const [due, setDue] = useState('');
   const [busy, setBusy] = useState(false), pending = useRef(false);
   const [error, setError] = useState<string>(), [notice, setNotice] = useState<string>();
@@ -57,14 +58,14 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     finally { pending.current = false; setBusy(false); onBusyChange(false); }
   }
   function dispatch() {
-    if (!assignee || !selectedCases.length || !cases || !users || unavailableReason(assignee, task)) return;
+    if (!assignee || !selectedCases.length || !cases || !users || unavailableReason(assignee, task,role)) return;
     let dueAt: string | null = null;
     if (due) {
       const timestamp = new Date(due).getTime();
       if (!Number.isFinite(timestamp) || timestamp <= Date.now()) { setError('截止时间必须晚于当前时间'); return; }
       dueAt = new Date(timestamp).toISOString();
     }
-    void save(() => tasksApi.dispatch(token, { mode: 'manual', task_id: task.id, assignee_id: assignee.id, case_ids: selectedCases, due_at: dueAt }), '指派成功，病例已进入标注中', refresh);
+    void save(() => tasksApi.dispatch(token, { mode: 'manual', task_id: task.id, assignee_id: assignee.id, case_ids: selectedCases, due_at: dueAt,...(role==='review'?{task_role:role}:{}) }), role==='review'?'审核指派成功，等待审核人开始':'指派成功，病例已进入标注中', refresh);
   }
   return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     {notice && <Alert type="success" message={notice} showIcon />}
@@ -79,24 +80,25 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     </Form>
     {mode === 'auto' && <Button disabled={busy} onClick={() => void save(async () => ({ auto_dispatch: { status: 'completed', ...await tasksApi.auto(token, task.id, autoCursor) } }), '自动派单已执行', refresh)}>{autoCursor ? '继续下一批自动派单' : '重试自动派单'}</Button>}
     {mode === 'auto' && autoCursor && <Button disabled={busy} onClick={() => void save(async () => ({ auto_dispatch: { status: 'completed', ...await tasksApi.auto(token, task.id) } }), '自动派单已执行', refresh)}>从头重新派单</Button>}
-    <Typography.Title level={4}>手动指派标注</Typography.Title>
+    <Typography.Title level={4}>手动指派{role==='annotate'?'标注':'审核'}</Typography.Title>
+    <Select aria-label="指派角色" disabled={busy} value={role} options={[{value:'annotate',label:'标注'},{value:'review',label:'审核'}]} onChange={value=>{setRole(value);setSelectedCases([]);setAssignee(undefined);}}/>
     <Button disabled={busy} onClick={refresh}>刷新分派数据</Button>
     {caseError && <Alert type="error" message={`病例加载失败：${caseError}`} />}
     <Table<TaskCase> size="small" rowKey="id" loading={!cases && !caseError} dataSource={cases?.items ?? []}
-      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }, { title: '回收', render: (_, row) => row.assignment_id && row.status === '标注中' ? <Button disabled={busy} onClick={() => { setError(undefined); setReclaiming(row); }}>回收</Button> : null }]}
-      rowSelection={{ selectedRowKeys: selectedCases, onChange: keys => setSelectedCases(keys.map(String)), getCheckboxProps: row => ({ disabled: busy || row.status !== '待分配' }) }}
+      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }, { title: '回收', render: (_, row) => row.assignment_id && ['标注中','待审核','审核中'].includes(row.status) ? <Button disabled={busy} onClick={() => { setError(undefined); setReclaiming(row); }}>回收</Button> : null }]}
+      rowSelection={{ selectedRowKeys: selectedCases, onChange: keys => setSelectedCases(keys.map(String)), getCheckboxProps: row => ({ disabled: busy || row.status !== (role==='review'?'待审核':'待分配') || (role==='review'&&!!row.assignment_id) }) }}
       pagination={{ current: casePage, pageSize: 20, total: cases?.total ?? 0, disabled: busy, showSizeChanger: false, onChange: page => { setSelectedCases([]); setCases(undefined); setCasePage(page); } }} />
-    <Typography.Text>已选 {selectedCases.length} 例；仅可选择待分配病例。</Typography.Text>
+    <Typography.Text>已选 {selectedCases.length} 例；仅可选择{role==='review'?'待审核且未分派':'待分配'}病例。</Typography.Text>
     {userError && <Alert type="error" message={`人员加载失败：${userError}`} />}
     <Table<Assignee> size="small" rowKey="id" loading={!users && !userError} dataSource={users?.items ?? []}
       columns={[
         { title: '人员', render: (_, user) => `${user.real_name}（${user.username}）` },
         { title: '系统资格', render: (_, user) => (user.quals[task.system_code] ?? []).map(q => q === 'annotate' ? '标注' : '审核').join('、') || '无' },
-        { title: '指派条件', render: (_, user) => unavailableReason(user, task) ?? '资格符合，提交时校验容量' },
+        { title: '指派条件', render: (_, user) => unavailableReason(user, task,role) ?? '资格符合，提交时校验容量' },
         { title: '全局上限', render: (_, user) => user.in_flight_limit ?? '不限制' },
         { title: '设置', render: (_, user) => <Button disabled={busy} onClick={() => { setError(undefined); setEditingUser(user); }} aria-label={`设置 ${user.username} 全局上限`}>设置上限</Button> },
       ]}
-      rowSelection={{ type: 'radio', selectedRowKeys: assignee ? [assignee.id] : [], onChange: (_, rows) => setAssignee(rows[0]), getCheckboxProps: user => ({ disabled: busy || !!unavailableReason(user, task) }) }}
+      rowSelection={{ type: 'radio', selectedRowKeys: assignee ? [assignee.id] : [], onChange: (_, rows) => setAssignee(rows[0]), getCheckboxProps: user => ({ disabled: busy || !!unavailableReason(user, task,role) }) }}
       pagination={{ current: userPage, pageSize: 20, total: users?.total ?? 0, disabled: busy, showSizeChanger: false, onChange: page => { setAssignee(undefined); setUsers(undefined); setUserPage(page); } }} />
     <label>分派截止时间（本地时间，可留空）<Input aria-label="分派截止时间" type="datetime-local" value={due} disabled={busy} onChange={event => setDue(event.target.value)} /></label>
     <Typography.Text type="secondary">截止时间留空不自动超时。人员资格与两级容量以服务端提交校验为准。</Typography.Text>

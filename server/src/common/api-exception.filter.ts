@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { SubmissionValidationException } from './submission-validation.exception';
 import { MulterError } from 'multer';
 
 interface ResponseLike {
@@ -27,7 +28,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const message = typeof source === 'string'
       ? source
       : this.messageFromObject(source) ?? '服务暂时不可用';
-    response.status(status).json({ code: `HTTP_${status}`, message });
+    response.status(status).json({ code: `HTTP_${status}`, message, ...(exception instanceof SubmissionValidationException?{issues:exception.issues}:{}) });
   }
 
   private messageFromObject(source: unknown): string | undefined {

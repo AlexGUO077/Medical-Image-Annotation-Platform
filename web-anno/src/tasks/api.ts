@@ -22,8 +22,8 @@ export interface Assignee {
   quals: Partial<Record<SystemCode, ('annotate' | 'review')[]>>; status: string;
   expire_at: string; must_change_password: boolean; mfa_enabled: boolean; in_flight_limit: number | null;
 }
-export interface ManualDispatch { mode: 'manual'; task_id: string; assignee_id: string; case_ids: string[]; due_at: string | null }
-export interface TaskQuery { page?: number; pageSize?: number; source?: ImportSource; system_code?: SystemCode }
+export interface ManualDispatch { task_role?:'annotate'|'review'; mode: 'manual'; task_id: string; assignee_id: string; case_ids: string[]; due_at: string | null }
+export interface TaskQuery { task_role?:'annotate'|'review'; page?: number; pageSize?: number; source?: ImportSource; system_code?: SystemCode }
 async function request<T>(path: string, token: string, options: RequestInit = {}, base = '/api/tasks'): Promise<T> {
   const response = await fetch(`${base}${path}`, { ...options, cache: 'no-store', headers: {
     Authorization: `Bearer ${token}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -39,15 +39,16 @@ function queryString(query: TaskQuery): string {
   return `?${params.toString()}`;
 }
 export const tasksApi = {
-  pool: (token: string, page: number, signal?: AbortSignal) => request<Page<QueueCase>>(`/pool${queryString({ page, pageSize: 20 })}`, token, { signal }),
-  mine: (token: string, page: number, signal?: AbortSignal) => request<Page<QueueCase>>(`/mine${queryString({ page, pageSize: 20 })}`, token, { signal }),
-  claim: (token: string, taskId: string, caseId: string) => request<ManualDispatch>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'pool', task_id: taskId, case_id: caseId }) }),
+  pool: (token: string, page: number, signal?: AbortSignal, role:'annotate'|'review'='annotate') => request<Page<QueueCase>>(`/pool${queryString({ page, pageSize: 20, ...(role==='review'?{task_role:role}:{}) })}`, token, { signal }),
+  mine: (token: string, page: number, signal?: AbortSignal, role:'annotate'|'review'='annotate') => request<Page<QueueCase>>(`/mine${queryString({ page, pageSize: 20, ...(role==='review'?{task_role:role}:{}) })}`, token, { signal }),
+  claim: (token: string, taskId: string, caseId: string,role:'annotate'|'review'='annotate') => request<ManualDispatch>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'pool', task_id: taskId, case_id: caseId,...(role==='review'?{task_role:role}:{}) }) }),
+  startReview:(token:string,taskId:string,caseId:string)=>request('/start-review',token,{method:'POST',body:JSON.stringify({task_id:taskId,case_id:caseId})}),
   auto: (token: string, taskId: string, after?: string) => request<Required<Pick<AutoDispatch, 'assigned' | 'unassigned'>> & { next_case_id?: string | null }>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'auto', task_id: taskId, ...(after ? { after_case_id: after } : {}) }) }),
   reclaim: (token: string, assignmentId: string, reason: 'overdue' | 'quality') => request<{ auto_dispatch?: AutoDispatch }>('/reclaim', token, { method: 'POST', body: JSON.stringify({ assignment_id: assignmentId, reason }) }),
   assignees: (token: string, page: number, signal?: AbortSignal) => request<Page<Assignee>>(queryString({ page, pageSize: 20 }), token, { signal }, '/api/users'),
   settings: (token: string, id: string, input: { priority: number; in_flight_limit: number | null; dispatch_mode?: 'auto' | 'manual' | 'pool' }) => request<{ id: string; priority: number; in_flight_limit: number | null; dispatch_mode?: string; auto_dispatch?: AutoDispatch }>(`/${encodeURIComponent(id)}/settings`, token, { method: 'PATCH', body: JSON.stringify(input) }),
   personLimit: (token: string, id: string, limit: number | null) => request<{ id: string; in_flight_limit: number | null }>(`/assignees/${encodeURIComponent(id)}/limit`, token, { method: 'PATCH', body: JSON.stringify({ in_flight_limit: limit }) }),
-  dispatch: (token: string, input: ManualDispatch) => request<ManualDispatch & { task_role: 'annotate' }>('/dispatch', token, { method: 'POST', body: JSON.stringify(input) }),
+  dispatch: (token: string, input: ManualDispatch) => request<ManualDispatch & { task_role: 'annotate'|'review' }>('/dispatch', token, { method: 'POST', body: JSON.stringify(input) }),
   list: (token: string, query: TaskQuery, signal?: AbortSignal) => request<Page<Task>>(queryString(query), token, { signal }),
   eligible: (token: string, query: TaskQuery, signal?: AbortSignal) => request<Page<TaskCase>>(`/eligible-cases${queryString(query)}`, token, { signal }),
   cases: (token: string, id: string, page: number, signal?: AbortSignal) => request<Page<TaskCase>>(`/${encodeURIComponent(id)}/cases${queryString({ page, pageSize: 20 })}`, token, { signal }),
