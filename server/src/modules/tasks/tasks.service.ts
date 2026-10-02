@@ -137,7 +137,7 @@ export class TasksService {
         WHERE tc."task_id"=$1 AND tc."deleted_at" IS NULL AND c."deleted_at" IS NULL`;
       const items = await manager.query(
         `SELECT c."id", c."case_no", c."status", c."source", c."system_code",
-           (SELECT a.id FROM task_assignments a WHERE a.case_id=c.id AND a.task_role='annotate' AND a.state='active' AND a.deleted_at IS NULL) AS assignment_id ${from}
+           (SELECT a.id FROM task_assignments a WHERE a.case_id=c.id AND a.task_role=CASE WHEN c.status='标注中' THEN 'annotate' ELSE 'review' END AND a.state='active' AND a.deleted_at IS NULL) AS assignment_id ${from}
          ORDER BY tc."created_at", c."id" LIMIT $2 OFFSET $3`, [id, pageSize, offset],
       );
       const [count] = await manager.query(`SELECT count(*)::int AS "total" ${from}`, [id]);

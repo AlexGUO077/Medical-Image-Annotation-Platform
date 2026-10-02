@@ -1,6 +1,7 @@
 import { annotationPayload, type Annotation, type AnnotationRead, type AnnotationVersion } from './types';
+export interface SubmissionIssues {objects:{id:string;fields:string[]}[];sentence_ids:number[]}
 export class AnnotationRequestError extends Error {
-  constructor(public readonly status: number, message: string) { super(message); }
+  constructor(public readonly status: number, message: string,public readonly issues?:SubmissionIssues) { super(message); }
 }
 async function request<T>(id: string, token: string, signal: AbortSignal, body?: unknown, version?: number): Promise<T> {
   const response = await fetch(`/api/cases/${encodeURIComponent(id)}/annotations${version === undefined ? '' : `?version=${version}`}`, {
@@ -15,6 +16,14 @@ async function request<T>(id: string, token: string, signal: AbortSignal, body?:
   return data as T;
 }
 export const annotationsApi = {
+ async submit(id:string,token:string,signal:AbortSignal,version:number){
+  const response=await fetch(`/api/cases/${encodeURIComponent(id)}/submit`,{method:'POST',signal,cache:'no-store',redirect:'error',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({expected_version:version})});
+  if(!response.headers.get('content-type')?.includes('application/json'))throw new AnnotationRequestError(response.status,'提交响应格式无效');
+  const data=await response.json();
+  if(!response.ok)throw new AnnotationRequestError(response.status,typeof data.message==='string'?data.message:'提交失败',data.issues);
+  if(data.case_id!==id||data.version!==version||data.status!=='待审核')throw new AnnotationRequestError(502,'提交响应无效，请返回任务列表核对');
+  return data as {case_id:string;version:number;status:string;review:{reason:string|null}};
+ },
   read: (id:string, token:string, signal:AbortSignal, version?:number) => request<AnnotationRead>(id,token,signal,undefined,version),
   async save(id:string,token:string,signal:AbortSignal,version:number,annotations:readonly Annotation[]) {
     const result=await request<AnnotationVersion>(id,token,signal,{expected_version:version,annotations:annotationPayload(annotations)});

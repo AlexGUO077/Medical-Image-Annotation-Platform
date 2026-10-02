@@ -10,7 +10,7 @@ const token='e30.'+Buffer.from(JSON.stringify({sub:ids.account})).toString('base
  try{
   const context=await browser.newContext({viewport:{width:1700,height:1100}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   const png=await sharp({create:{width:640,height:480,channels:3,background:'#777777'}}).png().toBuffer();
-  let initialFailure=false,expiredSave=false,calibrated=true,version=0,objects=[],writes=0;const history=new Map([[0,[]]]);
+  let initialFailure=false,expiredSave=false,calibrated=true,version=0,objects=[],writes=0;const history=new Map([[0,[]]]);let submits=0,submitValid=false;
   await page.route('**/api/**',async route=>{
    const req=route.request(),url=new URL(req.url());assert.equal(req.headers().authorization,'Bearer '+token);
    if(url.pathname==='/api/workbench/'+ids.case)return route.fulfill({json:{case:{id:ids.case,case_no:'SYN-ANNOTATION',source:'synthetic',system_code:'resp',status:'标注中',confirm_method:'临床综合诊断'},series:[{id:ids.series,series_uid:'2.25.123',modality:'CT',frame_count:300,default_window:{center:40,width:400}}],sentences:[{idx:0,text:'肺内合成结节。'}],attachments:[]}});
@@ -19,6 +19,11 @@ const token='e30.'+Buffer.from(JSON.stringify({sub:ids.account})).toString('base
     if(req.method()==='PUT'){if(expiredSave)return route.fulfill({status:401,json:{message:'登录已过期'}});const body=req.postDataJSON();if(body.expected_version!==version)return route.fulfill({status:409,json:{message:'标注版本冲突'}});version++;writes++;objects=body.annotations;history.set(version,structuredClone(objects));return route.fulfill({json:{version,annotations:objects}});}
     if(initialFailure){initialFailure=false;return route.fulfill({status:503,json:{message:'首次读取失败'}});}
     const target=url.searchParams.has('version')?Number(url.searchParams.get('version')):version;return route.fulfill({json:{version:target,current_version:version,annotations:history.get(target)??objects}});
+   }
+   if(url.pathname===`/api/cases/${ids.case}/submit`){
+    submits++;assert.equal(req.postDataJSON().expected_version,version,'submit uses drained save version');
+    await new Promise(resolve=>setTimeout(resolve,300));
+    return submitValid?route.fulfill({status:201,json:{case_id:ids.case,version,status:'待审核',review:{reason:'review_pool'}}}):route.fulfill({status:400,json:{message:'标注或报告关联不完整',issues:{objects:[{id:objects[0].id,fields:['part_id','sign_tag_ids','confidence','report_sent_ids']}],sentence_ids:[0]}}});
    }
    if(url.pathname==='/api/frames/ticket')return route.fulfill({json:{url:'/api/frames/a.b.c'}});
    if(url.pathname==='/api/frames/a.b.c')return route.fulfill({contentType:'image/png',headers:{'X-Frame-Geometry':JSON.stringify({width:640,height:480,row_spacing:calibrated?0.8:null,column_spacing:calibrated?0.6:null})},body:png});
@@ -78,6 +83,16 @@ const token='e30.'+Buffer.from(JSON.stringify({sub:ids.account})).toString('base
   await page.getByRole('button',{name:'重新检查',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[role=status]')?.textContent.startsWith('已保存'));await page.getByLabel('标注绘图层').waitFor();
   box=await layer.boundingBox();expiredSave=true;await draw('4 点',{x:box.x+box.width*.5,y:box.y+box.height*.5});await page.getByRole('button',{name:'保存标注',exact:true}).click();await page.getByLabel('用户名',{exact:true}).waitFor();
   const preserved=await page.evaluate(async()=>{const d=await import('/src/annotations/drafts.ts');return d.syntheticDraftStore('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','synthetic').read();});assert(preserved?.annotations.length>0,'expiry redirects after persisting the recoverable draft');assert.deepEqual(errors,[]);
+  // Submission drains a fresh edit, keeps validation failures editable, and routes only on success.
+  expiredSave=false;objects=[];version=0;history.clear();history.set(0,[]);
+  await page.evaluate(async()=>{const d=await import('/src/annotations/drafts.ts');await d.clearAccountDrafts('10000000-0000-4000-8000-000000000001');});
+  await page.goto(base+'/annotation-smoke');await page.getByLabel('标注绘图层').waitFor();await page.getByText('已保存 · 版本 0',{exact:true}).waitFor();
+  box=await layer.boundingBox();await draw('4 点',{x:box.x+box.width*.5,y:box.y+box.height*.5});
+  await page.getByRole('button',{name:'提交审核',exact:true}).click();
+  assert(await page.getByRole('button',{name:'4 点',exact:true}).isDisabled());assert(await page.getByRole('button',{name:'保存标注',exact:true}).isDisabled());
+  await page.getByText('标注或报告关联不完整',{exact:true}).waitFor();await page.getByText(/报告 \[0\].*尚未关联/).waitFor();assert.equal(submits,1);assert.equal(version,1);assert(await page.getByRole('button',{name:'4 点',exact:true}).isEnabled());
+  submitValid=true;await page.getByRole('button',{name:'提交审核',exact:true}).click();await page.getByText('个人任务与标注领取池',{exact:true}).waitFor();assert.equal(submits,2);assert.deepEqual(errors,[]);
+  console.log('PASS submission browser: save drain, structured validation feedback, editing guard, success navigation');
   console.log('PASS editor browser: four tools, incomplete draft, attributes/report association, source coordinates, CT mask copy, offline recovery, conflict stop, uncalibrated brush guard, initialization retry, expiry draft preservation and logout cleanup; writes='+writes);
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

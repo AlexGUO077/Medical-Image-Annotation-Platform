@@ -1,6 +1,7 @@
-import type { ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
 import { MulterError } from 'multer';
 import { describe, expect, it, vi } from 'vitest';
+import { SubmissionValidationException } from './submission-validation.exception';
 import { ApiExceptionFilter } from './api-exception.filter';
 
 function host() {
@@ -17,6 +18,14 @@ function host() {
 }
 
 describe('ApiExceptionFilter', () => {
+  it('only exposes structured submission issues from the dedicated exception', () => {
+    const issues = { objects: [{ id: 'synthetic', fields: ['part_id'] }], sentence_ids: [0] };
+    const allowed = host(), generic = host();
+    new ApiExceptionFilter().catch(new SubmissionValidationException(issues), allowed.argumentsHost);
+    expect(allowed.json).toHaveBeenCalledWith({ code: 'HTTP_400', message: '标注或报告关联不完整', issues });
+    new ApiExceptionFilter().catch(new BadRequestException({ message: 'invalid', issues, internal: 'private' }), generic.argumentsHost);
+    expect(generic.json).toHaveBeenCalledWith({ code: 'HTTP_400', message: 'invalid' });
+  });
   it('maps Multer file-size limits to HTTP 413', () => {
     const { argumentsHost, response, json } = host();
 

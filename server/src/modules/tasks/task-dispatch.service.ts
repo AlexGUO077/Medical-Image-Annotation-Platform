@@ -4,6 +4,8 @@ import type { AuthUser } from '../auth/auth.models';
 import { IMPORT_SOURCES, SYSTEM_CODES } from '../cases/cases-import.models';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 
+import { reviewAuthorSql, reviewEligible } from './review-assignment';
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type CapacityUser = AuthUser & { in_flight_limit: number | null };
 
@@ -15,12 +17,14 @@ export class TaskDispatchService {
     const mode = body && typeof body === 'object' ? (body as Record<string, unknown>).mode : undefined;
     if (mode === 'auto') return this.auto(actor, body, ip);
     const pool = mode === 'pool';
+    const role=(body as Record<string,unknown>)?.task_role??'annotate';
+    if(role!=='annotate'&&role!=='review')throw new BadRequestException('任务角色无效');
     if (!pool && actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
     if (pool) {
-      const claim = this.object(body, ['mode', 'task_id', 'case_id']);
-      body = { mode: 'manual', task_id: claim.task_id, assignee_id: actor.id, case_ids: [this.id(claim.case_id)], due_at: null };
+      const claim = this.object(body, ['mode', 'task_id', 'case_id', 'task_role']);
+      body = { mode: 'manual', task_id: claim.task_id, assignee_id: actor.id, case_ids: [this.id(claim.case_id)], due_at: null, task_role:role };
     }
-    const input = this.object(body, ['mode', 'task_id', 'assignee_id', 'case_ids', 'due_at']);
+    const input = this.object(body, ['mode', 'task_id', 'assignee_id', 'case_ids', 'due_at', 'task_role']);
     if (input.mode !== 'manual') throw new BadRequestException('分发模式无效');
     const taskId = this.id(input.task_id), assigneeId = this.id(input.assignee_id);
     if (!Array.isArray(input.case_ids) || !input.case_ids.length || input.case_ids.length > 2000) {
@@ -44,20 +48,24 @@ export class TaskDispatchService {
       if (!this.enabled(assignee)) throw new ForbiddenException('承接人账号不可用');
       const task = await this.task(manager, taskId);
       if (pool && task.dispatch_mode === 'manual') throw new ConflictException('手动模式任务不开放领取');
-      if (!assignee.quals[task.system_code]?.includes('annotate') ||
-          (task.review_mode === 'self' && !assignee.quals[task.system_code]?.includes('review'))) {
+      if (!assignee.quals[task.system_code]?.includes(role) ||
+          (task.review_mode === 'self' && !assignee.quals[task.system_code]?.includes(role==='annotate'?'review':'annotate'))) {
         throw new ForbiddenException('承接人缺少任务所需系统资格');
       }
       const cases = await manager.query(`SELECT id, source, system_code, status FROM cases
         WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, [ids]);
       if (cases.length !== ids.length) throw new NotFoundException('病例不存在');
       if (cases.some((c: { source: string; system_code: string; status: string }) =>
-        c.source !== task.source || c.system_code !== task.system_code || c.status !== '待分配')) {
+        c.source !== task.source || c.system_code !== task.system_code || c.status !== (role==='review'?'待审核':'待分配'))) {
         throw new ConflictException('病例来源、系统或状态不符合分派要求');
       }
       const links = await manager.query(`SELECT case_id FROM task_cases WHERE task_id=$1
         AND case_id=ANY($2::uuid[]) AND deleted_at IS NULL`, [taskId, ids]);
       if (links.length !== ids.length) throw new ConflictException('病例不属于该任务');
+      if(role==='review'){
+        const authors=await manager.query(`SELECT c.id,${reviewAuthorSql} author FROM cases c JOIN task_cases tc ON tc.case_id=c.id AND tc.deleted_at IS NULL JOIN tasks t ON t.id=tc.task_id WHERE c.id=ANY($1::uuid[])`,[ids]);
+        if(authors.some((c:{author:string|null})=>!reviewEligible(assignee,task,c.author)))throw new ForbiddenException('审核资格或标审分离不符合要求');
+      }
       const active = await manager.query(`SELECT id FROM task_assignments WHERE case_id=ANY($1::uuid[])
         AND deleted_at IS NULL AND state='active' LIMIT 1`, [ids]);
       if (active.length) throw new ConflictException('病例已有在途分派，须先回收');
@@ -76,10 +84,11 @@ export class TaskDispatchService {
       // Recheck after lock waits; never insert a deadline that expired while waiting.
       if (due && Date.parse(due) <= Date.now()) throw new BadRequestException('截止时间已过期');
       await manager.query(`INSERT INTO task_assignments (case_id, assignee_id, task_role, due_at, state)
-        SELECT unnest($1::uuid[]), $2, 'annotate', $3, 'active'`, [ids, assigneeId, due]);
-      await manager.query(`UPDATE cases SET status='标注中', updated_at=now() WHERE id=ANY($1::uuid[])`, [ids]);
-      const result = { task_id: taskId, assignee_id: assigneeId, case_ids: ids, due_at: due, task_role: 'annotate' };
-      await this.audit(manager, actor, pool ? 'tasks.claimed' : 'tasks.dispatched', `tasks:${taskId}`, { ...result, mode: pool ? 'pool' : 'manual', from: '待分配', to: '标注中' }, ip);
+        SELECT unnest($1::uuid[]), $2, $4, $3, 'active'`, [ids, assigneeId, due,role]);
+      const from=role==='review'?'待审核':'待分配',to=role==='review'?(pool?'审核中':'待审核'):'标注中';
+      await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=ANY($1::uuid[])',[ids,to]);
+      const result = { task_id: taskId, assignee_id: assigneeId, case_ids: ids, due_at: due, task_role:role };
+      await this.audit(manager, actor, pool ? 'tasks.claimed' : 'tasks.dispatched', `tasks:${taskId}`, { ...result, mode: pool ? 'pool' : 'manual', from,to }, ip);
       return result;
     });
   }
@@ -121,6 +130,8 @@ export class TaskDispatchService {
   }
 
   async queue(actor: AuthUser, query: Record<string, unknown>, mine: boolean) {
+    const role=query.task_role??'annotate';
+    if(role!=='annotate'&&role!=='review')throw new BadRequestException('任务角色无效');
     const number = (value: unknown, fallback: number, max: number) => {
       if (value === undefined) return fallback;
       if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new BadRequestException('分页参数无效');
@@ -133,22 +144,40 @@ export class TaskDispatchService {
       const users = await manager.query('SELECT *, expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR SHARE', [actor.id]) as CapacityUser[];
       this.actor(users, actor, false);
       const user = users[0]!;
-      const systems = Object.keys(user.quals).filter(system => user.quals[system]?.includes('annotate'));
-      const dual = systems.filter(system => user.quals[system]?.includes('review'));
+      const systems = Object.keys(user.quals).filter(system => user.quals[system]?.includes(role));
+      const dual = systems.filter(system => user.quals[system]?.includes(role==='review'?'annotate':'review'));
+      const author=reviewAuthorSql;
+      const reviewConstraint=role==='review'?`AND ${author} IS NOT NULL AND (CASE WHEN t.review_mode='self' THEN ${author}=$1 ELSE ${author}<>$1 END)`:'';
       const from = `FROM task_cases tc JOIN tasks t ON t.id=tc.task_id JOIN cases c ON c.id=tc.case_id
-        ${mine ? "JOIN task_assignments a ON a.case_id=c.id AND a.assignee_id=$1 AND a.task_role='annotate' AND a.state='active' AND a.deleted_at IS NULL AND (a.due_at IS NULL OR a.due_at>clock_timestamp())" : ''}
+        ${mine ? "JOIN task_assignments a ON a.case_id=c.id AND a.assignee_id=$1 AND a.task_role=$6 AND a.state='active' AND a.deleted_at IS NULL AND (a.due_at IS NULL OR a.due_at>clock_timestamp())" : ''}
         WHERE tc.deleted_at IS NULL AND t.deleted_at IS NULL AND t.status='进行中' AND c.deleted_at IS NULL
           AND c.source=t.source AND c.system_code=t.system_code AND t.system_code=ANY($2::text[])
           AND (t.review_mode<>'self' OR t.system_code=ANY($3::text[]))
           AND ($4::text IS NULL OR t.source=$4) AND ($5::text IS NULL OR t.system_code=$5)
-          AND ${mine ? "c.status='标注中'" : "c.status='待分配' AND t.dispatch_mode IN ('auto','pool') AND NOT EXISTS (SELECT 1 FROM task_assignments a WHERE a.case_id=c.id AND a.deleted_at IS NULL AND a.state='active')"}
-          AND $1::uuid IS NOT NULL`;
-      const values = [actor.id, systems, dual, query.source ?? null, query.system_code ?? null];
+          AND ${mine ? (role==='review'?"c.status IN ('待审核','审核中')":"c.status='标注中'") : (role==='review'?"c.status='待审核' AND":"c.status='待分配' AND")+" t.dispatch_mode IN ('auto','pool') AND NOT EXISTS (SELECT 1 FROM task_assignments a WHERE a.case_id=c.id AND a.deleted_at IS NULL AND a.state='active')"}
+          ${reviewConstraint} AND $1::uuid IS NOT NULL AND $6::text IS NOT NULL`;
+      const values = [actor.id, systems, dual, query.source ?? null, query.system_code ?? null,role];
       const items = await manager.query(`SELECT t.id task_id,t.name task_name,t.priority,t.source,t.system_code,t.review_mode,
-        c.id case_id,c.case_no,c.status ${mine ? ',a.id assignment_id,a.due_at' : ''} ${from}
-        ORDER BY t.priority DESC,tc.created_at,c.id LIMIT $6 OFFSET $7`, [...values, pageSize, offset]);
+        c.id case_id,c.case_no,c.status,$6::text task_role ${mine ? ',a.id assignment_id,a.due_at' : ''} ${from}
+        ORDER BY t.priority DESC,tc.created_at,c.id LIMIT $7 OFFSET $8`, [...values, pageSize, offset]);
       const [count] = await manager.query(`SELECT count(*)::int total ${from}`, values);
       return { items, total: count.total as number, page, pageSize };
+    });
+  }
+
+  async startReview(actor:AuthUser,body:unknown,ip:string){
+    const input=this.object(body,['task_id','case_id']),taskId=this.id(input.task_id),id=this.id(input.case_id);
+    return this.db.transaction(async manager=>{
+      const users=await this.lockUsers(manager,actor,undefined,true),task=await this.task(manager,taskId);
+      const [item]=await manager.query(`SELECT c.*,${reviewAuthorSql} author FROM cases c JOIN task_cases tc ON tc.case_id=c.id AND tc.deleted_at IS NULL JOIN tasks t ON t.id=tc.task_id
+        WHERE c.id=$1 AND t.id=$2 AND c.deleted_at IS NULL FOR UPDATE OF c`,[id,taskId]);
+      if(!item||item.status!=='待审核'||item.source!==task.source||item.system_code!==task.system_code)throw new ConflictException('病例不在待审核状态');
+      if(!reviewEligible(users[0]!,task,item.author))throw new ForbiddenException('审核资格或标审分离不符合要求');
+      const [assignment]=await manager.query("SELECT id FROM task_assignments WHERE case_id=$1 AND assignee_id=$2 AND task_role='review' AND state='active' AND deleted_at IS NULL AND (due_at IS NULL OR due_at>clock_timestamp()) FOR UPDATE",[id,actor.id]);
+      if(!assignment)throw new ForbiddenException('病例未有效分派给当前审核人');
+      await manager.query("UPDATE cases SET status='审核中',updated_at=now() WHERE id=$1",[id]);
+      await this.audit(manager,actor,'tasks.review_started',`tasks:${taskId}`,{case_id:id,assignment_id:assignment.id,from:'待审核',to:'审核中'},ip);
+      return {case_id:id,status:'审核中'};
     });
   }
 
@@ -179,9 +208,9 @@ export class TaskDispatchService {
         const cursors = await manager.query('SELECT tc.case_id FROM task_cases tc WHERE tc.case_id=$1 AND tc.task_id=ANY($2::uuid[]) AND tc.deleted_at IS NULL', [after, autoTasks.map((t: { id: string }) => t.id)]);
         if (!cursors.length) throw new BadRequestException('续批游标不属于当前自动任务范围，请从头重试');
       }
-      const cases = await manager.query(`SELECT c.id, tc.task_id FROM cases c JOIN task_cases tc ON tc.case_id=c.id
+      const cases = await manager.query(`SELECT c.id,c.status,${reviewAuthorSql} author,tc.task_id FROM cases c JOIN task_cases tc ON tc.case_id=c.id
         JOIN tasks t ON t.id=tc.task_id WHERE tc.deleted_at IS NULL AND c.deleted_at IS NULL
-          AND tc.task_id=ANY($1::uuid[]) AND c.status='待分配'
+          AND tc.task_id=ANY($1::uuid[]) AND c.status IN ('待分配','待审核')
           AND ($2::uuid IS NULL OR (SELECT t.priority < prior_task.priority OR
             (t.priority=prior_task.priority AND (tc.created_at,c.id)>(prior_link.created_at,prior_link.case_id))
             FROM task_cases prior_link JOIN tasks prior_task ON prior_task.id=prior_link.task_id
@@ -200,7 +229,8 @@ export class TaskDispatchService {
       const unassigned: { case_id: string; reason: string }[] = [];
       for (const item of cases) {
         const task = autoTasks.find((t: { id: string }) => t.id === item.task_id);
-        const eligible = users.filter(u => this.enabled(u) && u.quals[task.system_code]?.includes('annotate') &&
+        const role=item.status==='待审核'?'review':'annotate';
+        const eligible = users.filter(u => role==='review'?reviewEligible(u,task,item.author):this.enabled(u) && u.quals[task.system_code]?.includes('annotate') &&
           (task.review_mode !== 'self' || u.quals[task.system_code]?.includes('review')));
         const available = eligible.filter(u => (u.in_flight_limit === null || (global.get(u.id) ?? 0) < u.in_flight_limit) &&
           (task.in_flight_limit === null || (local.get(`${u.id}:${task.id}`) ?? 0) < task.in_flight_limit));
@@ -208,10 +238,11 @@ export class TaskDispatchService {
           (local.get(`${a.id}:${task.id}`) ?? 0) - (local.get(`${b.id}:${task.id}`) ?? 0) || a.id.localeCompare(b.id));
         const user = available[0];
         if (!user) { unassigned.push({ case_id: item.id, reason: eligible.length ? 'capacity_full' : 'no_eligible_assignee' }); continue; }
-        await manager.query(`INSERT INTO task_assignments (case_id,assignee_id,task_role,due_at,state) VALUES ($1,$2,'annotate',NULL,'active')`, [item.id, user.id]);
-        await manager.query(`UPDATE cases SET status='标注中', updated_at=now() WHERE id=$1`, [item.id]);
+        await manager.query(`INSERT INTO task_assignments (case_id,assignee_id,task_role,due_at,state) VALUES ($1,$2,$3,NULL,'active')`, [item.id, user.id,role]);
+        const to=role==='review'?'待审核':'标注中';
+        await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=$1',[item.id,to]);
         const assignment = { case_id: item.id as string, task_id: task.id as string, assignee_id: user.id };
-        await this.audit(manager, actor, actor ? 'tasks.dispatched' : 'tasks.auto_dispatched', `tasks:${task.id}`, { ...assignment, mode: 'auto', from: '待分配', to: '标注中', due_at: null, task_role: 'annotate' }, ip);
+        await this.audit(manager, actor, actor ? 'tasks.dispatched' : 'tasks.auto_dispatched', `tasks:${task.id}`, { ...assignment, mode:'auto',from:item.status,to,due_at:null,task_role:role }, ip);
         assigned.push(assignment); global.set(user.id, (global.get(user.id) ?? 0) + 1);
         local.set(`${user.id}:${task.id}`, (local.get(`${user.id}:${task.id}`) ?? 0) + 1);
       }
@@ -233,14 +264,15 @@ export class TaskDispatchService {
       const [assignment] = await manager.query(`SELECT *, (due_at IS NOT NULL AND due_at<=clock_timestamp()) overdue
         FROM task_assignments WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [id]);
       const links = await manager.query('SELECT id FROM task_cases WHERE case_id=$1 AND task_id=$2 AND deleted_at IS NULL', [snapshot.case_id, task.id]);
-      if (!assignment || assignment.state !== 'active' || assignment.task_role !== 'annotate' || !item ||
-          item.status !== '标注中' || item.source !== task.source || item.system_code !== task.system_code || !links.length ||
+      if (!assignment || assignment.state !== 'active' || !['annotate','review'].includes(assignment.task_role) || !item ||
+          !(assignment.task_role==='review'?['待审核','审核中']:['标注中']).includes(item.status) || item.source !== task.source || item.system_code !== task.system_code || !links.length ||
           assignment.assignee_id !== snapshot.assignee_id) throw new ConflictException('分派或病例状态已变化');
       if (input.reason === 'overdue' && !assignment.overdue) throw new ConflictException('分派尚未逾期');
       await manager.query("UPDATE task_assignments SET state='released', updated_at=now() WHERE id=$1", [id]);
-      await manager.query("UPDATE cases SET status='待分配', updated_at=now() WHERE id=$1", [item.id]);
+      const to=assignment.task_role==='review'?'待审核':'待分配';
+      await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=$1',[item.id,to]);
       await this.audit(manager, actor, 'tasks.reclaimed', `tasks:${task.id}`, { assignment_id: id, case_id: item.id,
-        assignee_id: assignment.assignee_id, reason: input.reason, from: '标注中', to: '待分配' }, ip);
+        assignee_id: assignment.assignee_id, reason:input.reason,task_role:assignment.task_role,from:item.status,to }, ip);
       return { assignment_id: id, case_id: item.id as string, task_id: task.id as string, dispatch_mode: task.dispatch_mode as string, state: 'released' };
     });
   }

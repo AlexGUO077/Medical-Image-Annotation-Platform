@@ -35,7 +35,7 @@ module.exports = async ({ db, app, base, token, memberToken, users, makeCase, bo
   const listing = await queue('pool');
   assert(listing.items.some(row => row.case_id === pool.ids[0]));
   assert(!listing.items.some(row => row.case_id === manual.ids[0]));
-  assert.deepEqual(Object.keys(listing.items[0]).sort(), ['task_id','task_name','priority','source','system_code','review_mode','case_id','case_no','status'].sort());
+  assert.deepEqual(Object.keys(listing.items[0]).sort(), ['task_id','task_name','priority','source','system_code','review_mode','case_id','case_no','status','task_role'].sort());
   const race = await Promise.all([claim(pool.task, pool.ids[0]), claim(pool.task, pool.ids[0], secondToken)]);
   assert.deepEqual(race.map(r => r.status).sort(), [201,409]);
   let [active] = await db.query("SELECT * FROM task_assignments WHERE case_id=$1 AND state='active'", [pool.ids[0]]);

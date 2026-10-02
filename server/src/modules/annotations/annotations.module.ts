@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Module, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Module, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import type { AuthenticatedRequest } from '../auth/auth.models';
@@ -21,5 +21,16 @@ export class AnnotationsController {
     return this.annotations.save(req.user,id,body,req.ip ?? 'unknown');
   }
 }
-@Module({ imports: [AuthModule], controllers: [AnnotationsController], providers: [AnnotationsService, OrthancService] })
+@Controller('cases/:caseId/submit')
+@UseGuards(AccessTokenGuard)
+export class AnnotationSubmitController {
+ constructor(private readonly annotations:AnnotationsService){}
+ @Post()
+ @Header('Cache-Control','no-store, private')
+ submit(@Req() req:AuthenticatedRequest,@Param('caseId') id:string,@Body() body:unknown){
+  if(!req.user)throw new Error('Authenticated user missing');
+  return this.annotations.submit(req.user,id,body,req.ip??'unknown');
+ }
+}
+@Module({ imports: [AuthModule], controllers: [AnnotationsController, AnnotationSubmitController], providers: [AnnotationsService, OrthancService] })
 export class AnnotationsModule {}
