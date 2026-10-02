@@ -25,3 +25,11 @@
 输出必须在现有帧资格、票据、限流、水印、审计及输出前再次校验边界内完成；PNG 尺寸与 DICOM 不一致则失败，不猜测缩放比例。缺少有效 PixelSpacing 时禁用毫米画笔及物理测量，不用 ImagerPixelSpacing 或 1mm 冒充标定。普通点、框、多边形仍使用原图像素坐标。保存服务按授权病例与序列重新核验几何范围/掩膜尺寸，不信任客户端头副本。
 
 客户端仅保留一个相邻帧的已水印 PNG 预加载结果在内存；消费前重新申请票据，实时复核账号/分派和限流，失败不显示该预取帧。退出工作台、病例切换或登出取消预加载并清除引用；不写 CacheStorage、IndexedDB 或浏览器磁盘缓存。300 帧客户端合成测试不代替真实部署链路或 SG-4 人工验收。
+
+## 本地真实链路验收
+
+`npm run test:m2:browser --workspace server` 使用真实本机 PostgreSQL/Redis/Orthanc、Nest HTTP、Vite 代理和 Chrome；仅初始化页面会话，业务 API 不做 mock。依赖显式提供 `MIAP_ENV_FILE`（库名须含 synthetic）、`MIAP_PYTHON`（已有 pydicom/numpy 环境）、`MIAP_PLAYWRIGHT_MODULE` 和 `MIAP_CHROME_EXECUTABLE`。可选 `MIAP_M2_ARTIFACT_DIR` 仅保存合成界面截图，不写 HAR、Bearer 或签名 URL。
+
+脚本临时生成 512×512 DX 与 300 层 CT，使用独立 schema、随机会话密钥及明确测试限流预算；结束清理本次 schema、影像、Redis 键和临时文件，不修改已有开发数据或部署阈值。覆盖实际绘制、属性/报告关联、保存与提交待审核、审核分派，以及浏览器影像响应和本地存储检查；输出预加载后的翻帧实测值。
+
+这只是本机直连开发服务的合成验证，不等同于生产 HTTPS/Nginx 网络隔离、完整浏览器磁盘取证、审核/附件全部页面遍历、检索库授权或 SG-4 人工放行。正式部署的上游端口隔离、5 分钟实际等待重放、限流阈值与管理员复核仍须按手册验收。

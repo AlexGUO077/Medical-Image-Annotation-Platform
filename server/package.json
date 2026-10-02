@@ -19,7 +19,8 @@
     "test:case-entry:integration": "npm run build && node test/case-entry.integration.cjs",
     "test:tasks:integration": "npm run build && node test/tasks.integration.cjs",
     "test:frames:api": "npm run build && node test/frame-api.integration.cjs",
-    "test:frames:render": "npm run build && node test/frame-render.integration.cjs"
+    "test:frames:render": "npm run build && node test/frame-render.integration.cjs",
+    "test:m2:browser": "npm run build && node test/m2-browser.integration.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1138.0",
