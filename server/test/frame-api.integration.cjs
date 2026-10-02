@@ -24,6 +24,7 @@ const { TaskMaintenanceService } = require('../dist/modules/tasks/task-maintenan
 const { FramesModule } = require('../dist/modules/frames/frames.module');
 const { FrameRateService } = require('../dist/modules/frames/frame-rate.service');
 const { AuditService } = require('../dist/modules/audit/audit.service');
+const { AttachmentObjectService } = require('../dist/modules/cases/attachment-object.service');
 const { OrthancService } = require('../dist/modules/cases/orthanc.service');
 const { UsersService } = require('../dist/modules/users/users.service');
 const { AuthTokenService } = require('../dist/modules/auth/auth-token.service');
@@ -62,7 +63,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule] }).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).compile();
+    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule] }).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw}).compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
     await app.listen(0, '127.0.0.1'); const base = await app.getUrl();
     const fresh = async id => (await db.query('SELECT *,expire_at::text FROM users WHERE id=$1', [id]))[0];

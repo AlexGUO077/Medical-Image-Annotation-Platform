@@ -28,8 +28,14 @@
 
 ## 本地真实链路验收
 
-`npm run test:m2:browser --workspace server` 使用真实本机 PostgreSQL/Redis/Orthanc、Nest HTTP、Vite 代理和 Chrome；仅初始化页面会话，业务 API 不做 mock。依赖显式提供 `MIAP_ENV_FILE`（库名须含 synthetic）、`MIAP_PYTHON`（已有 pydicom/numpy 环境）、`MIAP_PLAYWRIGHT_MODULE` 和 `MIAP_CHROME_EXECUTABLE`。可选 `MIAP_M2_ARTIFACT_DIR` 仅保存合成界面截图，不写 HAR、Bearer 或签名 URL。
+`npm run test:m2:browser --workspace server` 使用真实本机 PostgreSQL/Redis/Orthanc/MinIO、Nest HTTP、Vite 代理和 Chrome；仅初始化页面会话，业务 API 不做 mock。依赖显式提供 `MIAP_ENV_FILE`（库名须含 synthetic）、`MIAP_PYTHON`（已有 pydicom/numpy 环境）、`MIAP_PLAYWRIGHT_MODULE` 和 `MIAP_CHROME_EXECUTABLE`。可选 `MIAP_M2_ARTIFACT_DIR` 仅保存合成界面截图，不写 HAR、Bearer 或签名 URL。设置 `MIAP_M2_WAIT_EXPIRY=1` 时实际等待票据到期，验证旧票据 403、相同账号和分派下新票据仍可取帧；常规运行不重复这段等待。
 
-脚本临时生成 512×512 DX 与 300 层 CT，使用独立 schema、随机会话密钥及明确测试限流预算；结束清理本次 schema、影像、Redis 键和临时文件，不修改已有开发数据或部署阈值。覆盖实际绘制、属性/报告关联、保存与提交待审核、审核分派，以及浏览器影像响应和本地存储检查；输出预加载后的翻帧实测值。
+脚本临时生成 512×512 DX 与 300 层 CT，使用独立 schema、随机会话密钥及明确测试限流预算；结束清理本次 schema、影像、Redis 键和临时文件，不修改已有开发数据或部署阈值。从待分配开始经真实领取接口进入标注，覆盖附件分页水印预览、拖拽调窗、绘制、属性/报告关联、保存与提交待审核、审核分派，以及浏览器影像响应和本地存储检查；输出预加载后的翻帧实测值。附件使用即时生成的已确认合成页，清理本次 MinIO 对象，不重复 M1 的 OCR/脱敏验收。
 
-这只是本机直连开发服务的合成验证，不等同于生产 HTTPS/Nginx 网络隔离、完整浏览器磁盘取证、审核/附件全部页面遍历、检索库授权或 SG-4 人工放行。正式部署的上游端口隔离、5 分钟实际等待重放、限流阈值与管理员复核仍须按手册验收。
+本地核验结果见 [M2 合成验收记录](../evidence/m2-acceptance-20261002.md)。本机开发链路不等同于生产 HTTPS/Nginx 网络隔离、完整浏览器磁盘取证或 SG-4 人工放行。源 Word §9.1 将云端部署、审核台、发布与检索归入 M3；这些项目不另加为 M2 的开发前置条件，真实数据及生产条件仍保持关闭。限流使用显式测试预算，正式环境阈值另行配置。
+
+## M2 工作台附件与拖拽调窗
+
+依据手册 §6.2/§8.4，`GET /api/workbench/:caseId/attachments/:attachmentId/preview?page=1` 为当前合成病例标注人提供已确认附件的分页 PNG 预览。仅接受正整数页号和 page 查询字段；沿用现有对象 PNG/页清单，不提供原件、外部地址或下载入口。读取需有效账号会话、系统资格、标注分派、病例来源/脱敏确认和附件归属；输出前在同一事务重新鉴权并写 `workbench.attachment_viewed` 审计。加账号/姓名/时间水印，no-store/private、no-referrer、nosniff；失败不返回源内容。前端仅保留当前页临时 Blob URL，切换/关闭/离开页面撤销。
+
+影像区增加“拖拽调窗”模式：横向拖动调整窗宽、纵向调整窗位，显示候选数值；松手后一次调用既有帧服务渲染，避免每个 pointermove 都请求帧。窗口仍由服务器绑定到票据，不在浏览器处理原始 DICOM；输入框、CT 预设及平移继续可用。取消拖动不应用候选值。

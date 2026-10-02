@@ -24,6 +24,8 @@ async function assertVisibleWatermark(marked,raw){
  assert.deepEqual(actual.info,source.info,'watermark comparison must use identical dimensions/channels');
  assert.equal(actual.data.length,source.data.length);assert.notDeepEqual(actual.data,source.data,'visible watermark pixels must differ');
 }
+const {AttachmentObjectService}=require('../dist/modules/cases/attachment-object.service');
+const {IMPORT_QUARANTINE_ROOT}=require('../dist/modules/cases/cases-import.paths');
 const {OrthancService}=require('../dist/modules/cases/orthanc.service');
 const {AuthTokenService}=require('../dist/modules/auth/auth-token.service');
 const {DATABASE_SOURCE}=require('../dist/modules/database/database.tokens');
@@ -34,7 +36,8 @@ const {TaskMaintenanceService}=require('../dist/modules/tasks/task-maintenance.s
 const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(process.env.POSTGRES_PORT??5432),user:process.env.POSTGRES_USER,password:process.env.POSTGRES_PASSWORD,database:process.env.POSTGRES_DB};
 (async()=>{
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'miap-m2-')),schema='m2_'+randomBytes(8).toString('hex');
- const admin=new Client(connection),keys=new Set(),orthanc=new OrthancService(),uploaded=[];
+ const attachmentDir=await fs.mkdtemp(path.join(IMPORT_QUARANTINE_ROOT,'m2-'));
+ const admin=new Client(connection),keys=new Set(),orthanc=new OrthancService(),uploaded=[],objects=new AttachmentObjectService(),objectKeys=[];
  const redis=createClient({socket:{host:process.env.REDIS_HOST??'127.0.0.1',port:Number(process.env.REDIS_PORT??6379),reconnectStrategy:false},password:process.env.REDIS_PASSWORD});redis.on('error',()=>{});
  let db,app,vite,browser;
  try{
@@ -53,20 +56,23 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   await db.query("INSERT INTO taxonomy_nodes(id,level,name,synonyms) VALUES($1,1,'呼吸','[]')",[root]);
   await db.query("INSERT INTO taxonomy_nodes(id,parent_id,level,name,synonyms) VALUES($1,$2,2,'合成肺','[]')",[part,root]);
   await db.query("INSERT INTO sign_tags(id,name,system_code,definition) VALUES($1,'合成结节','resp','仅供合成验收')",[sign]);
+  const attachmentPng=await sharp({create:{width:512,height:512,channels:3,background:'#777777'}}).png().toBuffer();
+  for(const page of [1,2])await fs.writeFile(path.join(attachmentDir,`page-${page}.png`),attachmentPng);
   const cases=[];
   for(const item of JSON.parse(await fs.readFile(path.join(temp,'manifest.json'),'utf8'))){
    const files=(await fs.readdir(path.join(temp,item.modality))).sort().map(f=>path.join(temp,item.modality,f));
    const source=await orthanc.uploadSeries(files);uploaded.push(source.id);
    const id=randomUUID(),study=randomUUID(),series=randomUUID(),task=randomUUID();
-   await db.query("INSERT INTO cases(id,case_no,source,system_code,status,confirm_method) VALUES($1,$2,'synthetic','resp','标注中','临床综合诊断')",[id,'SYN-M2-'+item.modality]);
+   await db.query("INSERT INTO cases(id,case_no,source,system_code,status,confirm_method) VALUES($1,$2,'synthetic','resp','待分配','临床综合诊断')",[id,'SYN-M2-'+item.modality]);
    await db.query("INSERT INTO tasks(id,name,source,system_code,review_mode,status,dispatch_mode,priority) VALUES($1,'合成验收','synthetic','resp','peer','进行中','auto',0)",[task]);
    await db.query('INSERT INTO task_cases(task_id,case_id) VALUES($1,$2)',[task,id]);
-   await db.query("INSERT INTO task_assignments(case_id,assignee_id,task_role,state) VALUES($1,$2,'annotate','active')",[id,actor.id]);
    await db.query("INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,'case_manual.confirmed',$2,'{}','synthetic-test')",[actor.id,`cases:${id}`]);
    await db.query("INSERT INTO studies(id,case_id,study_uid,study_date) VALUES($1,$2,$3,'2026-10-02')",[study,id,item.study_uid]);
    await db.query('INSERT INTO series(id,study_id,modality,series_uid,orthanc_id,frame_count,default_window) VALUES($1,$2,$3,$4,$5,$6,$7)',[series,study,item.modality,item.series_uid,source.id,item.count,JSON.stringify({center:128,width:256})]);
    await db.query("INSERT INTO reports(case_id,raw_text,sentences) VALUES($1,'合成肺结节',$2)",[id,JSON.stringify([{idx:0,text:'合成肺结节。'}])]);
-   cases.push({...item,id,task,series,orthanc:source.id});
+   const attachment=randomUUID(),objectKey=`cases/${id}/attachments/${attachment}`;objectKeys.push(objectKey);const size=await objects.storePages(objectKey,attachmentDir,2);
+   await db.query("INSERT INTO attachments(id,case_id,kind,object_key,filename,size,deid_confirmed) VALUES($1,$2,'其他',$3,'SYN-M2-附件.pdf',$4,true)",[attachment,id,objectKey,size]);
+   cases.push({...item,id,task,series,attachment,orthanc:source.id});
   }
   const {createServer}=await import('vite');vite=await createServer({root:path.resolve(__dirname,'../../web-anno'),server:{host:'127.0.0.1',port:0,proxy:{'/api':api}},logLevel:'error'});await vite.listen();const base=vite.resolvedUrls.local[0];
   browser=await chromium.launch({executablePath:process.env.MIAP_CHROME_EXECUTABLE,headless:true});
@@ -80,7 +86,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
     const response=await native(...args),url=new URL(response.url);
     if(url.pathname.startsWith('/api/')){
      const info={pathname:url.pathname.startsWith('/api/frames/')?'/api/frames/<redacted>':url.pathname,status:response.status,headers:Object.fromEntries(response.headers)};
-     if(response.headers.get('content-type')?.includes('image/')){
+     if(response.headers.get('content-type')?.includes('image/')&&url.pathname.startsWith('/api/frames/')){
       const encoded=url.pathname.split('/').pop().split('.')[1];const bound=JSON.parse(atob(encoded.replace(/-/g,'+').replace(/_/g,'/')));
       info.target={case_id:bound.case_id,series_uid:bound.series_uid,frame_index:bound.frame_index};
      }
@@ -90,6 +96,9 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
    };
   });
   for(const item of cases){
+   assert.equal((await db.query('SELECT status FROM cases WHERE id=$1',[item.id]))[0].status,'待分配');
+   const claim=await fetch(api+'/api/tasks/dispatch',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'pool',task_id:item.task,case_id:item.id})});assert.equal(claim.status,201);
+   assert.equal((await db.query('SELECT status FROM cases WHERE id=$1',[item.id]))[0].status,'标注中');
    await page.route('**/m2-smoke',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
    import RefreshRuntime from '/@react-refresh';RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>(type)=>type;window.__vite_plugin_react_preamble_installed__=true;
    const {default:React}=await import('/node_modules/.vite/deps/react.js');const {default:{createRoot}}=await import('/node_modules/.vite/deps/react-dom_client.js');const {App}=await import('/src/app/App.tsx');await import('/src/styles/global.css');
@@ -106,6 +115,22 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
     await page.waitForTimeout(500); // Give adjacent-frame preloading time; measure only the subsequent flip.
     timings.push(await page.evaluate(target=>new Promise((resolve,reject)=>{const start=performance.now(),timer=setTimeout(()=>{observer.disconnect();reject(new Error('frame timeout'));},10000);const observer=new MutationObserver(()=>{if(document.querySelector(`[data-frame-ready="${target}"]`)){clearTimeout(timer);observer.disconnect();resolve(performance.now()-start);}});observer.observe(document.body,{subtree:true,attributes:true,childList:true});[...document.querySelectorAll('button')].find(b=>b.textContent==='下一帧').click();}),frame));
    }
+   if(item.modality==='DX'&&process.env.MIAP_M2_WAIT_EXPIRY==='1'){
+    console.log('WAIT: genuine 301-second ticket expiry; account and assignment remain active');
+    const exp=JSON.parse(Buffer.from(ticket.url.split('.')[1],'base64url').toString()).exp;
+    await new Promise(resolve=>setTimeout(resolve,Math.max(0,exp*1000+1000-Date.now())));
+    assert.equal((await fetch(api+ticket.url,{headers:{Authorization:`Bearer ${token}`}})).status,403);
+    const fresh=await post('/api/frames/ticket',{case_id:item.id,series_uid:item.series_uid,frame_index:0});assert.equal(fresh.status,201);
+    assert.equal((await fetch(api+(await fresh.json()).url,{headers:{Authorization:`Bearer ${token}`}})).status,200);
+    console.log('PASS: wall-clock 5-minute expiry rejects old ticket while fresh ticket remains usable');
+   }
+   await page.getByRole('tab',{name:'附件',exact:true}).click();await page.getByRole('button',{name:'SYN-M2-附件.pdf（其他）',exact:true}).click();
+   await page.getByRole('img',{name:'已确认附件安全预览'}).waitFor();await page.getByText('第 1 / 2 页',{exact:true}).waitFor();
+   await page.getByRole('button',{name:'附件下一页',exact:true}).click();await page.getByText('第 2 / 2 页',{exact:true}).waitFor();await page.getByRole('img',{name:'已确认附件安全预览'}).waitFor();
+   await page.getByRole('button',{name:'Close',exact:true}).click();await page.getByRole('tab',{name:'报告',exact:true}).click();
+   await page.getByRole('button',{name:'拖拽调窗',exact:true}).click();
+   const viewport=await page.getByLabel('影像视口').boundingBox();await page.mouse.move(viewport.x+100,viewport.y+100);await page.mouse.down();await page.mouse.move(viewport.x+120,viewport.y+110,{steps:4});
+   await page.getByText('待应用 WL 138 / WW 276',{exact:true}).waitFor();await page.mouse.up();await page.getByText('WL 138 / WW 276',{exact:true}).waitFor();await page.getByLabel('标注绘图层').waitFor();
    const box=await page.getByLabel('标注绘图层').boundingBox();await page.getByRole('button',{name:'4 点',exact:true}).click();await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
    await page.getByRole('combobox',{name:'标注部位'}).click();await page.getByTitle('合成肺',{exact:true}).click();
    await page.getByRole('combobox',{name:'标注征象'}).click();await page.getByTitle('合成结节',{exact:true}).click();await page.keyboard.press('Escape');
@@ -123,6 +148,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
    const resolved=await orthanc.resolveSeriesFrame(item.orthanc,item.series_uid,0,item.count);
    const raw=await orthanc.renderInstanceFrame(resolved.instance_id,resolved.frame_index,{center:128,width:256});
    await assertVisibleWatermark(Buffer.from(first.bytes),raw);
+   const attachmentPreview=captured.find(r=>r.pathname.includes('/attachments/')&&r.headers?.['content-type']?.includes('image/'));assert(attachmentPreview);await assertVisibleWatermark(Buffer.from(attachmentPreview.bytes),attachmentPng);
    await assert.rejects(assertVisibleWatermark(await sharp(raw).ensureAlpha().png().toBuffer(),raw),assert.AssertionError,'alpha alone must not pass watermark verification');
    responses.push(...captured);assert(timings.every(t=>t<=200),'local preloaded flip exceeds 200ms');await page.unroute('**/m2-smoke');
   }
@@ -132,7 +158,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
    assert(!response.failed,'completed browser response capture must succeed');
    const {pathname,headers}=response,bytes=Buffer.from(response.bytes);
    if(headers['content-type']?.includes('image/')){
-    assert.match(pathname,/^\/api\/frames\//);assert.equal(headers['cache-control'],'no-store, private');
+    assert.match(pathname,/^\/api\/(frames\/|workbench\/[0-9a-f-]+\/attachments\/[0-9a-f-]+\/preview$)/);assert.equal(headers['cache-control'],'no-store, private');
     assert(bytes.length,'completed image response must contain pixels');const meta=await sharp(bytes).metadata();assert.equal(meta.format,'png');assert.equal(meta.width,512);assert.equal(meta.exif,undefined);images++;
    }else if(headers['content-type']?.includes('application/json')){
     const json=bytes.toString('utf8');assert(!/orthanc_id|object_key|mask_map_id|PixelData/.test(json));for(const id of uploaded)assert(!json.includes(id));
@@ -147,7 +173,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
    else{assert.equal(key,'cornerstone3D.renderingCapabilities');const cap=JSON.parse(value);assert.deepEqual(Object.keys(cap).sort(),['formats','probeVersion','renderer','webgl2']);assert.equal(cap.probeVersion,1);assert.equal(typeof cap.webgl2,'boolean');assert.equal(typeof cap.renderer,'string');assert(cap.renderer.length<512);assert.deepEqual(Object.keys(cap.formats).sort(),['float','floatLinear','halfFloat','halfFloatLinear','norm16','norm16Linear']);assert(Object.values(cap.formats).every(v=>typeof v==='boolean'));}
   }
   for(const item of cases)assert.equal(await page.evaluate(async({account,id})=>{const d=await import('/src/annotations/drafts.ts');return d.syntheticDraftStore(account,id,'synthetic').read();},{account:actor.id,id:item.id}),undefined,'successful submission leaves no saved draft');
-  const rows=await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='frames.viewed'");assert(rows[0].n>=images);
+  const rows=await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='frames.viewed'");const previews=(await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='workbench.attachment_viewed'"))[0].n;assert(previews>=4);assert(rows[0].n+previews>=images);
  }finally{
   // Each resource is attempted even if a preceding cleanup fails. Only this run's IDs are touched.
   const failures=[],attempt=async(label,work)=>{try{await work();}catch{failures.push(label);}};
@@ -164,6 +190,8 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
    if(!remove.ok&&remove.status!==404)throw new Error('Series cleanup failed');
    assert.equal((await fetch(`${base}/series/${id}`,{headers,redirect:'error',signal:AbortSignal.timeout(30000)})).status,404);
   });
+  for(const key of objectKeys)await attempt('synthetic attachment pages',()=>objects.removePages(key,2));
+  await attempt('attachment staging',()=>fs.rm(attachmentDir,{recursive:true,force:true}));
   await attempt('temporary pixels',()=>fs.rm(temp,{recursive:true,force:true}));
   if(failures.length)throw new Error('Synthetic cleanup failed: '+failures.join(', '));
  }
