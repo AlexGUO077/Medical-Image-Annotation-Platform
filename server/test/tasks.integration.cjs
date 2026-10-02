@@ -215,6 +215,13 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     const selfCase = await makeCase(); const selfTask = await (await req({ ...body([selfCase]), review_mode: 'self' })).json();
     assert.equal((await call('/dispatch', dispatchBody(selfTask, [selfCase]))).status, 403);
     await require('./task-lifecycle.assertions.cjs')({ db, app, base, token, memberToken, otherAdminToken, users, makeCase, body, req, call, get, largeTask, largeBatch });
+    // Exercise task migrations by identity; later annotation migrations are independent.
+    const rollBackToSystemAudit = async () => {
+      const target = 'AllowTaskSystemAudit1790640000002';
+      assert.equal((await db.query('SELECT name FROM migrations WHERE name=$1', [target])).length, 1);
+      while ((await db.query('SELECT name FROM migrations ORDER BY id DESC LIMIT 1'))[0].name !== target) await db.undoLastMigration();
+    };
+    await rollBackToSystemAudit();
     await db.undoLastMigration(); // system audit: no anonymous events yet
     await assert.rejects(db.undoLastMigration(), /Set tasks to manual/);
     await db.query("UPDATE tasks SET dispatch_mode='manual'");
@@ -238,6 +245,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     assert.equal((await db.query('SELECT due_at FROM task_assignments WHERE id=$1', [assignment.id]))[0].due_at.toISOString(), '2099-12-31T00:00:00.000Z');
     await db.query('UPDATE task_assignments SET due_at=NULL WHERE id=$1', [assignment.id]);
     await db.query('DELETE FROM task_assignments WHERE id=$1', [assignment.id]);
+    await rollBackToSystemAudit();
     await db.undoLastMigration(); // system audit
     await db.undoLastMigration(); // dispatch mode
     await db.undoLastMigration();

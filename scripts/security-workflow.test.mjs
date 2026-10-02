@@ -161,10 +161,10 @@ test('private SARIF diagnostics cannot skip the blocking gate or retain untruste
 
 test('Redis scans the exact selected Redis 7 Alpine release used by Compose', () => {
   const redis = workflow.jobs['trivy-images'].strategy.matrix.include.find((entry) => entry.service === 'redis');
-  assert.equal(compose.services.redis.image, 'miap/redis:7.4.11-alpine3.21');
+  assert.equal(compose.services.redis.image, 'miap/redis:7.4.11-alpine3.21-openssl-r2');
   assert.deepEqual(redis, {
     service: 'redis',
-    image: 'miap/redis:7.4.11-alpine3.21',
+    image: 'miap/redis:7.4.11-alpine3.21-openssl-r2',
     source: 'redis:7.4.11-alpine3.21',
     digest: 'sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7',
     context: '.',

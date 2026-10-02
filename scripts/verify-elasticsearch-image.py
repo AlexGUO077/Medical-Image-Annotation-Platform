@@ -2,6 +2,9 @@ import json
 import sys
 import subprocess
 import time
+import tempfile
+from pathlib import Path
+from zipfile import ZipFile
 
 image = sys.argv[1]
 platform = sys.argv[2]
@@ -15,11 +18,39 @@ cid = docker('run', '-d', '--network', 'none', '--hostname', 'miap-es-smoke', '-
              '-e', 'ES_JAVA_OPTS=-Xms512m -Xmx512m', image).strip()
 try:
     assert docker('inspect', '--format', '{{.Config.User}}', cid).strip() == '1000:0'
-    paths = docker('exec', cid, 'find', '/usr/share/elasticsearch/modules', '-type', 'f',
-                   '-name', 'jackson-databind-2.18.9.jar').splitlines()
-    assert len(paths) == 4
-    hashes = docker('exec', cid, 'sha256sum', *paths).splitlines()
-    assert all(line.split()[0] == 'ead55a0c649b11af6148a0c097323f5438afc5f563e7139681ad8277fff520bf' for line in hashes)
+    for artifact, count, expected_hash in (
+        ('core', 9, '825fa72dfb9e2f8a642322f1390dbac22c30d15ebd6dc6b3772158821ee124eb'),
+        ('databind', 4, '075ad94a76c3edf83e1972dc26f476361eb6b9d0e260d93fc11105509bc79cab'),
+    ):
+        paths = docker('exec', cid, 'find', '/usr/share/elasticsearch/modules', '-type', 'f',
+                       '-name', f'jackson-{artifact}-2.18.9.jar').splitlines()
+        assert len(paths) == count
+        hashes = docker('exec', cid, 'sha256sum', *paths).splitlines()
+        assert all(line.split()[0] == expected_hash for line in hashes)
+
+    with tempfile.TemporaryDirectory(prefix='miap-jackson-check-') as directory:
+        def archive(path, name):
+            destination = str(Path(directory) / name)
+            docker('cp', f'{cid}:{path}', destination)
+            return ZipFile(destination)
+        with archive('/usr/share/elasticsearch/modules/x-pack-sql/jackson-core-2.18.9.jar', 'core.jar') as core:
+            expected = {n: core.read(n) for n in core.namelist() if not n.endswith('/')}
+        for i, path in enumerate((
+            '/usr/share/elasticsearch/lib/elasticsearch-x-content-8.19.21.jar',
+            '/usr/share/elasticsearch/lib/tools/plugin-cli/elasticsearch-x-content-8.19.21.jar',
+        )):
+            prefix = 'IMPL-JARS/x-content/jackson-core-2.18.9.jar/'
+            with archive(path, f'content-{i}.jar') as nested:
+                actual = {n[len(prefix):]: nested.read(n) for n in nested.namelist() if n.startswith(prefix) and not n.endswith('/')}
+            assert actual == expected
+        def core_entry(name):
+            return (name.startswith('com/fasterxml/jackson/core/')
+                    or name.startswith('META-INF/maven/com.fasterxml.jackson.core/jackson-core/')
+                    or (name.startswith('META-INF/versions/') and '/com/fasterxml/jackson/core/' in name))
+        with archive('/usr/share/elasticsearch/bin/elasticsearch-sql-cli-8.19.21.jar', 'sql.jar') as sql_jar:
+            actual = {n: sql_jar.read(n) for n in sql_jar.namelist() if core_entry(n) and not n.endswith('/')}
+        assert actual == {n: data for n, data in expected.items() if core_entry(n)}
+    docker('exec', cid, '/usr/share/elasticsearch/bin/elasticsearch-sql-cli', '--help')
 
     def request(route, payload=None, method='GET'):
         args = ['exec', cid, 'curl', '--silent', '--show-error', '--fail', '--max-time', '5',
@@ -44,6 +75,6 @@ try:
     assert result['hits']['total']['value'] == 1
     sql = request('/_sql?format=json', {'query': 'SELECT value FROM "synthetic-smoke"'}, 'POST')
     assert sql['rows'] == [[7]]
-    print('PASS: non-root ES startup, all four patched JAR hashes, JSON index/search and SQL query')
+    print('PASS: non-root ES startup, 13 patched JAR hashes and 3 embedded Core payloads, JSON index/search and SQL query')
 finally:
     docker('rm', '-f', cid)

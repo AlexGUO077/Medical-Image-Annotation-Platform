@@ -32,6 +32,22 @@ Elastic's module loading/policies; the embedded implementation and Maven metadat
 are 2.18.10. The build fails if the expected four old paths are absent. This is a
 dependency patch, not a vulnerability waiver; HIGH/CRITICAL remain blocking.
 
+On 2026-10-02, the resumed blocking scan identified additional fixed HIGH findings:
+Redis libcrypto3/libssl3 CVE-2026-75804 and CVE-2026-84782; Orthanc OpenSSL
+CVE-2026-84782; Elasticsearch Jackson Core CVE-2026-89407/CVE-2026-89425 and
+Databind CVE-2026-91776/CVE-2026-91777. The original source digests remain pinned.
+Redis pins both libraries to Alpine 3.3.7-r2; Orthanc pins libssl3t64, openssl and
+openssl-provider-legacy to Ubuntu 3.5.5-1ubuntu3.7 (the current repository candidate,
+newer than the scanner's unavailable 3.6 minimum fix). Elasticsearch replaces all
+nine Core and four Databind copies with 2.18.11, verifies counts, preserves module
+paths and pins SHA256 after checking Maven Central SHA512. Three additional Core copies are embedded in the SQL CLI and the two x-content
+archives. The build replaces their Core payloads using the bundled JDK, rejects
+signed archives and retains Elastic manifests, module descriptors and implementation
+paths. The isolated smoke script verifies all 13 standalone hashes, exact embedded
+Core payloads, SQL CLI startup, JSON index/search and SQL. The runtime user,
+service versions, source digests and HIGH/CRITICAL blocking policy are unchanged.
+Existing local containers/data volumes are not automatically replaced by this patch.
+
 On 2026-09-19, Redis moved from `redis:7` to the exact Redis 7 Alpine release
 below. Local image inspection confirmed the manifest digest, and the existing
 synthetic `miap-redis-data` volume was reused without deletion. Redis 7.4.11
@@ -53,7 +69,7 @@ Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 | Service | Runtime image | Source image | Resolved digest | Dockerfile |
 | --- | --- | --- | --- | --- |
 | PostgreSQL | `miap/postgres:16.15-alpine3.24` | `postgres:16.15-alpine3.24` | `sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb` | `docker/postgres/Dockerfile` |
-| Orthanc | `miap/orthanc:26.9.0-hardened` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
+| Orthanc | `miap/orthanc:26.9.0-openssl-r7` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
 | MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
-| Redis | `miap/redis:7.4.11-alpine3.21` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
-| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.10` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
+| Redis | `miap/redis:7.4.11-alpine3.21-openssl-r2` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
+| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
