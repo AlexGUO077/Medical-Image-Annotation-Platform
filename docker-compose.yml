@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: docker/orthanc/Dockerfile
-    image: miap/orthanc:26.9.0-hardened
+    image: miap/orthanc:26.9.0-openssl-r7
     environment:
       ORTHANC_USERNAME: ${ORTHANC_USERNAME}
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
@@ -64,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: docker/redis/Dockerfile
-    image: miap/redis:7.4.11-alpine3.21
+    image: miap/redis:7.4.11-alpine3.21-openssl-r2
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -82,7 +82,7 @@ services:
     build:
       context: .
       dockerfile: docker/elasticsearch/Dockerfile
-    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.10
+    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11
     environment:
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
       discovery.type: single-node

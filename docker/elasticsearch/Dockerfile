@@ -21,11 +21,17 @@ RUN find /usr/share/elasticsearch/modules -type f -name '*-4.1.135.Final.jar' \
       -exec sh -c 'for old do artifact="$(basename "$old" -4.1.135.Final.jar)"; install -m 0644 -o 1000 -g 0 "/tmp/netty/${artifact}-4.1.137.Final.jar" "$old"; done' sh {} + \
     && rm -rf /tmp/netty
 
-# CVE-2026-68497: patch every bundled databind copy, preserving Elastic's paths.
-ADD --checksum=sha256:ead55a0c649b11af6148a0c097323f5438afc5f563e7139681ad8277fff520bf https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.10/jackson-databind-2.18.10.jar /tmp/jackson-databind-2.18.10.jar
-RUN test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' | wc -l)" -eq 4 \
+# Patch all bundled Jackson copies; preserve paths required by Elastic module policies.
+ADD --checksum=sha256:825fa72dfb9e2f8a642322f1390dbac22c30d15ebd6dc6b3772158821ee124eb https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.18.11/jackson-core-2.18.11.jar /tmp/jackson-core.jar
+ADD --checksum=sha256:075ad94a76c3edf83e1972dc26f476361eb6b9d0e260d93fc11105509bc79cab https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.11/jackson-databind-2.18.11.jar /tmp/jackson-databind.jar
+COPY docker/elasticsearch/patch-embedded-jackson.sh /tmp/patch-embedded-jackson.sh
+RUN test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-core-2.18.9.jar' | wc -l)" -eq 9 \
+    && test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' | wc -l)" -eq 4 \
+    && find /usr/share/elasticsearch/modules -type f -name 'jackson-core-2.18.9.jar' \
+      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-core.jar {} \; \
     && find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' \
-      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-databind-2.18.10.jar {} \; \
-    && rm /tmp/jackson-databind-2.18.10.jar
+      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-databind.jar {} \; \
+    && sh /tmp/patch-embedded-jackson.sh \
+    && rm /tmp/jackson-core.jar /tmp/jackson-databind.jar /tmp/patch-embedded-jackson.sh
 
 USER 1000:0

@@ -27,13 +27,15 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: docker compose --env-file .env.example config --quiet
-      - name: Start synthetic PostgreSQL for task transaction tests
+      - name: Start synthetic PostgreSQL and Redis for transaction tests
         run: |
           node scripts/create-local-env.mjs
-          docker compose --env-file .env.local up -d --wait --wait-timeout 180 postgres
+          docker compose --env-file .env.local up -d --wait --wait-timeout 180 postgres redis
       - name: Verify task HTTP authorization and database transactions
         run: node server/test/tasks.integration.cjs
-      - name: Stop synthetic PostgreSQL
+      - name: Verify public frame authorization, rate limits and audit
+        run: node server/test/frame-api.integration.cjs
+      - name: Stop synthetic PostgreSQL and Redis
         if: always()
         run: |
           if [ -f .env.local ]; then

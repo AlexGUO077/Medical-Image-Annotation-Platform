@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
+import { frameGeometry } from './frame-geometry';
 import { requiredEnv } from '../../config/environment';
 
 interface OrthancUploadResponse {
@@ -46,6 +47,37 @@ export class OrthancService {
     } catch {
       throw new ServiceUnavailableException('单帧渲染不可用');
     }
+  }
+
+  // Resolve a flattened series frame only from the authorized database mapping.
+  // Never follow URLs returned by Orthanc; parse and rebuild a fixed rendered endpoint.
+  async resolveSeriesFrame(seriesId: string, seriesUid: string, index: number, frameCount: number) {
+    const idPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{8}){4}$/;
+    if (!idPattern.test(seriesId) || !Number.isSafeInteger(index) || index < 0 || index >= frameCount) {
+      throw new BadRequestException('序列帧索引无效');
+    }
+    try {
+      const series = await (await this.request(`/series/${seriesId}`, { method: 'GET', redirect: 'error' })).json() as {
+        MainDicomTags?: { SeriesInstanceUID?: string }; Instances?: string[];
+      };
+      if (series.MainDicomTags?.SeriesInstanceUID !== seriesUid || !Array.isArray(series.Instances)) throw new Error('Series mismatch');
+      const ordered = await (await this.request(`/series/${seriesId}/ordered-slices`, { method: 'GET', redirect: 'error' })).json() as { Slices?: string[] };
+      if (!Array.isArray(ordered.Slices) || ordered.Slices.length !== frameCount) throw new Error('Frame count mismatch');
+      const slice = ordered.Slices[index];
+      const match = typeof slice === 'string' ? /^\/instances\/([0-9a-f]{8}(?:-[0-9a-f]{8}){4})\/frames\/(0|[1-9][0-9]*)$/.exec(slice) : null;
+      if (!match || !series.Instances.includes(match[1]!)) throw new Error('Frame ownership mismatch');
+      const frame = Number(match[2]);
+      if (!Number.isSafeInteger(frame)) throw new Error('Invalid frame');
+      return { instance_id: match[1]!, frame_index: frame };
+    } catch { throw new ServiceUnavailableException('序列帧映射不可用'); }
+  }
+
+  async frameGeometry(instanceId: string, frameIndex: number) {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{8}){4}$/.test(instanceId) || !Number.isSafeInteger(frameIndex) || frameIndex < 0) throw new BadRequestException('帧几何参数无效');
+    try {
+      const tags = await (await this.request(`/instances/${instanceId}/simplified-tags`, { method:'GET', redirect:'error' })).json() as Record<string,unknown>;
+      return frameGeometry(tags, frameIndex);
+    } catch { throw new ServiceUnavailableException('帧几何信息不可用'); }
   }
 
   async uploadSeries(paths: string[]): Promise<OrthancSeriesUpload> {

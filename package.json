@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "workspaces": ["server", "web-anno"],
   "engines": { "node": "24.14.0", "npm": ">=11 <12" },
-  "overrides": { "multer": "2.4.0" },
+  "overrides": { "multer": "2.4.0", "adm-zip": "0.6.1", "fflate": "0.8.3" },
   "devDependencies": { "js-yaml": "4.3.2" },
   "scripts": {
     "preinstall": "node scripts/runtime-version.mjs",

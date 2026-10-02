@@ -25,6 +25,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     disease_tag_id: ['uuid', true], clinical_text: ['text', true],
     age_band: ['character varying', true], sex: ['character varying', true],
     confirm_method: ['character varying', false], teaching_fields: ['jsonb', true],
+    annotation_version: ['integer', false],
   },
   studies: {
     case_id: ['uuid', false], study_uid: ['character varying', false], study_date: ['date', false],
@@ -67,9 +68,10 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
     case_id: ['uuid', false], series_id: ['uuid', false], tool: ['character varying', false],
     geometry: ['jsonb', false], frame_start: ['integer', false], frame_end: ['integer', false],
     window_preset: ['character varying', true], report_sent_ids: ['jsonb', false],
-    part_id: ['uuid', false], confidence: ['character varying', false],
+    part_id: ['uuid', true], confidence: ['character varying', true],
     measurements: ['jsonb', true], version: ['integer', false], is_gold: ['boolean', false],
     created_by: ['uuid', false], task_id: ['uuid', false],
+    logical_id: ['uuid', false], key_frame_index: ['integer', false],
   },
   annotation_tags: { annotation_id: ['uuid', false], sign_tag_id: ['uuid', false] },
   reviews: {

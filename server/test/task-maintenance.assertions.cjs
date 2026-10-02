@@ -120,7 +120,8 @@ module.exports = async ({ db, app, base, token, users, makeCase, body, req, call
   await assert.rejects(db.query("INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,'users.updated','synthetic','{}','system')", [randomUUID()]), e => e.code === '23503');
   await assert.rejects(db.query('UPDATE audit_logs SET actor=$1 WHERE actor IS NULL', [users[0].id]), /append-only/);
   await assert.rejects(db.query('DELETE FROM audit_logs WHERE actor IS NULL'), /append-only/);
-  await assert.rejects(db.undoLastMigration(), e => e.code === '23502');
+  const { AllowTaskSystemAudit1790640000002 } = require('../dist/database/migrations/1790640000002-AllowTaskSystemAudit');
+  await assert.rejects(db.transaction(manager => new AllowTaskSystemAudit1790640000002().down({ query: manager.query.bind(manager) })), e => e.code === '23502');
   assert.equal(await releaseCount(deadline), 1);
   await one.onModuleDestroy(); await two.onModuleDestroy();
   console.log('PASS: atomic account/qualification release, live permission invalidation, expiry without default deadlines, concurrent worker idempotence and revoke/claim serialization, audit rollback/retry, mode-aware auto refill, constrained system audit and safe migration refusal');
