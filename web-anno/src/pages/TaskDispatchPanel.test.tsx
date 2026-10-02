@@ -123,3 +123,11 @@ describe('dispatch console', () => {
   });
 
 });
+
+it('offers reclaim for an active published quality assignment without selecting it for normal dispatch',async()=>{
+ vi.mocked(tasksApi.cases).mockResolvedValue(pageOf([{...syntheticCase,status:'已发布',assignment_id:'quality-id',quality_review:{kind:'spotcheck',state:'active',version:3}}]));
+ const reclaim=vi.spyOn(tasksApi,'reclaim').mockResolvedValue({});show();await screen.findByText('SYN-TASK-1');
+ expect(screen.getAllByRole('checkbox')[1]).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:/回\s*收/}));
+ await screen.findByText(/回收后质量审核回到待派/);fireEvent.mouseDown(screen.getByLabelText('回收原因'));const choices=await screen.findAllByText('质量问题');fireEvent.click(choices.at(-1)!);
+ fireEvent.click(screen.getByRole('button',{name:'确认回收'}));await screen.findByText('分派已回收');expect(reclaim).toHaveBeenCalledWith('token','quality-id','quality');
+});

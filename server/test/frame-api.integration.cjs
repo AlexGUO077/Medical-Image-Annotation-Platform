@@ -89,6 +89,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     await require('./annotations.assertions.cjs')({ db, base, get, caseId, actor, assignment, taskId, seriesId, token, otherToken, adminToken });
     await require('./submission.assertions.cjs')({db,base,get,actor,other,token,otherToken,adminToken,administrator});
     await require('./reviews.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken});
+    const renderBaseline=renders;
     const ticket = async (auth = token) => { const response = await issue(payload, auth); assert.equal(response.status, 201); return response.json(); };
     assert.equal((await issue(payload, '')).status, 401);
     assert.equal((await issue(payload, otherToken)).status, 403);
@@ -112,9 +113,9 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     assert.match(response.headers.get('content-type'), /^image\/png/); assert.equal(response.headers.get('cache-control'), 'no-store, private');
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
     const first = Buffer.from(await response.arrayBuffer()); assert.notDeepEqual(await sharp(first).raw().toBuffer(), await sharp(raw).raw().toBuffer());
-    response = await get(issued.url); assert.equal(response.status, 200); assert.equal(renders, 1);
+    response = await get(issued.url); assert.equal(response.status, 200); assert.equal(renders, renderBaseline+1);
     const second = Buffer.from(await response.arrayBuffer()); assert.notDeepEqual(first, second); // response-time watermark, even on cached bytes
-    assert.equal((await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='frames.viewed'"))[0].n, 2);
+    assert.equal((await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='frames.viewed' AND target=$1", [`cases:${caseId}`]))[0].n, 2);
     await db.query(`CREATE FUNCTION fail_frame_audit() RETURNS trigger AS $$ BEGIN IF NEW.action='frames.viewed' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql`);
     await db.query('CREATE TRIGGER fail_frame BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_frame_audit()');
     response = await get(issued.url); assert.equal(response.status, 500); assert(!response.headers.get('content-type').includes('image'));
@@ -126,7 +127,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
       ["UPDATE cases SET source='teacher_provided_teaching' WHERE id=$1", [caseId], "UPDATE cases SET source='synthetic' WHERE id=$1"],
       ["UPDATE users SET quals='{}' WHERE id=$1", [actor.id], `UPDATE users SET quals='{"resp":["annotate","review"]}' WHERE id=$1`],
     ]) { await db.query(sql,args); assert.equal((await get(issued.url)).status,403); await db.query(restore,args); }
-    assert.equal(renders, 1);
+    assert.equal(renders, renderBaseline+1);
     // Revocation during upstream rendering must be caught before writing bytes.
     for (const key of keys) if (key.startsWith('frames:render:')) await redis.del(key);
     renderHook = () => db.query("UPDATE task_assignments SET state='released' WHERE id=$1", [assignment.id]);

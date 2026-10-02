@@ -1,6 +1,6 @@
 # WP-01 数据库契约与数据字典
 
-本文件是源 Word《医学影像标注平台-开发手册（学生版）V1.0》第四章的数据字典副本，用于核对 TypeORM migrations。源 Word 优先；本文件不新增物理表或业务字段。当前环境只允许合成数据。
+本文件是源 Word《医学影像标注平台-开发手册（学生版）V1.0》第四章的数据字典副本，用于核对 TypeORM migrations。源 Word 优先；本文件不自行新增物理表或业务字段；已批准的最小扩展注明决策来源。当前环境只允许合成数据。
 
 ## 通用字段
 
@@ -29,7 +29,7 @@
 | `sign_tags` | `name varchar`、`system_code varchar`、`definition text` | 八大系统编码；活跃的系统和名称组合唯一 |
 | `tasks` | `name varchar`、`source varchar`、`system_code varchar`、`review_mode varchar`、`priority int`、`status varchar` | `review_mode=self/peer`；状态为进行中/已完成/已归档；新增可空 in_flight_limit 正整数列，表示每人每任务在途上限 |
 | `task_cases` | `task_id uuid`、`case_id uuid` | 两个字段分别外键到 `tasks`、`cases`；活跃组合唯一；WP-06 增量迁移增加活跃 `case_id` 唯一索引，落实任务间病例隔离，不自动清理旧冲突数据 |
-| `task_assignments` | `case_id uuid`、`assignee_id uuid`、`task_role varchar`、`due_at timestamptz NULL`、`state varchar` | 外键到 `cases`、`users`；`task_role=annotate/review`；D-09 已确认 NULL 表示未配置期限、不自动超时；有 NULL 时回滚非空约束失败，不补默认值；active 且未删除的 (case_id,task_role) 唯一 |
+| `task_assignments` | `case_id uuid`、`assignee_id uuid`（仅质量 pending 及其取消历史可空）、`task_role varchar`、`due_at timestamptz NULL`、`state varchar`、`review_kind varchar`、`review_version int?`、`started_at timestamptz?` | 外键到 `cases`、`users`；`task_role=annotate/review`；D-09 已确认 NULL 表示未配置期限、不自动超时；有 NULL 时回滚非空约束失败，不补默认值；active 且未删除的 (case_id,task_role) 唯一；[D-21](../decisions/D-21-spotchecks.md) 批准质量类型 normal/spotcheck/recheck 与目标版/显式开始；质量工作必须 review 角色、版本非空，同病例同版未完成质量工作唯一；存在质量历史时拒绝回滚删除字段 |
 | `annotation_objects` | `case_id uuid`、`series_id uuid`、`tool varchar`、`geometry jsonb`、`frame_start int`、`frame_end int`、`window_preset varchar?`、`report_sent_ids jsonb`、`part_id uuid`、`confidence varchar`、`measurements jsonb?`、`version int`、`is_gold bool`、`created_by uuid`、`task_id uuid` | 工具、帧范围、置信度受检查约束；`report_sent_ids` 使用 GIN；`part_id` 的目标表源手册未明确，因此暂不添加外键 |
 | `annotation_tags` | `annotation_id uuid`、`sign_tag_id uuid` | 外键到 `annotation_objects`、`sign_tags`；活跃组合唯一；至少一条由保存标注业务事务校验 |
 | `reviews` | `case_id uuid`、`reviewer_id uuid`、`result varchar`、`comments jsonb`、`is_spotcheck bool` | 外键到 `cases`、`users`；`result=通过/打回` |

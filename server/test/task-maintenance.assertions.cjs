@@ -23,7 +23,8 @@ module.exports = async ({ db, app, base, token, users, makeCase, body, req, call
   const state = async item => (await db.query('SELECT a.state,c.status FROM task_assignments a JOIN cases c ON c.id=a.case_id WHERE a.id=$1', [item.a.id]))[0];
   const releaseCount = async item => (await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='tasks.assignment_released' AND detail->>'assignment_id'=$1", [item.a.id]))[0].n;
   const worker = () => {
-    const service = new TaskMaintenanceService(db, app.get(TaskDispatchService));
+    const {QualityReviewsService}=require('../dist/modules/tasks/quality-reviews');
+    const service = new TaskMaintenanceService(db, app.get(TaskDispatchService),new QualityReviewsService(db));
     service.logger = { error: () => {} }; // Expected synthetic audit failure must not emit noisy output.
     return service;
   };

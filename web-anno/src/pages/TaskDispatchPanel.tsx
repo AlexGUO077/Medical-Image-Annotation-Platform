@@ -85,7 +85,7 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     <Button disabled={busy} onClick={refresh}>刷新分派数据</Button>
     {caseError && <Alert type="error" message={`病例加载失败：${caseError}`} />}
     <Table<TaskCase> size="small" rowKey="id" loading={!cases && !caseError} dataSource={cases?.items ?? []}
-      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }, { title: '回收', render: (_, row) => row.assignment_id && ['标注中','待审核','审核中'].includes(row.status) ? <Button disabled={busy} onClick={() => { setError(undefined); setReclaiming(row); }}>回收</Button> : null }]}
+      columns={[{ title: '病例编号', dataIndex: 'case_no' }, { title: '状态', dataIndex: 'status' }, { title: '回收', render: (_, row) => row.assignment_id && (['标注中','待审核','审核中'].includes(row.status)||(row.status==='已发布'&&row.quality_review?.state==='active')) ? <Button disabled={busy} onClick={() => { setError(undefined); setReclaiming(row); }}>回收</Button> : null }]}
       rowSelection={{ selectedRowKeys: selectedCases, onChange: keys => setSelectedCases(keys.map(String)), getCheckboxProps: row => ({ disabled: busy || row.status !== (role==='review'?'待审核':'待分配') || (role==='review'&&!!row.assignment_id) }) }}
       pagination={{ current: casePage, pageSize: 20, total: cases?.total ?? 0, disabled: busy, showSizeChanger: false, onChange: page => { setSelectedCases([]); setCases(undefined); setCasePage(page); } }} />
     <Typography.Text>已选 {selectedCases.length} 例；仅可选择{role==='review'?'待审核且未分派':'待分配'}病例。</Typography.Text>
@@ -104,6 +104,7 @@ export function TaskDispatchPanel({ token, task, onBusyChange, onChanged }: {
     <Typography.Text type="secondary">截止时间留空不自动超时。人员资格与两级容量以服务端提交校验为准。</Typography.Text>
     <Button type="primary" disabled={busy || !selectedCases.length || !assignee || !cases || !users || !!caseError || !!userError} loading={busy} onClick={dispatch}>确认指派</Button>
     <Modal title={`回收分派：${reclaiming?.case_no ?? ''}`} open={!!reclaiming} footer={null} onCancel={() => { if (!busy) setReclaiming(undefined); }} closable={!busy} maskClosable={!busy} keyboard={!busy} destroyOnHidden>
+      {reclaiming?.quality_review&&<p>回收后质量审核回到待派，由系统补派；病例继续发布，金标准不变。</p>}
       {reclaiming && <Form layout="vertical" disabled={busy} onFinish={values => void save(() => tasksApi.reclaim(token, reclaiming.assignment_id!, values.reason as 'overdue' | 'quality'), '分派已回收', () => { setReclaiming(undefined); refresh(); })}>
         <Typography.Paragraph>原分派将失效，已有标注保留。自动模式会再次派单；定向改派请先切换为手动模式。</Typography.Paragraph>
         <Form.Item name="reason" label="回收原因" rules={[{ required: true, message: '请选择回收原因' }]}><Select options={[{ value: 'overdue', label: '逾期' }, { value: 'quality', label: '质量问题' }]} /></Form.Item>

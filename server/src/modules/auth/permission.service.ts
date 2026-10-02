@@ -29,11 +29,11 @@ export class PermissionService {
        WHERE a.case_id=$1 AND a.assignee_id=$2 AND a.task_role=$3 AND a.deleted_at IS NULL
          AND a.state='active' AND (a.due_at IS NULL OR a.due_at>clock_timestamp())
          AND t.system_code=$4 AND c.system_code=t.system_code AND c.source=t.source
-         AND c.status=$5 AND u.status='active' AND u.expire_at>=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
+         AND ((a.review_kind='normal' AND c.status=$5) OR ($3='review' AND a.review_kind<>'normal' AND a.review_version=c.annotation_version AND a.started_at IS NOT NULL AND c.status='已发布')) AND u.status='active' AND u.expire_at>=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
          AND NOT u.must_change_password AND (u.role<>'admin' OR u.mfa_secret_encrypted IS NOT NULL)
          AND date_trunc('milliseconds',u.updated_at)=$6 AND (u.quals->$4) @> jsonb_build_array($3::text)
-         AND (t.review_mode<>'self' OR (u.quals->$4) @> '["annotate","review"]'::jsonb)
-         AND ($3<>'review' OR (CASE WHEN t.review_mode='self' THEN ${reviewAuthorSql}=u.id ELSE ${reviewAuthorSql}<>u.id END))
+         AND (a.review_kind<>'normal' OR t.review_mode<>'self' OR (u.quals->$4) @> '["annotate","review"]'::jsonb)
+         AND ($3<>'review' OR (CASE WHEN a.review_kind='normal' AND t.review_mode='self' THEN ${reviewAuthorSql}=u.id ELSE ${reviewAuthorSql}<>u.id END))
        LIMIT 1`,
       [caseId, user.id, taskRole, systemCode, taskRole === 'annotate' ? '标注中' : '审核中', user.updated_at],
     ) as Array<{ id: string }>;

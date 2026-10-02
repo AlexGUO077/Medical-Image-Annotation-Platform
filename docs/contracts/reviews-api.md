@@ -1,6 +1,6 @@
 # 审核首批接口契约
 
-依据源 Word §2.3/§4-11/§5.2/§6.3/§7.6，及用户于 2026-10-02 批准的 [D-11/D-12/D-41](../decisions/D-11-D-12-D-41-review-cycle.md)。业务、comments 输入结构、权限及异常回池规则以该决定为准；本文件固定审核接口响应及实现边界。仅 synthetic；审核接口不承载抽检、下线/重启、真实来源或已发布检索。管理员下线/重启另见 [D-12 补充契约](../decisions/D-12-case-offline-reactivation.md)。
+依据源 Word §2.3/§4-11/§5.2/§6.3/§7.6，及用户于 2026-10-02 批准的 [D-11/D-12/D-41](../decisions/D-11-D-12-D-41-review-cycle.md)。业务、comments 输入结构、权限及异常回池规则以该决定为准；本文件固定审核接口响应及实现边界。仅 synthetic；首批范围不承载抽检；已批准抽检扩展见 [D-21](../decisions/D-21-spotchecks.md)。下线/重启、真实来源或已发布检索不由本接口开放。管理员下线/重启另见 [D-12 补充契约](../decisions/D-12-case-offline-reactivation.md)。
 
 - `GET /api/reviews/:caseId?version=...`：返回工作台既有 `case/series/sentences/attachments`、`disease: {id,name}|null`、`review_mode: self|peer`、`version/current_version/annotations`、`latest_review`。annotations 沿用标注读取类型，id 是 logical_id；latest_review 为 `{id,reviewer_id,result,comments,created_at,is_spotcheck}` 或 null。仅允许 version 查询参数，历史读取不影响提交目标版。
 - `POST /api/reviews/:caseId`：输入见 D-11。返回 `{review_id,case_id,version,status,is_gold,reannotation}`；通过时 status=已发布/is_gold=true/reannotation=null。打回时 reannotation 为 `{assignment_id,assignee_id,reason}`：有合法承接人则 status=标注中/reason=null；异常时 status=待分配、两个 ID 为 null、reason 为 account_unavailable/qualification_removed/capacity_full。auto 模式由既有后台继续重派，不建立 reviewer 代管理员派单接口。
@@ -12,3 +12,5 @@ comments 持久化记录由服务器补充 reviewer_id、created_at（UTC ISO）
 所有写入按用户 ID 固定顺序→任务→病例→分派加锁，账号/任务/资格/分派/期限、当前版及对象引用在事务内复核，审计与状态同事务。通过仅锁定当前版本，保留旧版；打回先结束审核再校验原标注人容量，新标注分派无默认期限。并发重复结论不插入第二条审核记录。读取在返回前复核有效分派；授权无效及时拒绝。仅业务结论发布 synthetic 状态，不授权公网发布。
 
 接口 mock 固定上述响应后接入页面。最小例：通过响应 `{ "review_id": "<uuid>", "case_id": "<uuid>", "version": 3, "status": "已发布", "is_gold": true, "reannotation": null }`；打回异常响应同结构，status=待分配/is_gold=false，reannotation.reason 明确原因。
+
+质量审核扩展按 D-21：读取带 review_kind/review_version/assignment_id/started_at，目标版只读且保持发布；质量结论必须提交 assignment_id。响应带 review_kind/assigned_count/pending_count，失败 status=已下线、is_gold=true、reannotation=null；普通审核请求兼容。合成响应 mock 见 `web-anno/src/tasks/spotcheck.fixtures.ts`。

@@ -40,3 +40,20 @@ it('shows a conflict without success, and clears the review on loss of authority
  show();await screen.findByText('审核台 · SYN-REVIEW');await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
  expect(await screen.findByText('审核资格已撤销')).toBeInTheDocument();expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();expect(screen.queryByText('审核通过，当前版本已发布并锁定为金标准')).not.toBeInTheDocument();
 });
+
+it('submits the pinned quality assignment and clears the image immediately after offline',async()=>{
+ vi.mocked(reviewsApi.read).mockResolvedValue({...structuredClone(data),case:{...data.case,status:'已发布'},review_kind:'spotcheck',assignment_id:'quality-id',review_version:2,started_at:'2026-10-02T13:00:00Z'});
+ vi.mocked(reviewsApi.decide).mockResolvedValue({review_id:'quality-review',case_id:'case',version:2,status:'已下线',is_gold:true,reannotation:null,review_kind:'spotcheck',assigned_count:1,pending_count:8});
+ show();await screen.findByText('审核台 · SYN-REVIEW');await checks(true);
+ fireEvent.change(screen.getByLabelText('总体审核意见'),{target:{value:'请修正边界。'}});fireEvent.click(screen.getByRole('button',{name:'打回并下线'}));
+ expect(await screen.findByText(/同时触发本轮同标注人/)).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'确认打回'}));
+ await screen.findByText('抽检未通过，病例已下线');expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();
+ expect(vi.mocked(reviewsApi.decide).mock.calls[0][6]).toBe('quality-id');expect(screen.getByText(/待派 8 例/)).toBeInTheDocument();
+});
+
+it('clears the published quality view when a decision response cannot be trusted',async()=>{
+ vi.mocked(reviewsApi.read).mockResolvedValue({...structuredClone(data),case:{...data.case,status:'已发布'},review_kind:'spotcheck',assignment_id:'quality-id',review_version:2,started_at:'2026-10-02T13:00:00Z'});
+ vi.mocked(reviewsApi.decide).mockRejectedValue(new ViewerRequestError(502,'审核响应无效，请返回任务列表核对'));
+ show();await screen.findByText('审核台 · SYN-REVIEW');await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
+ await screen.findByText('审核响应无效，请返回任务列表核对');expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();
+});

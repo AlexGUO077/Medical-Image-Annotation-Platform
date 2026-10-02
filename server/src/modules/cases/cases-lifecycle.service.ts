@@ -27,7 +27,7 @@ export class CasesLifecycleService {
       if(action==='reactivate'&&(tasks.length!==1||task.status!=='进行中'||task.source!==item.source||task.system_code!==item.system_code))
         throw new ConflictException('原任务不可用，请由管理员处理后重试');
       if(action==='reactivate'&&expected===2147483647)throw new ConflictException('标注版本已达到存储上限');
-      const active=await manager.query("SELECT id,assignee_id,task_role FROM task_assignments WHERE case_id=$1 AND state='active' AND deleted_at IS NULL ORDER BY id FOR UPDATE",[id]);
+      const active=await manager.query("SELECT id,assignee_id,task_role,state FROM task_assignments WHERE case_id=$1 AND state IN ('active','pending') AND deleted_at IS NULL ORDER BY id FOR UPDATE",[id]);
       if(action==='reactivate'&&active.length)throw new ConflictException('病例存在残留在途分派，请先处理');
       const version=action==='reactivate'?expected+1:expected;
       let objectCount=0;
@@ -45,7 +45,7 @@ export class CasesLifecycleService {
         await this.audit(manager,actor.id,'annotations.seeded',id,{version,previous_version:expected,object_count:objectCount,reason:'reactivation'},ip);
       }else{
         for(const assignment of active){
-          await manager.query("UPDATE task_assignments SET state='released',updated_at=now() WHERE id=$1",[assignment.id]);
+          await manager.query("UPDATE task_assignments SET state=$2,started_at=NULL,updated_at=now() WHERE id=$1",[assignment.id,assignment.state==='pending'?'cancelled':'released']);
           await this.audit(manager,actor.id,'tasks.assignment_released',id,{assignment_id:assignment.id,assignee_id:assignment.assignee_id,task_role:assignment.task_role,reason:'case_offlined'},ip);
         }
       }

@@ -4,13 +4,13 @@ export interface Task {
   id: string; name: string; source: ImportSource; system_code: SystemCode;
   review_mode: 'self' | 'peer'; dispatch_mode: 'auto' | 'manual' | 'pool'; priority: number; in_flight_limit: number | null; status: string; created_at: string; case_count: number;
 }
-export interface TaskCase {
+export interface TaskCase {quality_review?:{kind:'spotcheck'|'recheck';state:'active'|'pending';version:number}|null;
   assignment_id?: string | null;
   id: string; case_no: string; source: ImportSource; system_code: SystemCode; status: string;
 }
 export interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
 export interface AutoDispatch { status: 'completed' | 'pending'; next_case_id?: string | null; assigned?: { case_id: string; assignee_id: string; task_id: string }[]; unassigned?: { case_id: string; reason: string }[] }
-export interface QueueCase { task_id: string; task_name: string; priority: number; source: ImportSource; system_code: SystemCode; review_mode: 'self' | 'peer'; case_id: string; case_no: string; status: string; assignment_id?: string; due_at?: string | null }
+export interface QueueCase { review_kind?:'normal'|'spotcheck'|'recheck';review_version?:number;started_at?:string|null; task_id: string; task_name: string; priority: number; source: ImportSource; system_code: SystemCode; review_mode: 'self' | 'peer'; case_id: string; case_no: string; status: string; assignment_id?: string; due_at?: string | null }
 export const DISPATCH_MODES = [{ value: 'auto', label: '自动派单' }, { value: 'manual', label: '手动指派' }, { value: 'pool', label: '领取池' }];
 export interface CreateTask {
   dispatch_mode?: 'auto' | 'manual' | 'pool';
@@ -38,11 +38,13 @@ function queryString(query: TaskQuery): string {
   Object.entries(query).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
   return `?${params.toString()}`;
 }
+export interface SpotcheckBatch {batch_id:string|null;candidate_count:number;sampled_count:number;assigned_count:number;pending_count:number}
 export const tasksApi = {
+  spotchecks:(token:string,taskId:string,signal?:AbortSignal)=>request<SpotcheckBatch>(`/${encodeURIComponent(taskId)}/spotchecks`,token,{method:'POST',body:'{}',signal}),
   pool: (token: string, page: number, signal?: AbortSignal, role:'annotate'|'review'='annotate') => request<Page<QueueCase>>(`/pool${queryString({ page, pageSize: 20, ...(role==='review'?{task_role:role}:{}) })}`, token, { signal }),
   mine: (token: string, page: number, signal?: AbortSignal, role:'annotate'|'review'='annotate') => request<Page<QueueCase>>(`/mine${queryString({ page, pageSize: 20, ...(role==='review'?{task_role:role}:{}) })}`, token, { signal }),
   claim: (token: string, taskId: string, caseId: string,role:'annotate'|'review'='annotate') => request<ManualDispatch>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'pool', task_id: taskId, case_id: caseId,...(role==='review'?{task_role:role}:{}) }) }),
-  startReview:(token:string,taskId:string,caseId:string)=>request('/start-review',token,{method:'POST',body:JSON.stringify({task_id:taskId,case_id:caseId})}),
+  startReview:(token:string,taskId:string,caseId:string,assignmentId?:string)=>request('/start-review',token,{method:'POST',body:JSON.stringify({task_id:taskId,case_id:caseId,...(assignmentId?{assignment_id:assignmentId}:{})})}),
   auto: (token: string, taskId: string, after?: string) => request<Required<Pick<AutoDispatch, 'assigned' | 'unassigned'>> & { next_case_id?: string | null }>('/dispatch', token, { method: 'POST', body: JSON.stringify({ mode: 'auto', task_id: taskId, ...(after ? { after_case_id: after } : {}) }) }),
   reclaim: (token: string, assignmentId: string, reason: 'overdue' | 'quality') => request<{ auto_dispatch?: AutoDispatch }>('/reclaim', token, { method: 'POST', body: JSON.stringify({ assignment_id: assignmentId, reason }) }),
   assignees: (token: string, page: number, signal?: AbortSignal) => request<Page<Assignee>>(queryString({ page, pageSize: 20 }), token, { signal }, '/api/users'),

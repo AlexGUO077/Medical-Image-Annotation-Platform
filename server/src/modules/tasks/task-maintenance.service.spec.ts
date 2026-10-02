@@ -6,10 +6,16 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 function fixture() {
   const query = vi.fn().mockResolvedValue([]);
   const maintainAutomatic = vi.fn().mockResolvedValue({ next_case_id: null });
-  const service = new TaskMaintenanceService({ query } as never, { maintainAutomatic } as never);
-  return { query, maintainAutomatic, service };
+  const quality={maintain:vi.fn().mockResolvedValue(undefined)};
+  const service = new TaskMaintenanceService({ query } as never, { maintainAutomatic } as never, quality as never);
+  return { query, maintainAutomatic, quality, service };
 }
 describe('TaskMaintenanceService lifecycle', () => {
+  it('continues ordinary maintenance when quality maintenance fails',async()=>{
+    vi.spyOn(Logger.prototype,'error').mockImplementation(()=>{});
+    const {service,quality,maintainAutomatic}=fixture();quality.maintain.mockRejectedValueOnce(new Error('synthetic'));
+    await service.runOnce();expect(maintainAutomatic).toHaveBeenCalledOnce();await service.onModuleDestroy();
+  });
   it('starts at bootstrap, schedules only after completion, and cancels on shutdown', async () => {
     vi.useFakeTimers();
     const { service, query } = fixture();
@@ -28,7 +34,7 @@ describe('TaskMaintenanceService lifecycle', () => {
     maintainAutomatic.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
     const first = service.runOnce(), second = service.runOnce();
     expect(second).toBe(first);
-    await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve();
     let stopped = false;
     const stop = service.onModuleDestroy().then(() => { stopped = true; });
     await Promise.resolve(); expect(stopped).toBe(false);

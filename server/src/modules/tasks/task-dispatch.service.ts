@@ -4,6 +4,7 @@ import type { AuthUser } from '../auth/auth.models';
 import { IMPORT_SOURCES, SYSTEM_CODES } from '../cases/cases-import.models';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 
+import { QualityReviewsService } from './quality-reviews';
 import { reviewAuthorSql, reviewEligible } from './review-assignment';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -147,18 +148,19 @@ export class TaskDispatchService {
       const systems = Object.keys(user.quals).filter(system => user.quals[system]?.includes(role));
       const dual = systems.filter(system => user.quals[system]?.includes(role==='review'?'annotate':'review'));
       const author=reviewAuthorSql;
-      const reviewConstraint=role==='review'?`AND ${author} IS NOT NULL AND (CASE WHEN t.review_mode='self' THEN ${author}=$1 ELSE ${author}<>$1 END)`:'';
+      const quality=mine?"a.review_kind<>'normal' AND a.review_version=c.annotation_version":'false';
+      const reviewConstraint=role==='review'?`AND ${author} IS NOT NULL AND (CASE WHEN (${quality}) THEN ${author}<>$1 WHEN t.review_mode='self' THEN ${author}=$1 ELSE ${author}<>$1 END)`:'';
       const from = `FROM task_cases tc JOIN tasks t ON t.id=tc.task_id JOIN cases c ON c.id=tc.case_id
         ${mine ? "JOIN task_assignments a ON a.case_id=c.id AND a.assignee_id=$1 AND a.task_role=$6 AND a.state='active' AND a.deleted_at IS NULL AND (a.due_at IS NULL OR a.due_at>clock_timestamp())" : ''}
         WHERE tc.deleted_at IS NULL AND t.deleted_at IS NULL AND t.status='进行中' AND c.deleted_at IS NULL
           AND c.source=t.source AND c.system_code=t.system_code AND t.system_code=ANY($2::text[])
-          AND (t.review_mode<>'self' OR t.system_code=ANY($3::text[]))
+          AND ((${quality}) OR t.review_mode<>'self' OR t.system_code=ANY($3::text[]))
           AND ($4::text IS NULL OR t.source=$4) AND ($5::text IS NULL OR t.system_code=$5)
-          AND ${mine ? (role==='review'?"c.status IN ('待审核','审核中')":"c.status='标注中'") : (role==='review'?"c.status='待审核' AND":"c.status='待分配' AND")+" t.dispatch_mode IN ('auto','pool') AND NOT EXISTS (SELECT 1 FROM task_assignments a WHERE a.case_id=c.id AND a.deleted_at IS NULL AND a.state='active')"}
+          AND ${mine ? (role==='review'?`((a.review_kind='normal' AND c.status IN ('待审核','审核中')) OR (${quality} AND c.status='已发布'))`:"c.status='标注中'") : (role==='review'?"c.status='待审核' AND":"c.status='待分配' AND")+" t.dispatch_mode IN ('auto','pool') AND NOT EXISTS (SELECT 1 FROM task_assignments a WHERE a.case_id=c.id AND a.deleted_at IS NULL AND a.state='active')"}
           ${reviewConstraint} AND $1::uuid IS NOT NULL AND $6::text IS NOT NULL`;
       const values = [actor.id, systems, dual, query.source ?? null, query.system_code ?? null,role];
       const items = await manager.query(`SELECT t.id task_id,t.name task_name,t.priority,t.source,t.system_code,t.review_mode,
-        c.id case_id,c.case_no,c.status,$6::text task_role ${mine ? ',a.id assignment_id,a.due_at' : ''} ${from}
+        c.id case_id,c.case_no,c.status,$6::text task_role ${mine ? ',a.id assignment_id,a.due_at,a.review_kind,a.review_version,a.started_at' : ''} ${from}
         ORDER BY t.priority DESC,tc.created_at,c.id LIMIT $7 OFFSET $8`, [...values, pageSize, offset]);
       const [count] = await manager.query(`SELECT count(*)::int total ${from}`, values);
       return { items, total: count.total as number, page, pageSize };
@@ -166,7 +168,8 @@ export class TaskDispatchService {
   }
 
   async startReview(actor:AuthUser,body:unknown,ip:string){
-    const input=this.object(body,['task_id','case_id']),taskId=this.id(input.task_id),id=this.id(input.case_id);
+    const input=this.object(body,['task_id','case_id','assignment_id']),taskId=this.id(input.task_id),id=this.id(input.case_id);
+    if(input.assignment_id!==undefined)return new QualityReviewsService(this.db).start(actor,taskId,id,input.assignment_id,ip);
     return this.db.transaction(async manager=>{
       const users=await this.lockUsers(manager,actor,undefined,true),task=await this.task(manager,taskId);
       const [item]=await manager.query(`SELECT c.*,${reviewAuthorSql} author FROM cases c JOIN task_cases tc ON tc.case_id=c.id AND tc.deleted_at IS NULL JOIN tasks t ON t.id=tc.task_id
@@ -265,15 +268,16 @@ export class TaskDispatchService {
         FROM task_assignments WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [id]);
       const links = await manager.query('SELECT id FROM task_cases WHERE case_id=$1 AND task_id=$2 AND deleted_at IS NULL', [snapshot.case_id, task.id]);
       if (!assignment || assignment.state !== 'active' || !['annotate','review'].includes(assignment.task_role) || !item ||
-          !(assignment.task_role==='review'?['待审核','审核中']:['标注中']).includes(item.status) || item.source !== task.source || item.system_code !== task.system_code || !links.length ||
+          !(['spotcheck','recheck'].includes(assignment.review_kind)?['已发布']:assignment.task_role==='review'?['待审核','审核中']:['标注中']).includes(item.status) || item.source !== task.source || item.system_code !== task.system_code || !links.length ||
           assignment.assignee_id !== snapshot.assignee_id) throw new ConflictException('分派或病例状态已变化');
       if (input.reason === 'overdue' && !assignment.overdue) throw new ConflictException('分派尚未逾期');
-      await manager.query("UPDATE task_assignments SET state='released', updated_at=now() WHERE id=$1", [id]);
-      const to=assignment.task_role==='review'?'待审核':'待分配';
-      await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=$1',[item.id,to]);
+      const quality=['spotcheck','recheck'].includes(assignment.review_kind);
+      await manager.query(quality?"UPDATE task_assignments SET state='pending',assignee_id=NULL,started_at=NULL,due_at=NULL,updated_at=now() WHERE id=$1":"UPDATE task_assignments SET state='released', updated_at=now() WHERE id=$1", [id]);
+      const to=quality?'已发布':assignment.task_role==='review'?'待审核':'待分配';
+      if(!quality)await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=$1',[item.id,to]);
       await this.audit(manager, actor, 'tasks.reclaimed', `tasks:${task.id}`, { assignment_id: id, case_id: item.id,
         assignee_id: assignment.assignee_id, reason:input.reason,task_role:assignment.task_role,from:item.status,to }, ip);
-      return { assignment_id: id, case_id: item.id as string, task_id: task.id as string, dispatch_mode: task.dispatch_mode as string, state: 'released' };
+      return { assignment_id: id, case_id: item.id as string, task_id: task.id as string, dispatch_mode: task.dispatch_mode as string, state: quality?'pending':'released' };
     });
   }
 

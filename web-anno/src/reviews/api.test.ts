@@ -13,3 +13,11 @@ it('preserves server failures and rejects a mismatched version instead of report
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({review_id:'r',case_id:'case',version:4,status:'已发布',is_gold:true,reannotation:null}),{headers:{'Content-Type':'application/json'}})));
  await expect(reviewsApi.decide('case','bearer',new AbortController().signal,3,'通过',[checks])).rejects.toMatchObject({status:502});
 });
+
+it('requires the quality response and sends assignment identity without unlocking gold',async()=>{
+ const payload={review_id:'review',case_id:'case',version:3,status:'已下线',is_gold:true,reannotation:null,review_kind:'spotcheck',assigned_count:1,pending_count:8};
+ const fetch=vi.fn().mockImplementation(async()=>new Response(JSON.stringify(payload),{headers:{'Content-Type':'application/json'}}));vi.stubGlobal('fetch',fetch);
+ expect((await reviewsApi.decide('case','bearer',new AbortController().signal,3,'打回',[checks],'quality-id')).status).toBe('已下线');
+ expect(JSON.parse(fetch.mock.calls[0][1].body).assignment_id).toBe('quality-id');
+ payload.is_gold=false;await expect(reviewsApi.decide('case','bearer',new AbortController().signal,3,'打回',[checks],'quality-id')).rejects.toMatchObject({status:502});
+});

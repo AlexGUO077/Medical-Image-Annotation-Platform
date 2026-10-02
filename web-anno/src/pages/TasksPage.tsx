@@ -1,5 +1,6 @@
-import { Alert, Button, Card, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import { SpotcheckPanel } from './SpotcheckPanel';
 import { MemberTasksPanel } from './MemberTasksPanel';
 import { TaskDispatchPanel } from './TaskDispatchPanel';
 import type { Session } from '../auth/types';
@@ -8,11 +9,11 @@ import { tasksApi, DISPATCH_MODES, type AutoDispatch, type CreateTask, type Page
 
 const message = (error: unknown) => error instanceof Error ? error.message : '任务请求失败';
 const label = (options: readonly { value: string; label: string }[], value: string) => options.find(option => option.value === value)?.label ?? value;
-const columns = [{ title: '病例编号', dataIndex: 'case_no' }, { title: '病例状态', dataIndex: 'status' }];
+const columns = [{ title: '病例编号', dataIndex: 'case_no' }, { title: '病例状态', dataIndex: 'status' }, {title:'质量审核',render:(_:unknown,row:TaskCase)=>row.quality_review?`${row.quality_review.kind==='spotcheck'?'抽检':'全面复核'} · ${row.quality_review.state==='pending'?'待派':'已分派'} · 版本 ${row.quality_review.version}`:'—'}];
 
 export function TasksPage({ session }: { session: Session }) {
   if (session.role !== 'admin') return <MemberTasksPanel token={session.token} />;
-  return <AdminTasks token={session.token} />;
+  return <Tabs items={[{key:'manage',label:'任务管理',children:<AdminTasks token={session.token}/>},{key:'mine',label:'个人任务',children:<MemberTasksPanel token={session.token}/>}]} />;
 }
 
 function AdminTasks({ token }: { token: string }) {
@@ -51,7 +52,7 @@ function AdminTasks({ token }: { token: string }) {
     {loading ? <Spin aria-label="加载任务" /> : !error && <>
       {!data?.items.length && <Empty description="暂无符合条件的任务" />}
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {data?.items.map(task => <Card key={task.id} size="small" title={task.name} extra={<Space><Button onClick={() => setSelected(task)}>查看病例</Button><Button disabled={task.status !== '进行中'} onClick={() => setManaging(task)}>分派与设置</Button></Space>}>
+        {data?.items.map(task => <Card key={task.id} size="small" title={task.name} extra={<Space><Button onClick={() => setSelected(task)}>查看病例</Button><SpotcheckPanel token={token} task={task}/><Button disabled={task.status !== '进行中'} onClick={() => setManaging(task)}>分派与设置</Button></Space>}>
           <Space wrap><Tag>{task.status}</Tag><span>{label(IMPORT_SOURCE_OPTIONS, task.source)}</span><span>{label(SYSTEM_OPTIONS, task.system_code)}</span>
             <span>{label(DISPATCH_MODES, task.dispatch_mode)}</span><span>优先级：{task.priority}</span><span>每人在途上限：{task.in_flight_limit ?? '不限制'}</span><span>{task.review_mode === 'self' ? '自审' : '他审'}</span><span>病例数：{task.case_count}</span></Space>
         </Card>)}
