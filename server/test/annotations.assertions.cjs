@@ -13,7 +13,7 @@ module.exports = async ({ db, base, get, caseId, actor, assignment, taskId, seri
   const current=async()=>{const response=await get(url);assert.equal(response.status,200);return response.json();};
   assert.equal((await get(url,'')).status,401);assert.equal((await get(url,otherToken)).status,403);assert.equal((await get(url,adminToken)).status,403);
   assert.equal((await save(0,[original],'')).status,401);assert.equal((await save(0,[original],otherToken)).status,403);assert.equal((await save(0,[original],adminToken)).status,403);
-  assert.deepEqual(await current(),{version:0,current_version:0,annotations:[]});
+  assert.deepEqual(await current(),{version:0,current_version:0,annotations:[],latest_review:null});
   for(const changes of [{series_id:randomUUID()},{frame_end:1},{part_id:root},{sign_tag_ids:[foreignSign]}, {report_sent_ids:[999]},{report_sent_ids:[-1,0]},{geometry:{x:630,y:20,w:30,h:40}},{tool:'point',geometry:{x:640,y:1}},{tool:'brush',geometry:{width:2,height:2,rle:[4]}}]) assert.equal((await save(0,[{...original,...changes}])).status,400);
   await db.query(`UPDATE series SET modality='CT',default_window='{"center":40,"width":400}' WHERE id=$1`,[seriesId]);assert.equal((await save(0,[original])).status,400);
   await db.query("UPDATE series SET modality='DX',default_window=NULL WHERE id=$1",[seriesId]);

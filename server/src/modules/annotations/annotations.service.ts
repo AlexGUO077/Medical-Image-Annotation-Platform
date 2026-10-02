@@ -7,6 +7,7 @@ import { accountAvailable } from '../tasks/assignment-release';
 import { OrthancService } from '../cases/orthanc.service';
 import { parseAnnotations, integer, uuid, REPORT_NOT_MENTIONED, object, type AnnotationInput } from './annotation-input';
 
+import { readAnnotationObjects, latestReview } from './annotation-read';
 import { SubmissionValidationException } from '../../common/submission-validation.exception';
 import { submissionIssues, type SubmissionSentence } from './submission-check';
 import { assignSubmittedReview, type CapacityUser } from '../tasks/review-assignment';
@@ -90,7 +91,7 @@ export class AnnotationsService {
       const annotations = await this.objects(manager, id, version);
       await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(context.user, id, context.item.system_code, 'annotate');
       await this.audit(manager, actor.id, 'annotations.viewed', id, { version }, ip);
-      return { version, current_version: current, annotations };
+      return { version, current_version: current, annotations, latest_review: await latestReview(manager,id) };
     });
   }
 
@@ -153,13 +154,9 @@ export class AnnotationsService {
   }
 
   private async objects(manager: EntityManager, id: string, version: number) {
-    const rows = await manager.query(`SELECT a.logical_id AS id,a.series_id,a.tool,a.geometry,a.frame_start,a.frame_end,
-      a.key_frame_index,a.window_preset,a.part_id,a.confidence,a.report_sent_ids,a.version,a.is_gold,
-      COALESCE((SELECT jsonb_agg(t.sign_tag_id ORDER BY t.sign_tag_id) FROM annotation_tags t
-        WHERE t.annotation_id=a.id AND t.deleted_at IS NULL),'[]'::jsonb) AS sign_tag_ids
-      FROM annotation_objects a WHERE a.case_id=$1 AND a.version=$2 AND a.deleted_at IS NULL ORDER BY a.logical_id`, [id,version]);
-    return rows.map((row: { confidence: string | null }) => ({ ...row, confidence: row.confidence === null ? null : row.confidence === '典型' ? 'typical' : 'atypical' }));
+    return readAnnotationObjects(manager,id,version);
   }
+
   private async audit(manager: EntityManager, actor: string, action: string, caseId: string, detail: Record<string,unknown>, ip: string) {
     await manager.query('INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,$2,$3,$4::jsonb,$5)', [actor,action,`cases:${caseId}`,JSON.stringify(detail),ip]);
   }

@@ -10,6 +10,7 @@ import { CasesModule } from './modules/cases/cases.module';
 import { WorkbenchModule } from './modules/workbench/workbench.module';
 import { FramesModule } from './modules/frames/frames.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 
-@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule] })
+@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule] })
 export class AppModule {}

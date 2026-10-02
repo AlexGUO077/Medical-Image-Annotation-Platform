@@ -25,7 +25,7 @@ describe('member task pool', () => {
     fireEvent.mouseDown(screen.getByRole('combobox',{name:'任务角色'}));fireEvent.click(await screen.findByTitle('审核'));
     await screen.findByText('SYN-POOL');expect(start).not.toHaveBeenCalled();expect(screen.queryByRole('link')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'开始审核'}));
-    expect(await screen.findByText('审核任务已开始')).toBeInTheDocument();expect(start).toHaveBeenCalledWith('token','task','case');
+    expect(await screen.findByRole('link',{name:'进入审核台'})).toHaveAttribute('href','/review/case');expect(start).toHaveBeenCalledWith('token','task','case');
   });
   it('claims for the current account and separates successful claim from a failed refresh', async () => {
     const claim = vi.spyOn(tasksApi, 'claim').mockResolvedValue({ mode: 'manual', task_id: 'task', case_ids: ['case'], assignee_id: 'me', due_at: null });

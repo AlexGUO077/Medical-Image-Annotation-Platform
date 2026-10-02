@@ -6,7 +6,7 @@ import { decodeMaskInto } from './rle';
 import { brushStroke, clampPoint, frameMask, inside, measurement, polygonValid, updateMask, type DrawingTool, type Point } from './drawing';
 type Controls=Awaited<ReturnType<typeof mountFrame>>;
 interface Props {
- controls:Controls; annotations:Annotation[]; frame:number; selected?:string; hidden:Set<string>; locked:Set<string>;
+ controls:Controls; annotations:Annotation[]; comparison?:Annotation[]; frame:number; selected?:string; hidden:Set<string>; locked:Set<string>;
  tool:DrawingTool; diameter:number; erase:boolean; freehand:boolean; disabled:boolean;
  onSelect(id:string):void; onCreate(tool:Annotation['tool'],geometry:Geometry):void; onChange(id:string,geometry:Geometry):void;
 }
@@ -51,7 +51,12 @@ export function AnnotationLayer(p:Props){
    else path(vertices(a),true);
    if(a.id===p.selected&&!p.locked.has(a.id)){ctx.fillStyle='#fff';for(const point of vertices(a)){const q=project(point);ctx.fillRect(q[0]-3,q[1]-3,6,6);}}
   };
-  visible.forEach((a,i)=>draw(gesture.current?.id===a.id&&gesture.current.geometry?{...a,geometry:gesture.current.geometry}:a,colors[i%colors.length]));
+  const ids=[...new Set([...p.annotations,...(p.comparison??[])].map(a=>a.id))];
+  const color=(id:string)=>colors[ids.indexOf(id)%colors.length];
+  ctx.save();ctx.globalAlpha=0.45;ctx.setLineDash([6,4]);
+  (p.comparison??[]).filter(a=>!p.hidden.has(a.id)&&p.frame>=a.frame_start&&p.frame<=a.frame_end).forEach(a=>draw(a,color(a.id)));
+  ctx.restore();
+  visible.forEach(a=>draw(gesture.current?.id===a.id&&gesture.current.geometry?{...a,geometry:gesture.current.geometry}:a,color(a.id)));
   const g=gesture.current;
   if(g?.geometry&&!g.id&&['point','box','brush','polygon'].includes(p.tool))draw({id:'preview',tool:p.tool as Annotation['tool'],geometry:g.geometry,key_frame_index:p.frame} as Annotation,'#fff');
   ctx.strokeStyle='#fff';ctx.lineWidth=2;path(polygon);if(polygon.length&&cursor)path([polygon.at(-1)!,cursor]);

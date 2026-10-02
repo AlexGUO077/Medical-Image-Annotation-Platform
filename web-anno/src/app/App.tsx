@@ -10,6 +10,7 @@ import { CaseImportPage } from '../pages/CaseImportPage';
 import { CaseClinicalPage } from '../pages/CaseClinicalPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
 import { TasksPage } from '../pages/TasksPage';
+import { ReviewPage } from '../pages/ReviewPage';
 import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
@@ -55,6 +56,8 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                   <AuthenticatedLayout session={session} onLogout={logout}>
                     {route.path === '/workbench/:caseId'
                       ? <WorkbenchPage key={session.token} session={session} onExpired={() => setSession(null)} />
+                      : route.path === '/review/:caseId'
+                      ? <ReviewPage key={session.token} session={session} onExpired={() => setSession(null)} />
                       : route.path === '/tasks'
                       ? <TasksPage session={session} />
                       : route.path === '/admin'
