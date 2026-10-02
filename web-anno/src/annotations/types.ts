@@ -1,4 +1,5 @@
 import type { RleMask } from './rle';
+import type { ReviewRecord } from '../reviews/types';
 export type Geometry = { x: number; y: number } | { x: number; y: number; w: number; h: number } | { points: number[][] } | (RleMask & { frames?: (RleMask & { frame_index: number })[] });
 export interface Annotation {
   id: string; series_id: string; tool: 'point' | 'box' | 'polygon' | 'brush'; geometry: Geometry;
@@ -6,7 +7,7 @@ export interface Annotation {
   part_id: string | null; sign_tag_ids: string[]; confidence: 'typical' | 'atypical' | null; report_sent_ids: number[];
 }
 export interface AnnotationVersion { version: number; annotations: Annotation[] }
-export interface AnnotationRead extends AnnotationVersion { current_version: number }
+export interface AnnotationRead extends AnnotationVersion { current_version: number; latest_review?:ReviewRecord|null }
 /** Explicit allowlist: neither server metadata nor future UI fields enter requests/local drafts. */
 export function annotationPayload(items: readonly Annotation[]): Annotation[] {
   return items.map(a => {

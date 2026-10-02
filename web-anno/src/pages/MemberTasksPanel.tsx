@@ -41,7 +41,7 @@ export function MemberTasksPanel({ token }: { token: string }) {
     {notice && <Alert type="success" message={notice} />}{error && <Alert type="error" message={error} />}
     <Typography.Title level={3}>我的在途{role==='review'?'审核':'标注'}</Typography.Title>
     {mineError && <Alert type="error" message={`个人任务加载失败：${mineError}`} />}
-    <Table<QueueCase> rowKey="case_id" columns={[...columns, { title: '阅片', render: (_, row) => role==='annotate'?<Link to={`/workbench/${encodeURIComponent(row.case_id)}`}>进入工作台</Link>:row.status==='待审核'?<Button disabled={busy} onClick={()=>void start(row)}>开始审核</Button>:<span>审核任务已开始</span> }, { title: '截止时间', render: (_, row) => row.due_at ? new Date(row.due_at).toLocaleString() : '未设置' }]} dataSource={mine?.items ?? []} loading={!mine && !mineError}
+    <Table<QueueCase> rowKey="case_id" columns={[...columns, { title: '阅片', render: (_, row) => role==='annotate'?<Link to={`/workbench/${encodeURIComponent(row.case_id)}`}>进入工作台</Link>:row.status==='待审核'?<Button disabled={busy} onClick={()=>void start(row)}>开始审核</Button>:<Link to={`/review/${encodeURIComponent(row.case_id)}`}>进入审核台</Link> }, { title: '截止时间', render: (_, row) => row.due_at ? new Date(row.due_at).toLocaleString() : '未设置' }]} dataSource={mine?.items ?? []} loading={!mine && !mineError}
       pagination={{ current: minePage, pageSize: 20, total: mine?.total ?? 0, showSizeChanger: false, disabled: busy, onChange: setMinePage }} />
     <Typography.Title level={3}>可领取{role==='review'?'审核':'标注'}</Typography.Title>
     <Typography.Text type="secondary">按系统资格展示；领取时校验当前状态和两级在途上限。{role==='annotate'?'可从本人在途任务进入工作台。':'审核结论界面将在后续阶段开放。'}</Typography.Text>

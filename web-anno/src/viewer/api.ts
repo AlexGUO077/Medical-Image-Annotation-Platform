@@ -33,8 +33,8 @@ interface Preload {token:string;caseId:string;key:string;controller:AbortControl
 const preloads=new Map<string,Preload>();
 const keyFor=(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null)=>JSON.stringify([token,caseId,series.id,index,window]);
 export const viewerApi = {
- async attachment(token:string,caseId:string,id:string,page:number,signal:AbortSignal){
-  const response=await fetch(`/api/workbench/${encodeURIComponent(caseId)}/attachments/${encodeURIComponent(id)}/preview?page=${page}`,{headers:{Authorization:`Bearer ${token}`},signal,cache:'no-store',redirect:'error'});
+ async attachment(token:string,caseId:string,id:string,page:number,signal:AbortSignal,context:'workbench'|'reviews'='workbench'){
+  const response=await fetch(`/api/${context}/${encodeURIComponent(caseId)}/attachments/${encodeURIComponent(id)}/preview?page=${page}`,{headers:{Authorization:`Bearer ${token}`},signal,cache:'no-store',redirect:'error'});
   if(!response.ok){const data=response.headers.get('content-type')?.includes('application/json')?await response.json():{};throw new ViewerRequestError(response.status,data.message??'附件预览不可用');}
   const count=Number(response.headers.get('X-Page-Count'));
   if(response.headers.get('content-type')?.split(';')[0]!=='image/png'||!Number.isInteger(count)||count<1||count>100)throw new ViewerRequestError(502,'附件预览格式无效');

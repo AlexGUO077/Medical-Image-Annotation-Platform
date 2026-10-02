@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { reviewsApi } from '../reviews/api';
+vi.mock('../reviews/api',()=>({reviewsApi:{read:vi.fn().mockRejectedValue(new Error('审核病例不可访问'))}}));
 import { clearAccountDrafts } from '../annotations/drafts';
 vi.mock('../annotations/drafts', async importOriginal => ({ ...await importOriginal<typeof import('../annotations/drafts')>(), clearAccountDrafts: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../viewer/api', async original => ({...await original<typeof import('../viewer/api')>(),viewerApi:{workbench:vi.fn().mockRejectedValue(new Error('工作台病例不可访问')),clearPreloads:vi.fn()}}));
@@ -11,6 +13,7 @@ vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeo
 
 beforeEach(() => {
   vi.mocked(clearAccountDrafts).mockReset().mockResolvedValue(undefined);
+  vi.mocked(reviewsApi.read).mockRejectedValue(new Error('审核病例不可访问'));
   vi.mocked(viewerApi.workbench).mockRejectedValue(new Error('工作台病例不可访问'));
   for (const api of [tasksApi.list, tasksApi.mine, tasksApi.pool]) vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
 });
@@ -29,13 +32,18 @@ describe('App', () => {
   it.each([
     ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
-    ['/review/synthetic-case', '审核台'],
   ])('renders a neutral module placeholder for %s', async (path, label) => {
     render(<App initialEntries={[path]} initialSession={session} />);
 
     expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
     expect(screen.getByText('该模块将在对应工作包实现')).toBeInTheDocument();
     expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
+  });
+
+  it('guards the new review route through the authenticated server read',async()=>{
+    render(<App initialEntries={['/review/synthetic-case']} initialSession={session}/>);
+    expect(await screen.findByText('审核病例不可访问')).toBeInTheDocument();
+    expect(reviewsApi.read).toHaveBeenCalledWith('synthetic-case',session.token,expect.any(AbortSignal));
   });
 
   it('enters a member workbench through client navigation without losing the session', async () => {
@@ -113,7 +121,7 @@ describe('App', () => {
   ])('uses the dark theme for valid trailing-slash route %s', async (path, label) => {
     render(<App initialEntries={[path]} initialSession={session} />);
 
-    expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
+    expect(await screen.findByText('审核病例不可访问')).toBeInTheDocument();
     expect(screen.getByTestId('theme-boundary')).toHaveAttribute('data-theme', 'dark');
   });
 

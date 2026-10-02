@@ -10,6 +10,7 @@ import { SaveIndicator } from '../annotations/SaveIndicator';
 import { annotationsApi, AnnotationRequestError, type SubmissionIssues } from '../annotations/api';
 import { useAnnotations } from '../annotations/useAnnotations';
 import { HistoryPanel } from '../annotations/HistoryPanel';
+import { ReviewFeedback } from '../reviews/ReviewFeedback';
 import type { AnnotationRead } from '../annotations/types';
 import type { Annotation, Geometry } from '../annotations/types';
 import type { DrawingTool } from '../annotations/drawing';
@@ -17,7 +18,7 @@ import { rankReportCandidates } from '../annotations/report-candidates';
 import { taxonomyApi } from '../taxonomy/api';
 import type { TaxonomyTreeResponse } from '../taxonomy/types';
 const message = (e: unknown) => e instanceof Error ? e.message : '工作台加载失败';
-function FramePane({ token, data, series, frame, window, layer, onGeometry, onExpired, windowDrag, onWindow }: { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void }) {
+export function FramePane({ token, data, series, frame, window, layer, onGeometry, onExpired, windowDrag, onWindow }: { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void }) {
   const element=useRef<HTMLDivElement>(null), controls=useRef<Awaited<ReturnType<typeof import('../viewer/cornerstone').mountFrame>>>();
   const [active,setActive]=useState<Awaited<ReturnType<typeof import('../viewer/cornerstone').mountFrame>>>();
   const drag=useRef<{x:number;y:number;window:FrameWindow}>();
@@ -56,7 +57,7 @@ function WorkbenchContent({session,data,onExpired}:{session:Session;data:Workben
   const caseId=data.case.id;
   const [seriesId,setSeriesId]=useState(''),[frame,setFrame]=useState(0),[window,setWindow]=useState<FrameWindow|null>(null);
   const [center,setCenter]=useState<number|null>(null),[width,setWidth]=useState<number|null>(null),[focus,setFocus]=useState(false);
-  const {state,engine,editable:canEdit}=useAnnotations(session,caseId,data.case.source,onExpired);
+  const {state,latestReview,engine,editable:canEdit}=useAnnotations(session,caseId,data.case.source,onExpired);
   const [history,setHistory]=useState<AnnotationRead>();
   const [submitting,setSubmitting]=useState(false),[submitError,setSubmitError]=useState<string>(),[issues,setIssues]=useState<SubmissionIssues>();
   const submitPending=useRef(false),route=useNavigate();
@@ -108,6 +109,7 @@ function WorkbenchContent({session,data,onExpired}:{session:Session;data:Workben
   return <section className="workbench" tabIndex={0} onKeyDown={e=>{if((e.target as HTMLElement).matches('input,textarea,[role=combobox]'))return;if(e.key==='Escape')setFocus(false);if(['1','2','3','4'].includes(e.key)&&editable){const next=({1:'box',2:'brush',3:'polygon',4:'point'} as const)[e.key as '1'|'2'|'3'|'4'];if(next!=='brush'||(geometry?.row_spacing&&geometry?.column_spacing))setTool(next);}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&editable){e.preventDefault();travel(!e.shiftKey);}if(['ArrowDown','ArrowRight','ArrowUp','ArrowLeft'].includes(e.key)){e.preventDefault();navigate(['ArrowDown','ArrowRight'].includes(e.key)?1:-1);}}}>
     <Space className="workbench-heading"><Typography.Title level={3}>{data.case.case_no}</Typography.Title><span>{data.case.status} · {data.case.system_code}</span><Button onClick={()=>setFocus(!focus)}>{focus?'退出专注模式':'影像专注模式'}</Button></Space>
     <Button type="primary" loading={submitting} disabled={!editable||['offline','conflict','blocked','loading','error'].includes(state.status)} onClick={()=>void submit()}>提交审核</Button>
+    <ReviewFeedback review={latestReview} annotations={state.annotations} onSelect={select}/>
     {submitError&&<Alert type="error" message={submitError} description={<>{issues?.objects.map(item=><div key={item.id}>对象 {state.annotations.findIndex(a=>a.id===item.id)+1}：{item.fields.map(field=>({part_id:'部位',sign_tag_ids:'征象',confidence:'置信度',report_sent_ids:'报告关联'})[field as 'part_id']).join('、')}未完成</div>)}{issues?.sentence_ids.map(id=><div key={id}>报告 [{id}]：{data.sentences.find(s=>s.idx===id)?.text} 尚未关联</div>)}</>}/>}
     <SaveIndicator disabled={submitting} state={state} engine={engine.current} onAdopt={()=>{undo.current=[];redo.current=[];setSelected(undefined);setHistoryTick(n=>n+1);}}/>{dictionaryError&&<Alert type="error" message={dictionaryError}/>}
     <HistoryPanel caseId={caseId} token={session.token} version={state.version} current={state.annotations} onExpired={()=>{void engine.current?.dispose().then(()=>onExpired?.());}} onPreview={value=>{setHistory(value);setSelected(undefined);setTool('pan');}}/>{history&&<Alert type="info" message={`正在查看历史版本 ${history.version}，轮廓只读`} action={<Button onClick={()=>{setHistory(undefined);setSelected(undefined);}}>返回当前标注</Button>}/>}
