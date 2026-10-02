@@ -33,6 +33,13 @@ interface Preload {token:string;caseId:string;key:string;controller:AbortControl
 const preloads=new Map<string,Preload>();
 const keyFor=(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null)=>JSON.stringify([token,caseId,series.id,index,window]);
 export const viewerApi = {
+ async attachment(token:string,caseId:string,id:string,page:number,signal:AbortSignal){
+  const response=await fetch(`/api/workbench/${encodeURIComponent(caseId)}/attachments/${encodeURIComponent(id)}/preview?page=${page}`,{headers:{Authorization:`Bearer ${token}`},signal,cache:'no-store',redirect:'error'});
+  if(!response.ok){const data=response.headers.get('content-type')?.includes('application/json')?await response.json():{};throw new ViewerRequestError(response.status,data.message??'附件预览不可用');}
+  const count=Number(response.headers.get('X-Page-Count'));
+  if(response.headers.get('content-type')?.split(';')[0]!=='image/png'||!Number.isInteger(count)||count<1||count>100)throw new ViewerRequestError(502,'附件预览格式无效');
+  return {blob:await response.blob(),page_count:count};
+ },
  workbench:(id:string,token:string,signal:AbortSignal)=>json<Workbench>(`/api/workbench/${encodeURIComponent(id)}`,token,signal),
  async frame(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,signal:AbortSignal){
   const key=keyFor(token,caseId,series,index,window),cached=preloads.get(key);preloads.delete(key);
