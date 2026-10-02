@@ -5,6 +5,7 @@ import type { Session } from '../auth/types';
 import { casesDetailApi, caseEditApi, type CaseDetail, type CaseReport, type ClinicalInput } from '../cases/detail-api';
 import { CONFIRM_METHODS, SYSTEM_OPTIONS } from '../cases/types';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
+import { CaseLifecyclePanel } from './CaseLifecyclePanel';
 
 export function CaseClinicalPage({ session }: { session: Session }) {
   const { id } = useParams<{ id: string }>();
@@ -58,7 +59,12 @@ function CaseClinicalContent({ id, session }: { id: string; session: Session }) 
         { key: 'number', label: '病例号', children: detail.case_no }, { key: 'status', label: '状态', children: detail.status },
         { key: 'source', label: '来源', children: detail.source === 'synthetic' ? '合成数据' : detail.source === 'teacher_provided_teaching' ? '老师提供的教学样例' : '未知来源' },
         { key: 'system', label: '系统', children: SYSTEM_OPTIONS.find((item) => item.value === detail.system_code)?.label ?? detail.system_code },
-      ]} /></Card>
+      ]} /><p>标注版本：{detail.annotation_version}</p>
+      {session.role==='admin'&&<CaseLifecyclePanel detail={detail} token={session.token}
+        onChanged={value=>{setDetail(old=>old?{...old,status:value.status,annotation_version:value.version}:old);setNotice(value.status==='已下线'?'病例已下线，旧金标准和历史保留':`病例已重新启用，版本 ${value.version}，等待原任务分派`);}}
+        onDenied={message=>{setDetail(undefined);setReport(undefined);setNotice(undefined);setError(message);}}
+        onReload={async()=>{const next=await casesDetailApi.detail(session.token,id);if(next.id!==id)throw new Error('病例响应不匹配');setDetail(next);setNotice(undefined);}}/>}
+      </Card>
       {!editable ? <Alert type="info" message="病例当前状态仅允许查看" /> : null}
       <Card title="临床信息">
         <Form form={clinical} layout="vertical" disabled={!editable || busy} onFinish={() => void save(false)}>

@@ -20,6 +20,7 @@ const { JwtService } = require('@nestjs/jwt');
 const { WorkbenchModule } = require('../dist/modules/workbench/workbench.module');
 const { AnnotationsModule } = require('../dist/modules/annotations/annotations.module');
 const { ReviewsModule } = require('../dist/modules/reviews/reviews.module');
+const { CasesLifecycleModule } = require('../dist/modules/cases/cases-lifecycle.module');
 const { TasksModule } = require('../dist/modules/tasks/tasks.module');
 const { TaskMaintenanceService } = require('../dist/modules/tasks/task-maintenance.service');
 const { FramesModule } = require('../dist/modules/frames/frames.module');
@@ -64,7 +65,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule] }).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw}).compile();
+    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule] }).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw}).compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
     await app.listen(0, '127.0.0.1'); const base = await app.getUrl();
     const fresh = async id => (await db.query('SELECT *,expire_at::text FROM users WHERE id=$1', [id]))[0];

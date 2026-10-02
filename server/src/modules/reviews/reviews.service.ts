@@ -23,7 +23,7 @@ export class ReviewsService {
       if(version>context.item.annotation_version)throw new NotFoundException('标注版本不存在');
       if(version>0){
         const [record]=await manager.query(`SELECT EXISTS(SELECT 1 FROM annotation_objects WHERE case_id=$1 AND version=$2)
-          OR EXISTS(SELECT 1 FROM audit_logs WHERE target='cases:'||$1::text AND action='annotations.saved' AND detail->>'version'=$2::text) AS found`,[id,version]);
+          OR EXISTS(SELECT 1 FROM audit_logs WHERE target='cases:'||$1::text AND action IN ('annotations.saved','annotations.seeded') AND detail->>'version'=$2::text) AS found`,[id,version]);
         if(!record.found)throw new NotFoundException('标注版本不存在');
       }
       const data=await this.workbench.readInTransaction(manager,context.user,id,ip,'review');

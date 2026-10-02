@@ -1,6 +1,6 @@
 # 审核首批接口契约
 
-依据源 Word §2.3/§4-11/§5.2/§6.3/§7.6，及用户于 2026-10-02 批准的 [D-11/D-12/D-41](../decisions/D-11-D-12-D-41-review-cycle.md)。业务、comments 输入结构、权限及异常回池规则以该决定为准；本文件固定响应及实现边界。仅 synthetic，不开放抽检、下线/重启、真实来源或已发布检索。
+依据源 Word §2.3/§4-11/§5.2/§6.3/§7.6，及用户于 2026-10-02 批准的 [D-11/D-12/D-41](../decisions/D-11-D-12-D-41-review-cycle.md)。业务、comments 输入结构、权限及异常回池规则以该决定为准；本文件固定审核接口响应及实现边界。仅 synthetic；审核接口不承载抽检、下线/重启、真实来源或已发布检索。管理员下线/重启另见 [D-12 补充契约](../decisions/D-12-case-offline-reactivation.md)。
 
 - `GET /api/reviews/:caseId?version=...`：返回工作台既有 `case/series/sentences/attachments`、`disease: {id,name}|null`、`review_mode: self|peer`、`version/current_version/annotations`、`latest_review`。annotations 沿用标注读取类型，id 是 logical_id；latest_review 为 `{id,reviewer_id,result,comments,created_at,is_spotcheck}` 或 null。仅允许 version 查询参数，历史读取不影响提交目标版。
 - `POST /api/reviews/:caseId`：输入见 D-11。返回 `{review_id,case_id,version,status,is_gold,reannotation}`；通过时 status=已发布/is_gold=true/reannotation=null。打回时 reannotation 为 `{assignment_id,assignee_id,reason}`：有合法承接人则 status=标注中/reason=null；异常时 status=待分配、两个 ID 为 null、reason 为 account_unavailable/qualification_removed/capacity_full。auto 模式由既有后台继续重派，不建立 reviewer 代管理员派单接口。

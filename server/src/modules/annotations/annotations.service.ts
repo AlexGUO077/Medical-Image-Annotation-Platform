@@ -85,7 +85,7 @@ export class AnnotationsService {
       const current = context.item.annotation_version, version = requested ?? current;
       if (version > current) throw new NotFoundException('标注版本不存在');
       if (version > 0) {
-        const [recorded] = await manager.query("SELECT EXISTS(SELECT 1 FROM annotation_objects WHERE case_id=$1 AND version=$2) OR EXISTS(SELECT 1 FROM audit_logs WHERE target='cases:'||$1::text AND action='annotations.saved' AND detail->>'version'=$2::text) AS found", [id,version]);
+        const [recorded] = await manager.query("SELECT EXISTS(SELECT 1 FROM annotation_objects WHERE case_id=$1 AND version=$2) OR EXISTS(SELECT 1 FROM audit_logs WHERE target='cases:'||$1::text AND action IN ('annotations.saved','annotations.seeded') AND detail->>'version'=$2::text) AS found", [id,version]);
         if (!recorded.found) throw new NotFoundException('标注版本不存在');
       }
       const annotations = await this.objects(manager, id, version);

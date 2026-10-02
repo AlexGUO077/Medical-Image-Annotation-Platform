@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { caseEditApi, casesDetailApi, type CaseDetail } from '../cases/detail-api';
 import { CaseClinicalPage } from './CaseClinicalPage';
-const detail: CaseDetail = { id: 'case-1', case_no: 'SYN-1', status: '已录入', source: 'synthetic', system_code: 'resp', confirm_method: '临床综合诊断',
+const detail: CaseDetail = { id: 'case-1', case_no: 'SYN-1', status: '已录入', annotation_version: 2, source: 'synthetic', system_code: 'resp', confirm_method: '临床综合诊断',
   clinical_text: '', age_band: '', sex: '', teaching_fields: null, attachments: [] };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function show(status = '已录入') {
