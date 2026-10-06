@@ -2,8 +2,8 @@
 
 依据源 Word §5.2、§7.3、§8.4，基线 WP-07 / S6 / SG-4，以及已批准 D-24/D-25。仅合成开发验证；本实现和 PR 不替代 SG-4 人工验收。
 
-- `POST /api/frames/ticket`：Bearer 认证，JSON `{case_id,series_uid,frame_index,window?:{center,width}|null}`；frame_index 为序列内从 0 开始的平铺帧索引，拒绝未知字段/越界。省略 window 使用序列已保存默认窗，null 使用渲染器默认窗。数据库从 case→study→series 验证活跃归属；只允许当前有效标注/审核分派，管理员也不能绕过分派。检索库访问随发布/检索切片接入，当前不开放。
-- 返回 `{url,expires_in:300}`；票据绑定当前用户、Bearer 会话、病例、序列、帧号及窗。票据不包含 Orthanc 地址/ID 或影像数据。
+- `POST /api/frames/ticket`：Bearer 认证，JSON `{case_id,series_uid,frame_index,window?:{center,width}|null}`；frame_index 为序列内从 0 开始的平铺帧索引，拒绝未知字段/越界。省略 window 使用序列已保存默认窗，null 使用渲染器默认窗。数据库从 case→study→series 验证活跃归属；只允许当前有效标注/审核分派，管理员也不能绕过分派。已批准 D-29 新增显式库模式 `{access_mode:'library',expected_version:V}`，两个字段须同时提供；仅已确认脱敏的 synthetic 已发布当前金标准，系统 annotate/review 任一资格。管理员无旁路；省略库模式的原载荷仍要求原分派，不因发布自动放宽。
+- 返回 `{url,expires_in:300}`；票据绑定当前用户、Bearer 会话、病例、序列、帧号及窗；库票据另绑定访问模式和发布版本。票据不包含 Orthanc 地址/ID 或影像数据。
 - `GET /api/frames/{token}`：必须携带签发时相同 Bearer；拒绝 query 改参。验签后复核实时权限、限流及资源归属，通过后仅返回带当前账号、姓名、响应时间水印的 PNG。渲染缓存 TTL=1800 秒、不含用户水印；缓存命中也复核权限、重新加水印并写全量帧审计。
 - Orthanc 序列映射由服务器读取，核对 SeriesInstanceUID、实例归属和帧总数，严格解析固定帧路径再调用单帧 rendered API；不转发任意 URL、原始 DICOM、序列包或可拼接像素分片。
 - 两条路由均 `Cache-Control: no-store, private`、`Referrer-Policy: no-referrer`；响应无存储键/上游错误/凭据。输出前审计失败、权限失效、水印失败、Redis/Orthanc 不可用时不输出影像。
@@ -14,7 +14,7 @@
 
 用户于 2026-09-30 批准复用账号停用/启用：超限事务停用账号并递增安全版本，释放失效在途标注，写 frames.locked 审计（触发请求的真实用户）及不含业务数据的服务告警，提交后返回 429。审计失败不输出帧，下次重试锁定事务。管理员使用既有 PATCH /api/users 启用并写 users.updated 审计；用户必须重新登录，新账号版本重新计数，不恢复历史分派。人工停用和异常停用均不自动解锁。
 
-审计 frames.ticket_issued / frames.viewed 记录真实用户、病例、序列 UID、帧索引、窗、模态、IP、时间；不存 token、凭据或影像。重复取帧在有效会话/票据期间允许，但每次计数与审计；跨用户/会话、改参、过期或分派失效拒绝。
+审计 frames.ticket_issued / frames.viewed 记录真实用户、病例、序列 UID、帧索引、窗、模态、IP、时间；不存 token、凭据或影像。重复取帧在有效会话/票据期间允许，但每次计数与审计；跨用户/会话、改参、过期或分派失效拒绝；库帧在读取及渲染后复核当前发布状态、版本、来源及资格，下线、删除或重新发布后旧版票据拒绝。
 
 映射调用采用部署版本已验证的 [Orthanc REST API](https://orthanc.uclouvain.be/book/users/rest-cheatsheet.html) `/series/{id}/ordered-slices`；上游将该接口标为 deprecated，升级 Orthanc 时需复核映射契约，不以任意实例排序替代。
 

@@ -6,7 +6,7 @@ const metadata = new Map<string, Record<string, unknown>>();
 let initialized = false;
 
 /** A single watermarked display frame in RAM; never a DICOM loader or a calibrated measurement image. */
-export async function mountFrame(element: HTMLDivElement, token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal) {
+export async function mountFrame(element: HTMLDivElement, token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal,libraryVersion?:number) {
   if (!initialized) {
     init();
     metaData.addProvider((type, imageId: string) => metadata.get(imageId)?.[type]);
@@ -30,7 +30,7 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
   };
   signal.addEventListener('abort', dispose, { once: true });
   pending.set(imageId, async () => {
-    const receipt = await viewerApi.frame(token, caseId, series, index, window, signal);
+    const receipt = libraryVersion===undefined?await viewerApi.frame(token,caseId,series,index,window,signal):await viewerApi.frame(token,caseId,series,index,window,signal,libraryVersion);
     const {blob} = receipt;geometry=receipt.geometry;
     const bitmap = await createImageBitmap(blob);
     try {
@@ -77,7 +77,7 @@ export async function mountFrame(element: HTMLDivElement, token: string, caseId:
     viewport.render();
     resize = new ResizeObserver(() => { if (!disposed) engine.resize(true, true); });
     resize.observe(element);
-    viewerApi.preload(token,caseId,series,index+1,window);
+    if(libraryVersion===undefined)viewerApi.preload(token,caseId,series,index+1,window);else viewerApi.preload(token,caseId,series,index+1,window,libraryVersion);
     const toCanvas = (x:number,y:number):Types.Point2 => viewport.worldToCanvas(utilities.transformIndexToWorld(viewport.getImageData().imageData,[x-.5,y-.5,0]));
     const toImage = (x:number,y:number):[number,number] => {
       const point=utilities.transformWorldToIndexContinuous(viewport.getImageData().imageData,viewport.canvasToWorld([x,y]));

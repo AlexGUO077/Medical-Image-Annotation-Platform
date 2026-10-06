@@ -18,7 +18,7 @@ import { rankReportCandidates } from '../annotations/report-candidates';
 import { taxonomyApi } from '../taxonomy/api';
 import type { TaxonomyTreeResponse } from '../taxonomy/types';
 const message = (e: unknown) => e instanceof Error ? e.message : '工作台加载失败';
-export function FramePane({ token, data, series, frame, window, layer, onGeometry, onExpired, windowDrag, onWindow }: { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void }) {
+export function FramePane({ token, data, series, frame, window, layer, onGeometry, onExpired, windowDrag, onWindow, libraryVersion, onDenied }: { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void;libraryVersion?:number;onDenied?(e:unknown):void }) {
   const element=useRef<HTMLDivElement>(null), controls=useRef<Awaited<ReturnType<typeof import('../viewer/cornerstone').mountFrame>>>();
   const [active,setActive]=useState<Awaited<ReturnType<typeof import('../viewer/cornerstone').mountFrame>>>();
   const drag=useRef<{x:number;y:number;window:FrameWindow}>();
@@ -27,11 +27,11 @@ export function FramePane({ token, data, series, frame, window, layer, onGeometr
   const [error,setError]=useState<string>(), [loading,setLoading]=useState(true);
   useEffect(()=>{
     const controller=new AbortController();
-    import('../viewer/cornerstone').then(module=>controller.signal.aborted ? undefined : module.mountFrame(element.current!,token,data.case.id,series,frame,window,controller.signal))
+    import('../viewer/cornerstone').then(module=>controller.signal.aborted ? undefined : (libraryVersion===undefined?module.mountFrame(element.current!,token,data.case.id,series,frame,window,controller.signal):module.mountFrame(element.current!,token,data.case.id,series,frame,window,controller.signal,libraryVersion)))
       .then(value=>{if(!controller.signal.aborted){controls.current=value;setActive(value);if(value)onGeometry(value.geometry);setLoading(false);}})
-      .catch(e=>{if(!controller.signal.aborted){setError(message(e));setLoading(false);if(e instanceof ViewerRequestError&&e.status===401)onExpired?.();}});
+      .catch(e=>{if(!controller.signal.aborted){setError(message(e));setLoading(false);if(libraryVersion!==undefined&&e instanceof ViewerRequestError&&[401,403,409,429,502].includes(e.status))onDenied?.(e);if(e instanceof ViewerRequestError&&e.status===401)onExpired?.();}});
     return ()=>{controller.abort();controls.current?.dispose();controls.current=undefined;};
-  },[token,data,series,frame,window]);
+  },[token,data,series,frame,window,libraryVersion]);
   return <>
     <Space><Button disabled={loading||!!error} onClick={()=>controls.current?.zoom(1.2)}>放大</Button><Button disabled={loading||!!error} onClick={()=>controls.current?.zoom(1/1.2)}>缩小</Button><Button disabled={loading||!!error} onClick={()=>controls.current?.reset()}>重置视图</Button><span>拖动平移</span></Space>
     {candidate&&<span>待应用 WL {candidate.center} / WW {candidate.width}</span>}{error&&<Alert type="error" message={error} />}{loading&&<Spin tip="加载安全帧"><div /></Spin>}

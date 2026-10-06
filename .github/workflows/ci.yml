@@ -27,15 +27,19 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: docker compose --env-file .env.example config --quiet
-      - name: Start synthetic PostgreSQL and Redis for transaction tests
+      - name: Start synthetic PostgreSQL, Redis and ES for transaction tests
         run: |
           node scripts/create-local-env.mjs
-          docker compose --env-file .env.local up -d --wait --wait-timeout 180 postgres redis
+          docker compose --env-file .env.local up -d --wait --wait-timeout 240 postgres redis elasticsearch
       - name: Verify task HTTP authorization and database transactions
         run: node server/test/tasks.integration.cjs
-      - name: Verify public frame authorization, rate limits and audit
+      - name: Provision dedicated synthetic search account
+        run: npm run search:provision --workspace=server
+      - name: Verify public frames and published library with real ES
+        env:
+          MIAP_TEST_SEARCH_ES: "1"
         run: node server/test/frame-api.integration.cjs
-      - name: Stop synthetic PostgreSQL and Redis
+      - name: Stop synthetic test services
         if: always()
         run: |
           if [ -f .env.local ]; then

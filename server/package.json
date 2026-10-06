@@ -16,6 +16,8 @@
     "db:verify": "ts-node src/database/verify.ts",
     "db:verify-cycle": "ts-node src/database/verify-cycle.ts",
     "auth:reset-mfa": "ts-node src/modules/users/reset-admin-mfa.ts",
+    "search:provision": "ts-node src/modules/search/provision-search.ts",
+    "search:reconcile": "ts-node src/modules/search/reconcile-search.ts",
     "test:case-entry:integration": "npm run build && node test/case-entry.integration.cjs",
     "test:tasks:integration": "npm run build && node test/tasks.integration.cjs",
     "test:frames:api": "npm run build && node test/frame-api.integration.cjs",

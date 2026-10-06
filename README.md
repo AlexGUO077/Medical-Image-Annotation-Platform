@@ -139,3 +139,17 @@ python3 server/workers/verify_attachment_formats.py
 管理员在“任务列表”可按来源、系统查看任务，新建任务时填写名称、审核模式和优先级，勾选同来源、同系统下已确认脱敏且尚未进入任务的病例。任务按卡片展示，点击“查看病例”分页查看编号和状态。切换创建来源或系统会清空已选病例；创建时服务端再次校验，冲突时保留表单供调整。
 
 任务名去除首尾空白后最多 200 字符，单次创建最多 2000 例；这两项是已批准的输入技术边界，不是人员在途限额。当前完成任务创建和管理员查看，分派、领取、超时回收及普通成员个人任务仍在后续 WP-06 范围，未设置 5/10/24 默认规则。
+
+## 已发布库与本地全文检索
+
+按已批准 D-29，仅开放已确认脱敏的合成病例；有对应系统 annotate/review 任一资格即可只读访问 `/library`。应用使用专用 ES 账号，首次启动 ES 后执行以下本地合成命令；口令仅保存在忽略的环境文件，运行时不使用 elastic 管理员账号。
+
+```bash
+MIAP_ENV_FILE=/absolute/path/to/.env.local npm run search:provision --workspace server
+# 内部全量对账 / 从 PG 重建当前配置索引，无公众 HTTP 重建接口
+MIAP_ENV_FILE=/absolute/path/to/.env.local npm run search:reconcile --workspace server
+# 完成 build 后，真实 PostgreSQL、Redis、ES 的发布→检索与帧权限集成
+MIAP_TEST_SEARCH_ES=1 MIAP_ENV_FILE=/absolute/path/to/.env.local node server/test/frame-api.integration.cjs
+```
+
+`SEARCH_ELASTIC_USERNAME/PASSWORD/INDEX` 必须配置；索引限定 `miap-published-*`。同步在 PG 事务提交后请求，失败每 30 秒重试；后端启动及成功全量对账后每 24 小时重建当前事实并清除孤儿。ES 故障时全文查询明确 503，普通组合查询和只读详情仍由 PG 授权。映射升级时管理员指定新的同前缀索引并运行内部重建；旧索引清理由管理员另行处理。本批契约及限制见 [检索契约](docs/contracts/search-api.md)。

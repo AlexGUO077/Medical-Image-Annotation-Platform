@@ -10,6 +10,8 @@ import { CaseImportPage } from '../pages/CaseImportPage';
 import { CaseClinicalPage } from '../pages/CaseClinicalPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
 import { TasksPage } from '../pages/TasksPage';
+import { LibraryPage } from '../pages/LibraryPage';
+import { LibraryCasePage } from '../pages/LibraryCasePage';
 import { ReviewPage } from '../pages/ReviewPage';
 import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
 import { AppErrorBoundary } from './AppErrorBoundary';
@@ -58,6 +60,10 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                       ? <WorkbenchPage key={session.token} session={session} onExpired={() => setSession(null)} />
                       : route.path === '/review/:caseId'
                       ? <ReviewPage key={session.token} session={session} onExpired={() => setSession(null)} />
+                      : route.path === '/library'
+                      ? <LibraryPage session={session} onExpired={logout} />
+                      : route.path === '/library/:caseId'
+                      ? <LibraryCasePage session={session} onExpired={logout} />
                       : route.path === '/tasks'
                       ? <TasksPage session={session} />
                       : route.path === '/admin'

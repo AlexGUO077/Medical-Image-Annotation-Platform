@@ -17,6 +17,9 @@ const { Client } = require('pg');
 const { createClient } = require('redis');
 const { Test } = require('@nestjs/testing');
 const { JwtService } = require('@nestjs/jwt');
+const { SearchModule } = require('../dist/modules/search/search.module');
+const { SearchSyncService } = require('../dist/modules/search/search-sync.service');
+const { ElasticService } = require('../dist/modules/search/elastic.service');
 const { WorkbenchModule } = require('../dist/modules/workbench/workbench.module');
 const { AnnotationsModule } = require('../dist/modules/annotations/annotations.module');
 const { ReviewsModule } = require('../dist/modules/reviews/reviews.module');
@@ -40,6 +43,8 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
   const redis = createClient({ socket: { host: process.env.REDIS_HOST ?? '127.0.0.1', port: Number(process.env.REDIS_PORT ?? 6379), reconnectStrategy: false }, password: process.env.REDIS_PASSWORD });
   redis.on('error', () => {});
   let db, app, renderHook, renders = 0;
+  const realSearch=process.env.MIAP_TEST_SEARCH_ES==='1';
+  if(realSearch)process.env.SEARCH_ELASTIC_INDEX=`miap-published-it-${randomBytes(8).toString('hex')}`;
   const raw = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#808080' } }).png().toBuffer();
   const upstream = {
     resolveSeriesFrame: async () => ({ instance_id: '11111111-22222222-33333333-44444444-55555555', frame_index: 0 }),
@@ -65,7 +70,9 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const module = await Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule] }).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw}).compile();
+    const builder = Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule, SearchModule] }).overrideProvider(SearchSyncService).useValue({}).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw});
+    if(!realSearch)builder.overrideProvider(ElasticService).useValue({match:async()=>{throw new (require('@nestjs/common').ServiceUnavailableException)('合成检索故障');}});
+    const module=await builder.compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
     await app.listen(0, '127.0.0.1'); const base = await app.getUrl();
     const fresh = async id => (await db.query('SELECT *,expire_at::text FROM users WHERE id=$1', [id]))[0];
@@ -88,7 +95,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     await require('./workbench.assertions.cjs')({ db, get, caseId, actor, assignment, taskId, seriesId, studyId, otherToken, adminToken });
     await require('./annotations.assertions.cjs')({ db, base, get, caseId, actor, assignment, taskId, seriesId, token, otherToken, adminToken });
     await require('./submission.assertions.cjs')({db,base,get,actor,other,token,otherToken,adminToken,administrator});
-    await require('./reviews.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken});
+    await require('./reviews.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken,realSearch,setRenderHook:hook=>{renderHook=hook;}});
     const renderBaseline=renders;
     const ticket = async (auth = token) => { const response = await issue(payload, auth); assert.equal(response.status, 201); return response.json(); };
     assert.equal((await issue(payload, '')).status, 401);
@@ -177,10 +184,13 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     assert.equal((await db.query("SELECT count(*)::int n FROM audit_logs WHERE detail::text LIKE '%Bearer%' OR detail::text LIKE '%session_digest%'"))[0].n,0);
     console.log('PASS: public frame HTTP/session/assignment boundaries, post-render revocation, real Redis atomic quotas, lock/unlock and assignment release, cache-hit watermark/audit, fail-closed configuration/Redis/audit, no raw output');
   } finally {
+    let searchCleanupFailed=false;
+    if(realSearch)try{const index=process.env.SEARCH_ELASTIC_INDEX;if(!/^miap-published-it-[a-f0-9]+$/.test(index))throw Error('Unsafe test index cleanup');const response=await fetch(`http://${process.env.ELASTICSEARCH_HOST}:${process.env.ELASTICSEARCH_PORT}/${index}`,{method:'DELETE',signal:AbortSignal.timeout(10_000),headers:{Authorization:`Basic ${Buffer.from(`elastic:${process.env.ELASTIC_PASSWORD}`).toString('base64')}`}});if(![200,404].includes(response.status))throw Error('Synthetic index cleanup failed');}catch{searchCleanupFailed=true;}
     if (app) await app.close();
     if (db?.isInitialized) await db.destroy();
     if (redis.isReady && keys.size) await redis.del([...keys]);
     if (redis.isOpen) redis.destroy();
     await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); await admin.end();
+    if(searchCleanupFailed)throw Error('Synthetic index cleanup failed; PG and Redis fixtures were cleaned');
   }
 })().catch(error => { console.error(error.stack ?? error.message); process.exitCode = 1; });

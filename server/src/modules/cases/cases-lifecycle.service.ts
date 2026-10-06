@@ -1,3 +1,4 @@
+import { requestSearchSync } from '../search/search-events';
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { AuthUser } from '../auth/auth.models';
@@ -10,7 +11,7 @@ export class CasesLifecycleService {
   constructor(@Inject(DATABASE_SOURCE) private readonly db:DataSource) {}
   async change(actor:AuthUser,caseId:string,body:unknown,action:'offline'|'reactivate',ip:string){
     const id=uuid(caseId),expected=integer(object(body,['expected_version']).expected_version);
-    return this.db.transaction(async manager=>{
+    const result=await this.db.transaction(async manager=>{
       // Copying preserved authors also checks user FKs. Match submit/dispatch lock order.
       await manager.query('SELECT id FROM users WHERE deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE');
       await this.admin(manager,actor);
@@ -56,6 +57,8 @@ export class CasesLifecycleService {
         {from,to:status,previous_version:expected,version,task_id:task?.id??null,object_count:objectCount,released_assignments:active.length},ip);
       return {case_id:id,status,version};
     });
+    requestSearchSync(id);
+    return result;
   }
   private async admin(manager:EntityManager,actor:AuthUser){
     const [current]=await manager.query('SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR NO KEY UPDATE',[actor.id]) as AuthUser[];

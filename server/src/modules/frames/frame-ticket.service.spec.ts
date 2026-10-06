@@ -37,6 +37,15 @@ describe('internal frame tickets', () => {
     expect(jwt.decode(token).purpose).toBe('frame');
   });
 
+  it('binds library access and published version in the signed ticket',()=>{
+    const service=new FrameTicketService(),library={...target,access_mode:'library' as const,expected_version:3};
+    const token=extract(service.issue(session,library).url);expect(service.verify(token,session)).toEqual(library);
+    for(const change of [{expected_version:4},{access_mode:undefined}]){
+      const parts=token.split('.');parts[1]=Buffer.from(JSON.stringify({...jwt.decode(token),...change})).toString('base64url');expect(()=>service.verify(parts.join('.'),session)).toThrow();
+    }
+    for(const change of [{expected_version:undefined},{expected_version:-1},{expected_version:1.5},{access_mode:undefined}])expect(()=>service.issue(session,{...library,...change} as FrameTarget)).toThrow();
+  });
+
   it('rejects reuse by another user or login bearer', () => {
     const service = new FrameTicketService(); const token = extract(service.issue(session, target).url);
     expect(() => service.verify(token, { ...session, user_id: target.case_id })).toThrow('帧票据无效或已过期');

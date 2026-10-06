@@ -14,11 +14,12 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/cases/import', label: '病例录入', implementationWorkPackage: 'WP-05' },
   { path: '/cases/:id', label: '病例与临床信息', implementationWorkPackage: 'WP-05' },
   { path: '/library', label: '检索与归类', implementationWorkPackage: 'WP-12' },
+  { path: '/library/:caseId', label: '病例库只读详情', implementationWorkPackage: 'WP-12' },
   { path: '/dashboard', label: '统计看板', implementationWorkPackage: 'WP-13' },
   { path: '/admin', label: '系统管理', implementationWorkPackage: 'WP-15' },
 ];
 
-const darkThemeRoutes = ['/workbench/:caseId', '/review/:caseId'];
+const darkThemeRoutes = ['/workbench/:caseId', '/review/:caseId', '/library/:caseId'];
 
 export function isDarkThemePath(pathname: string): boolean {
   return darkThemeRoutes.some((path) => matchPath({ path, end: true }, pathname) !== null);

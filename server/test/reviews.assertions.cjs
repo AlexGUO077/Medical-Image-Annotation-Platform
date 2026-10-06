@@ -1,7 +1,7 @@
 // Reuses the existing real PostgreSQL/Redis HTTP suite; only renderer/storage pixels are synthetic.
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
-module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken})=>{
+module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken,realSearch,setRenderHook})=>{
  const send=(path,body,auth=otherToken)=>fetch(base+path,{method:'POST',headers:{...(auth?{Authorization:`Bearer ${auth}`} :{}),'Content-Type':'application/json'},body:JSON.stringify(body)});
  const checks={kind:'checks',deidentification:true,confirmation_basis:true,disease_label:true};
  const [part]=await db.query('SELECT part_id FROM annotation_objects WHERE part_id IS NOT NULL LIMIT 1');
@@ -102,5 +102,6 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken})=
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
  await require('./quality-reviews.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,checks});
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
+ await require('./library.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,realSearch,setRenderHook});
  console.log('PASS: review HTTP read/attachments, self/peer isolation, veto checks, optimistic/concurrent decisions, atomic audit rollback, DX/CT publication gold lock, return/re-submit history, self capacity and unavailable/qualification/capacity fallback');
 };
