@@ -1,3 +1,4 @@
+import base64
 import json
 import sys
 import subprocess
@@ -18,6 +19,9 @@ cid = docker('run', '-d', '--network', 'none', '--hostname', 'miap-es-smoke', '-
              '-e', 'ES_JAVA_OPTS=-Xms512m -Xmx512m', image).strip()
 try:
     assert docker('inspect', '--format', '{{.Config.User}}', cid).strip() == '1000:0'
+    jsoup_paths = docker('exec', cid, 'find', '/usr/share/elasticsearch', '-type', 'f', '-name', 'jsoup-*.jar').splitlines()
+    assert jsoup_paths == ['/usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar']
+    assert docker('exec', cid, 'sha256sum', *jsoup_paths).split()[0] == 'e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003'
     for artifact, count, expected_hash in (
         ('core', 9, '825fa72dfb9e2f8a642322f1390dbac22c30d15ebd6dc6b3772158821ee124eb'),
         ('databind', 4, '075ad94a76c3edf83e1972dc26f476361eb6b9d0e260d93fc11105509bc79cab'),
@@ -33,6 +37,8 @@ try:
             destination = str(Path(directory) / name)
             docker('cp', f'{cid}:{path}', destination)
             return ZipFile(destination)
+        with archive(jsoup_paths[0], 'jsoup.jar') as jsoup:
+            assert b'version=1.23.2' in jsoup.read('META-INF/maven/org.jsoup/jsoup/pom.properties')
         with archive('/usr/share/elasticsearch/modules/x-pack-sql/jackson-core-2.18.9.jar', 'core.jar') as core:
             expected = {n: core.read(n) for n in core.namelist() if not n.endswith('/')}
         for i, path in enumerate((
@@ -75,6 +81,14 @@ try:
     assert result['hits']['total']['value'] == 1
     sql = request('/_sql?format=json', {'query': 'SELECT value FROM "synthetic-smoke"'}, 'POST')
     assert sql['rows'] == [[7]]
-    print('PASS: non-root ES startup, 13 patched JAR hashes and 3 embedded Core payloads, JSON index/search and SQL query')
+    html = base64.b64encode(b'<html><head><title>Synthetic attachment</title></head><body>MIAP synthetic smoke</body></html>').decode()
+    attachment = request('/_ingest/pipeline/_simulate', {
+        'pipeline': {'processors': [{'attachment': {'field': 'data', 'remove_binary': True}}]},
+        'docs': [{'_source': {'data': html}}],
+    }, 'POST')['docs'][0]['doc']['_source']
+    assert 'MIAP synthetic smoke' in attachment['attachment']['content']
+    assert attachment['attachment']['title'] == 'Synthetic attachment'
+    assert 'data' not in attachment
+    print('PASS: non-root ES startup, patched Jackson/jsoup hashes and embedded Core payloads, JSON index/search, SQL and HTML attachment extraction')
 finally:
     docker('rm', '-f', cid)

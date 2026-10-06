@@ -34,4 +34,11 @@ RUN test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-core-2.
     && sh /tmp/patch-embedded-jackson.sh \
     && rm /tmp/jackson-core.jar /tmp/jackson-databind.jar /tmp/patch-embedded-jackson.sh
 
+# Keep the attachment module's policy-bound JAR path while patching its contents.
+ADD --checksum=sha256:e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003 https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar /tmp/jsoup.jar
+RUN test "$(find /usr/share/elasticsearch -type f -name 'jsoup-*.jar' | wc -l)" -eq 1 \
+    && test -f /usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar \
+    && install -m 0644 -o 1000 -g 0 /tmp/jsoup.jar /usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar \
+    && rm /tmp/jsoup.jar
+
 USER 1000:0
