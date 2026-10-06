@@ -4,7 +4,7 @@
 
 ## 环境与复现
 
-macOS、Node.js 24.14.0、npm 11.9.0；真实本地 PostgreSQL/Redis，测试创建并清理独立合成 schema 和自己的 Redis keys；沿用既有容器/数据卷。迁移及接口 mock 先于页面接入；在既有任务模块内实现，无新增表、依赖或部署服务。
+macOS、Node.js 24.14.0、npm 11.9.0；真实本地 PostgreSQL/Redis，测试创建并清理独立合成 schema 和自己的 Redis keys；沿用既有容器/数据卷。迁移及接口 mock 先于页面接入；在既有任务模块内实现，无新增表、运行时库或部署服务。安全依赖修复见下节。
 
 ```sh
 npm run check
@@ -28,6 +28,14 @@ MIAP_PLAYWRIGHT_MODULE=/Users/guo/.cache/codex-runtimes/codex-primary-runtime/de
 已自审类型/版本/开始门、非提交人资格、来源/任务匹配、容量串行化、固定锁顺序、旧金标准不可变及审计原子性；后台沿用已有 task-worker 事件白名单。自审不替代另一人评审或组长权限复核。
 
 本地独有日志与 PNG 在忽略目录 `reports/wp11-spotchecks-20261002/`：`check.log`、`frame-api.log`、`quality-reclaim-ui.log`、`sampling-pending.png`、`quality-confirmation.png`、`offlined-expanded.png`。未上传为远端持久 artifact，可通过提交脚本复现。原任务集成通过结果记录于本次工具输出；不为补写日志重复运行。现有 jsdom style/canvas 与构建 chunk 提示保留，不降低门槛。
+
+## 2026-10-06 安全依赖修复
+
+[PR #50](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/50) 首轮 [功能 CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/37409433104) 通过；[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/37409433917) 中许可证、CodeQL、秘密扫描、文件系统及五个镜像扫描通过，依赖审计因高危/严重漏洞失败。对应修复版本为 [source-map-js 1.2.2](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)、[tinypool 2.1.2](https://github.com/advisories/GHSA-85c8-ppgw-ccpr)。未降低 high 阈值或增加豁免。
+
+仅覆盖上述两个传递依赖；根 devDependencies 复用现有 `vitest 3.2.7` 声明，使 npm 11.9.0 在 workspace 树上稳定应用覆盖。没有升级 Vitest 主版本或引入新包。清洁 `npm ci`、`npm ls tinypool source-map-js --all` 确认实际版本及 overridden 边有效；完整 `npm run check` 通过：45 脚本、264 后端、13 Python、157 前端测试及 lint、类型检查、两端构建。最终根声明只改变工具依赖边，实际包版本与完整检查一致。
+
+`node scripts/check-dependency-policy.mjs package-lock.json` 通过，`npm audit --audit-level=high` 退出 0；仍报告 1 low、5 moderate，未豁免或隐瞒。安装、检查及审计输出在同一本地忽略目录中的 `security-followup-ci.log`、`security-followup-check.log`、`security-followup-audit.log`。未因测试工具及 source-map 补丁重复执行未受影响的真实 HTTP/Chrome 业务验证；最终远端结果以 PR 最新提交的检查为准。
 
 ## 限制与回滚
 
