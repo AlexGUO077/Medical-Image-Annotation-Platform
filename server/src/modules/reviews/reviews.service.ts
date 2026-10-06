@@ -3,6 +3,7 @@ import type { DataSource, EntityManager } from 'typeorm';
 import type { AuthUser } from '../auth/auth.models';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import { PermissionService } from '../auth/permission.service';
+import { decideQuality, qualityEligible } from '../tasks/quality-reviews';
 import { accountAvailable } from '../tasks/assignment-release';
 import { reviewAuthorSql, reviewEligible, type CapacityUser, type ReviewTask } from '../tasks/review-assignment';
 import { readAnnotationObjects, latestReview } from '../annotations/annotation-read';
@@ -32,7 +33,7 @@ export class ReviewsService {
       const latest_review=await latestReview(manager,id);
       await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(context.user,id,context.item.system_code,'review');
       await this.audit(manager,actor.id,'reviews.viewed',id,{version},ip);
-      return {...data,disease:disease??null,review_mode:context.task.review_mode,version,current_version:context.item.annotation_version,annotations,latest_review};
+      return {...data,...(context.quality?{review_kind:context.assignment.review_kind,review_version:context.assignment.review_version,assignment_id:context.assignment.id,started_at:context.assignment.started_at}:{}),disease:disease??null,review_mode:context.task.review_mode,version,current_version:context.item.annotation_version,annotations,latest_review};
     });
   }
   async decide(actor:AuthUser,caseId:string,body:unknown,ip:string){
@@ -43,21 +44,26 @@ export class ReviewsService {
       const context=await this.context(manager,actor,id,input.expected_version);
       if(context.item.annotation_version!==input.expected_version)throw new ConflictException('标注版本已变化，请重新读取');
       const annotations=await readAnnotationObjects(manager,id,input.expected_version) as {id:string;is_gold:boolean}[];
-      if(annotations.some(a=>a.is_gold))throw new ConflictException('金标准版本已锁定');
+      if(!context.quality&&annotations.some(a=>a.is_gold))throw new ConflictException('金标准版本已锁定');
       for(const comment of input.comments)if(comment.kind==='object'&&!annotations.some(a=>a.id===comment.annotation_id))throw new BadRequestException('批注对象不属于当前病例版本');
       if(input.result==='通过')await this.assertDisease(manager,context.item.disease_tag_id,context.item.system_code);
-      const active=await manager.query("SELECT id,task_role,assignee_id FROM task_assignments WHERE case_id=$1 AND state='active' AND deleted_at IS NULL FOR UPDATE",[id]);
+      const active=await manager.query("SELECT id,task_role,assignee_id,review_kind,review_version,started_at FROM task_assignments WHERE case_id=$1 AND state='active' AND deleted_at IS NULL FOR UPDATE",[id]);
       if(active.length!==1||active[0].task_role!=='review'||active[0].assignee_id!==actor.id)throw new ConflictException('审核分派已变化');
+      if(context.quality?(input.assignment_id!==active[0].id||active[0].review_version!==input.expected_version):input.assignment_id!==undefined)throw new ConflictException('审核类型或分派已变化');
       // Check again after locks/reference reads; elapsed deadlines never gain authority.
       await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(context.user,id,context.item.system_code,'review');
       const [clock]=await manager.query('SELECT clock_timestamp() AS now');
-      const comments=input.comments.map(c=>({...c,reviewer_id:actor.id,created_at:clock.now.toISOString(),annotation_version:input.expected_version}));
+      const comments=input.comments.map(c=>({...c,reviewer_id:actor.id,created_at:clock.now.toISOString(),annotation_version:input.expected_version,...(context.quality?{review_kind:active[0].review_kind,assignment_id:active[0].id}:{})}));
       const [review]=await manager.query(`INSERT INTO reviews(case_id,reviewer_id,result,comments,is_spotcheck)
-        VALUES($1,$2,$3,$4::jsonb,false) RETURNING id`,[id,actor.id,input.result,JSON.stringify(comments)]);
+        VALUES($1,$2,$3,$4::jsonb,$5) RETURNING id`,[id,actor.id,input.result,JSON.stringify(comments),context.quality&&active[0].review_kind==='spotcheck']);
       await manager.query("UPDATE task_assignments SET state='completed',updated_at=now() WHERE id=$1",[active[0].id]);
       let reannotation:{assignment_id:string|null;assignee_id:string|null;reason:string|null}|null=null;
       let status='已发布';
-      if(input.result==='通过'){
+      let expansion:{assigned_count:number;pending_count:number}|undefined;
+      if(context.quality){
+        expansion=await decideQuality(manager,users,context.task,{...context.item,author:context.item.author!},active[0],input.result,actor.id,ip);
+        status=input.result==='通过'?'已发布':'已下线';
+      }else if(input.result==='通过'){
         await manager.query('UPDATE annotation_objects SET is_gold=true,updated_at=now() WHERE case_id=$1 AND version=$2 AND deleted_at IS NULL',[id,input.expected_version]);
       }else{
         const original=users.find(u=>u.id===context.item.author);
@@ -78,10 +84,10 @@ export class ReviewsService {
         }
       }
       await manager.query('UPDATE cases SET status=$2,updated_at=now() WHERE id=$1',[id,status]);
-      const detail={review_id:review.id,version:input.expected_version,result:input.result,task_id:context.task.id,from:'审核中',to:status,reannotation};
+      const detail={review_id:review.id,version:input.expected_version,result:input.result,task_id:context.task.id,from:context.quality?'已发布':'审核中',to:status,reannotation,assignment_id:active[0].id,review_kind:active[0].review_kind??'normal'};
       await this.audit(manager,actor.id,'reviews.decided',id,detail,ip);
-      if(input.result==='通过')await this.audit(manager,actor.id,'cases.published',id,{review_id:review.id,version:input.expected_version},ip);
-      return {review_id:review.id,case_id:id,version:input.expected_version,status,is_gold:input.result==='通过',reannotation};
+      if(!context.quality&&input.result==='通过')await this.audit(manager,actor.id,'cases.published',id,{review_id:review.id,version:input.expected_version},ip);
+      return {review_id:review.id,case_id:id,version:input.expected_version,status,is_gold:context.quality||input.result==='通过',reannotation,...(context.quality?{review_kind:active[0].review_kind,...expansion}:{})};
     });
   }
   private async context(manager:EntityManager,actor:AuthUser,id:string,expected?:number){
@@ -95,14 +101,20 @@ export class ReviewsService {
     const [item]=await manager.query(`SELECT c.*,${reviewAuthorSql} author FROM cases c JOIN task_cases tc ON tc.case_id=c.id AND tc.deleted_at IS NULL
       JOIN tasks t ON t.id=tc.task_id WHERE c.id=$1 AND c.deleted_at IS NULL AND c.source='synthetic' AND EXISTS(
         SELECT 1 FROM audit_logs WHERE target='cases:'||c.id::text AND action IN ('case_import.deidentification_confirmed','case_manual.confirmed')) FOR UPDATE OF c`,[id]);
-    if(!item||!reviewEligible(user,task,item.author))throw new ForbiddenException('审核病例不可访问');
-    if(item.status!=='审核中'){
+    const [assignment]=await manager.query("SELECT * FROM task_assignments WHERE case_id=$1 AND assignee_id=$2 AND state='active' AND task_role='review' AND deleted_at IS NULL",[id,user.id]);
+    const quality=!!assignment&&['spotcheck','recheck'].includes(assignment.review_kind);
+    if(item&&!assignment&&expected!==undefined){
+      const last=await latestReview(manager,id);
+      if(last?.reviewer_id===user.id&&last.comments.some((c:{annotation_version:number})=>c.annotation_version===expected))throw new ConflictException('审核结论已提交，请刷新任务列表');
+    }
+    if(!item||!(quality?qualityEligible(user,task,item.author):reviewEligible(user,task,item.author)))throw new ForbiddenException('审核病例不可访问');
+    if(item.status!==(quality?'已发布':'审核中')){
       const last=expected===undefined?null:await latestReview(manager,id);
       if(last?.reviewer_id===user.id&&last.comments.some((c:{annotation_version:number})=>c.annotation_version===expected))throw new ConflictException('审核结论已提交，请刷新任务列表');
       throw new ForbiddenException('病例无有效审核分派');
     }
     await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(user,id,item.system_code,'review');
-    return {user,task,item};
+    return {user,task,item,assignment,quality};
   }
   private async assertDisease(manager:EntityManager,id:string|null,system:string){
     const names:Record<string,string>={cns:'中枢神经系统',headneck:'头颈',resp:'呼吸',circ:'循环',digest:'消化',uro:'泌尿',repro:'生殖',bone:'骨骼'};

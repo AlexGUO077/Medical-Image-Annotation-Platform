@@ -55,3 +55,13 @@ describe('member task pool', () => {
 });
 
 function render(ui: ReactElement) { return baseRender(ui, { wrapper: MemoryRouter }); }
+
+it('starts a published quality assignment explicitly and keeps its assignment identity',async()=>{
+ vi.mocked(tasksApi.pool).mockResolvedValue(page([]));
+ const quality={...row,status:'已发布',review_kind:'spotcheck' as const,review_version:3,assignment_id:'quality-id',started_at:null};
+ vi.mocked(tasksApi.mine).mockImplementation(async(_token,_page,_signal,role)=>page(role==='review'?[quality]:[]));
+ const start=vi.spyOn(tasksApi,'startReview').mockImplementation(async()=>{vi.mocked(tasksApi.mine).mockResolvedValue(page([{...quality,started_at:'2026-10-02T13:00:00Z'}]));return {case_id:'case',status:'已发布'};});
+ render(<MemberTasksPanel token="token"/>);fireEvent.mouseDown(screen.getByRole('combobox',{name:'任务角色'}));fireEvent.click(await screen.findByTitle('审核'));
+ fireEvent.click(await screen.findByRole('button',{name:'开始审核'}));expect(await screen.findByRole('link',{name:'进入审核台'})).toHaveAttribute('href','/review/case');
+ expect(start).toHaveBeenCalledWith('token','task','case','quality-id');
+});

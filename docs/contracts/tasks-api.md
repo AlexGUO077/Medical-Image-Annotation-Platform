@@ -88,3 +88,11 @@ D-12 的任务管理最小补齐范围沿用以上管理员 guard，不向普通
 - 管理员控制台保留分派、回收及设置权限，增加标注/审核角色选择；审核仅选择未分派的待审核病例。成员可查看审核队列、领取、明确开始；审核结论/退回/发布界面属于 M3，当前不显示可用的审核结论入口。
 
 任务归档及残留 active 分派清理仍未实现，当前没有归档入口；不宣称该闭环已经完成。
+
+## 抽检与全面复核（WP-11，2026-10-02 已批准）
+
+业务口径及最小数据调整见 [D-21](../decisions/D-21-spotchecks.md)。管理员 `POST /api/tasks/:taskId/spotchecks` 只接受 `{}`，返回 batch_id/candidate_count/sampled_count/assigned_count/pending_count；零候选不生成轮次。系统按任务新候选版本随机抽样并向上取整，记录全部候选避免同版重抽，互审派单与原任务分发模式独立，待派由既有 worker 重试，无默认限额或期限。
+
+个人审核 mine 增加已发布的本人质量分派及 review_kind/review_version/started_at，pool 仍只列普通待审核。质量 `start-review` 接受 `{task_id,case_id,assignment_id}`，锁定目标当前版、复核非提交人审核资格，只记分派开始时间，不将病例改为审核中。管理员任务病例列表带可空 quality_review `{kind,state,version}`，可查看待派；管理页复用个人任务入口，管理员同样凭本人有效分派进入审核台，未增加阅片旁路。
+
+质量 reclaim 返回 pending，清除承接人/开始时间，病例保持发布；账号/资格失效同样立即失去读取权限并回待派。后台沿用既有系统审计白名单与 executor=task-worker。任务、状态或版本失效时取消质量工作，不把旧分派派到新版本。审核结论见 reviews-api 的 D-21 扩展；不开放发布库检索。

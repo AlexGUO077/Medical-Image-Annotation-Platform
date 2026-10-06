@@ -60,7 +60,8 @@ module.exports = async ({ db, base, get, caseId, actor, assignment, taskId, seri
   await db.query("UPDATE series SET modality='DX',frame_count=1,default_window=NULL WHERE id=$1",[seriesId]);
   response=await save(5,[{...original,part_id:null,confidence:null,sign_tag_ids:[]}]);assert.equal(response.status,200);
   const draft=(await response.json()).annotations[0];assert.equal(draft.part_id,null);assert.equal(draft.confidence,null);assert.deepEqual(draft.sign_tag_ids,[]);
-  await assert.rejects(db.undoLastMigration(),/null values/);
+  const {AnnotationDraftAttributes1790769600000}=require('../dist/database/migrations/1790769600000-AnnotationDraftAttributes');
+  await assert.rejects(db.transaction(manager=>new AnnotationDraftAttributes1790769600000().down({query:manager.query.bind(manager)})),/null values/);
   const {AnnotationVersionState1790726400000}=require('../dist/database/migrations/1790726400000-AnnotationVersionState');
   await assert.rejects(db.transaction(manager=>new AnnotationVersionState1790726400000().down({query:manager.query.bind(manager)})),/Annotation history exists/);
   console.log('PASS: annotation save/history/session/scope boundaries, stable identity and old tags, empty versions, concurrent 409, gold lock, audit rollback, expired/released access, guarded downgrade');

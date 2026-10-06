@@ -8,10 +8,10 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken})=
  const [sign]=await db.query("SELECT id FROM sign_tags WHERE system_code='resp' LIMIT 1");
  const [disease]=await db.query("INSERT INTO taxonomy_nodes(parent_id,level,name,synonyms) VALUES($1,3,'合成审核疾病','[]') RETURNING id",[part.part_id]);
  const cases=[];
- const fixture=async({self=false,mode='manual',modality='DX'}={})=>{
-  const id=randomUUID(),task=randomUUID(),study=randomUUID(),series=randomUUID(),objectId=randomUUID();cases.push(id);
+ const fixture=async({self=false,mode='manual',modality='DX',sharedTask}={})=>{
+  const id=randomUUID(),task=sharedTask??randomUUID(),study=randomUUID(),series=randomUUID(),objectId=randomUUID();cases.push(id);
   await db.query("INSERT INTO cases(id,case_no,status,source,system_code,confirm_method,disease_tag_id) VALUES($1,$2,'标注中','synthetic','resp','临床综合诊断',$3)",[id,id,disease.id]);
-  await db.query("INSERT INTO tasks(id,name,source,system_code,review_mode,status,dispatch_mode,priority) VALUES($1,'合成审核','synthetic','resp',$2,'进行中',$3,0)",[task,self?'self':'peer',mode]);
+  if(!sharedTask)await db.query("INSERT INTO tasks(id,name,source,system_code,review_mode,status,dispatch_mode,priority) VALUES($1,'合成审核','synthetic','resp',$2,'进行中',$3,0)",[task,self?'self':'peer',mode]);
   await db.query('INSERT INTO task_cases(task_id,case_id) VALUES($1,$2)',[task,id]);
   await db.query("INSERT INTO task_assignments(case_id,assignee_id,task_role,state) VALUES($1,$2,'annotate','active')",[id,actor.id]);
   await db.query("INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,'case_manual.confirmed',$2,'{}','127.0.0.1')",[actor.id,`cases:${id}`]);
@@ -99,6 +99,8 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken})=
  // No leftover active fixtures alter existing frame budgets/capacity checks.
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
  await require('./case-lifecycle.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken});
+ await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
+ await require('./quality-reviews.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,checks});
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
  console.log('PASS: review HTTP read/attachments, self/peer isolation, veto checks, optimistic/concurrent decisions, atomic audit rollback, DX/CT publication gold lock, return/re-submit history, self capacity and unavailable/qualification/capacity fallback');
 };

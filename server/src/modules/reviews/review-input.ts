@@ -7,7 +7,7 @@ function fields(value:unknown,keys:string[]):Record<string,unknown> {
   return value as Record<string,unknown>;
 }
 export function parseReview(body:unknown) {
-  const input=fields(body,['expected_version','result','comments']);
+  const input=fields(body,['expected_version','result','comments','assignment_id']);
   const expected_version=integer(input.expected_version);
   if(input.result!=='通过'&&input.result!=='打回')throw new BadRequestException('审核结果无效');
   if(!Array.isArray(input.comments))throw new BadRequestException('审核批注必须为数组');
@@ -27,5 +27,5 @@ export function parseReview(body:unknown) {
   if(checks.length!==1)throw new BadRequestException('必须且只能有一组三项检查');
   if(input.result==='通过'&&(!checks[0]!.deidentification||!checks[0]!.confirmation_basis||!checks[0]!.disease_label))throw new BadRequestException('一票否决项未通过，必须打回');
   if(input.result==='打回'&&comments.length===1)throw new BadRequestException('打回必须提供修改意见');
-  return {expected_version,result:input.result,comments};
+  return {expected_version,result:input.result,comments,...(input.assignment_id===undefined?{}:{assignment_id:uuid(input.assignment_id)})};
 }

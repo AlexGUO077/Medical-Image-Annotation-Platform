@@ -9,6 +9,7 @@ const { DataSource } = require('typeorm');
 const { Client } = require('pg');
 const { Test } = require('@nestjs/testing');
 const { JwtModule } = require('@nestjs/jwt');
+const { QualityReviewsService } = require('../dist/modules/tasks/quality-reviews');
 const { TasksService } = require('../dist/modules/tasks/tasks.service');
 const { TaskDispatchService } = require('../dist/modules/tasks/task-dispatch.service');
 const { PermissionService } = require('../dist/modules/auth/permission.service');
@@ -36,7 +37,7 @@ const schema = `wp06_test_${randomBytes(8).toString('hex')}`;
     await db.initialize(); await db.runMigrations();
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: randomBytes(32).toString('hex') })],
-      controllers: [TasksController, UsersController], providers: [UsersService, TasksService, TaskDispatchService, PermissionService, AccessTokenGuard, AdminGuard, AuthTokenService,
+      controllers: [TasksController, UsersController], providers: [QualityReviewsService, UsersService, TasksService, TaskDispatchService, PermissionService, AccessTokenGuard, AdminGuard, AuthTokenService,
         { provide: DATABASE_SOURCE, useValue: db }],
     }).compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());

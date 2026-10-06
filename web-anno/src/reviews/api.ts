@@ -10,13 +10,14 @@ async function request(id:string,token:string,signal:AbortSignal,body?:unknown,v
 export const reviewsApi={
   async read(id:string,token:string,signal:AbortSignal,version?:number):Promise<ReviewData>{
     const data=await request(id,token,signal,undefined,version);
-    if(data.case?.id!==id||data.case?.status!=='审核中'||!Number.isInteger(data.version)||!Number.isInteger(data.current_version)||data.version>data.current_version||!Array.isArray(data.annotations)||!Array.isArray(data.series)||!Array.isArray(data.sentences)||!['self','peer'].includes(data.review_mode))throw new ViewerRequestError(502,'审核响应结构无效');
+    const quality=['spotcheck','recheck'].includes(data.review_kind);
+    if(data.case?.id!==id||(quality?(data.case?.status!=='已发布'||typeof data.assignment_id!=='string'||!data.started_at||data.review_version!==data.current_version):data.case?.status!=='审核中')||!Number.isInteger(data.version)||!Number.isInteger(data.current_version)||data.version>data.current_version||!Array.isArray(data.annotations)||!Array.isArray(data.series)||!Array.isArray(data.sentences)||!['self','peer'].includes(data.review_mode))throw new ViewerRequestError(502,'审核响应结构无效');
     return data;
   },
-  async decide(id:string,token:string,signal:AbortSignal,version:number,result:'通过'|'打回',comments:ReviewComment[]):Promise<ReviewResult>{
-    const data=await request(id,token,signal,{expected_version:version,result,comments});
+  async decide(id:string,token:string,signal:AbortSignal,version:number,result:'通过'|'打回',comments:ReviewComment[],assignmentId?:string):Promise<ReviewResult>{
+    const data=await request(id,token,signal,{expected_version:version,result,comments,...(assignmentId?{assignment_id:assignmentId}:{})});
     if(data.case_id!==id||data.version!==version||typeof data.review_id!=='string'||
-      (result==='通过'?(data.status!=='已发布'||data.is_gold!==true||data.reannotation!==null):(!['标注中','待分配'].includes(data.status)||data.is_gold!==false||!data.reannotation)))throw new ViewerRequestError(502,'审核响应无效，请返回任务列表核对');
+      (assignmentId?(!['spotcheck','recheck'].includes(data.review_kind)||data.status!==(result==='通过'?'已发布':'已下线')||data.is_gold!==true||data.reannotation!==null||![data.assigned_count,data.pending_count].every(n=>Number.isInteger(n)&&n>=0)):result==='通过'?(data.status!=='已发布'||data.is_gold!==true||data.reannotation!==null):(!['标注中','待分配'].includes(data.status)||data.is_gold!==false||!data.reannotation)))throw new ViewerRequestError(502,'审核响应无效，请返回任务列表核对');
     return data;
   },
 };

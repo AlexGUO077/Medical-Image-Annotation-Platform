@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, OnApplicationBootstrap
 import type { DataSource } from 'typeorm';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import { releaseIneligibleAnnotations, type ReleaseUser } from './assignment-release';
+import { QualityReviewsService } from './quality-reviews';
 import { TaskDispatchService } from './task-dispatch.service';
 
 @Injectable()
@@ -12,7 +13,7 @@ export class TaskMaintenanceService implements OnApplicationBootstrap, OnModuleD
   private stopped = false;
   private afterUser?: string;
   private afterCase?: string;
-  constructor(@Inject(DATABASE_SOURCE) private readonly db: DataSource, private readonly dispatches: TaskDispatchService) {}
+  constructor(@Inject(DATABASE_SOURCE) private readonly db: DataSource, private readonly dispatches: TaskDispatchService, private readonly quality: QualityReviewsService) {}
 
   onApplicationBootstrap(): void { void this.loop(); }
   async onModuleDestroy(): Promise<void> {
@@ -34,6 +35,8 @@ export class TaskMaintenanceService implements OnApplicationBootstrap, OnModuleD
     }
   }
   private async cycle(): Promise<void> {
+    try { await this.quality.maintain(); }
+    catch { this.logger.error('Quality review maintenance failed; retry scheduled'); }
     const candidates = await this.db.query(`SELECT DISTINCT u.id FROM users u
       JOIN task_assignments a ON a.assignee_id=u.id
       JOIN task_cases tc ON tc.case_id=a.case_id AND tc.deleted_at IS NULL

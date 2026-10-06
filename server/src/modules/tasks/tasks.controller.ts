@@ -2,13 +2,21 @@ import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req, UseGuard
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import type { AuthenticatedRequest } from '../auth/auth.models';
+import { QualityReviewsService } from './quality-reviews';
 import { TasksService } from './tasks.service';
 import { TaskDispatchService } from './task-dispatch.service';
 
 @Controller('tasks')
 @UseGuards(AccessTokenGuard)
 export class TasksController {
-  constructor(private readonly tasks: TasksService, private readonly dispatches: TaskDispatchService) {}
+  constructor(private readonly tasks: TasksService, private readonly dispatches: TaskDispatchService, private readonly quality: QualityReviewsService) {}
+
+  @Post(':id/spotchecks')
+  @UseGuards(AdminGuard)
+  spotchecks(@Param('id') id:string,@Body() body:unknown,@Req() request:AuthenticatedRequest){
+    if(!request.user)throw new Error('Authenticated user missing');
+    return this.quality.sample(request.user,id,body,request.ip??'unknown');
+  }
 
   @Post('dispatch')
   dispatch(@Body() body: unknown, @Req() request: AuthenticatedRequest) {

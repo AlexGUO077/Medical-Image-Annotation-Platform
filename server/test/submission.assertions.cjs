@@ -64,7 +64,8 @@ module.exports=async({db,base,get,actor,other,token,otherToken,adminToken,admini
  for(const u of userSettings)await db.query('UPDATE users SET quals=$2 WHERE id=$1',[u.id,JSON.stringify(u.quals)]);
  const {TaskDispatchService}=require('../dist/modules/tasks/task-dispatch.service');
  const {TaskMaintenanceService}=require('../dist/modules/tasks/task-maintenance.service');
- const maintenance=new TaskMaintenanceService(db,new TaskDispatchService(db));await maintenance.runOnce();
+ const {QualityReviewsService}=require('../dist/modules/tasks/quality-reviews');
+ const maintenance=new TaskMaintenanceService(db,new TaskDispatchService(db),new QualityReviewsService(db));await maintenance.runOnce();
  let [allocated]=await db.query("SELECT * FROM task_assignments WHERE case_id=$1 AND state='active'",[waiting.id]);assert(allocated);assert.equal(allocated.task_role,'review');assert.notEqual(allocated.assignee_id,actor.id);assert.equal((await waiting.state()).status,'待审核');
  assert.equal((await db.query("SELECT count(*)::int n FROM audit_logs WHERE action='tasks.auto_dispatched' AND target=$1 AND actor IS NULL",[`tasks:${waiting.task}`]))[0].n,1);
  await db.query("UPDATE tasks SET dispatch_mode='pool' WHERE id=$1",[waiting.task]);

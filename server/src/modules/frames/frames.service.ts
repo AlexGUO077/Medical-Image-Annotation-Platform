@@ -77,7 +77,7 @@ export class FramesService {
       if (!series || !['synthetic','teacher_provided_teaching'].includes(series.source) || target.frame_index >= series.frame_count) {
         throw new ForbiddenException('帧资源不可访问');
       }
-      const role = series.status === '标注中' ? 'annotate' : series.status === '审核中' ? 'review' : null;
+      const role = series.status === '标注中' ? 'annotate' : ['审核中','已发布'].includes(series.status) ? 'review' : null;
       if (!role) throw new ForbiddenException('病例无有效工作分派');
       await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(current, target.case_id, series.system_code, role);
       return work(manager, current, series);
