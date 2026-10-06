@@ -1,3 +1,5 @@
+import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
+import { DashboardPage } from '../pages/DashboardPage';
 import { useRef, useState } from 'react';
 import { Alert, Button } from 'antd';
 import { allowAccountDrafts, clearAccountDrafts, draftAccountId } from '../annotations/drafts';
@@ -13,7 +15,6 @@ import { TasksPage } from '../pages/TasksPage';
 import { LibraryPage } from '../pages/LibraryPage';
 import { LibraryCasePage } from '../pages/LibraryCasePage';
 import { ReviewPage } from '../pages/ReviewPage';
-import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
 import { appRoutes } from './routes';
@@ -52,7 +53,7 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
         {appRoutes.filter((route) => route.path !== '/login').map((route) => (
           <Route key={route.path} path={route.path} element={session
             ? (
-              ['/admin', '/cases/import', '/cases/:id'].includes(route.path) && session.role !== 'admin'
+              ['/admin', '/cases/import', '/cases/:id', '/dashboard'].includes(route.path) && session.role !== 'admin'
                 ? <Navigate replace to="/tasks" />
                 : (
                   <AuthenticatedLayout session={session} onLogout={logout}>
@@ -72,7 +73,9 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                         ? <CaseImportPage session={session} />
                         : route.path === '/cases/:id'
                           ? <CaseClinicalPage session={session} />
-                        : <ModulePlaceholderPage title={route.label} />}
+                        : route.path === '/dashboard'
+                          ? <DashboardPage key={session.token} session={session} onExpired={logout} />
+                          : <ModulePlaceholderPage title={route.label} />}
                   </AuthenticatedLayout>
                 )
             )

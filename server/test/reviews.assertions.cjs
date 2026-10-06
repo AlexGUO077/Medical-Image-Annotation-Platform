@@ -103,5 +103,6 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken,re
  await require('./quality-reviews.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,checks});
  await db.query("UPDATE task_assignments SET state='released' WHERE case_id=ANY($1::uuid[]) AND state='active'",[cases]);
  await require('./library.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,realSearch,setRenderHook});
+ await require('./stats.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken,dx:f,ct:returned});
  console.log('PASS: review HTTP read/attachments, self/peer isolation, veto checks, optimistic/concurrent decisions, atomic audit rollback, DX/CT publication gold lock, return/re-submit history, self capacity and unavailable/qualification/capacity fallback');
 };

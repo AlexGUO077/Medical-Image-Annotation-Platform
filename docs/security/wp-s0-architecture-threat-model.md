@@ -17,6 +17,8 @@ flowchart LR
 
 浏览器不可信，只能接收脱敏业务数据和当前渲染帧。PostgreSQL、Orthanc、MinIO、Redis 和 Elasticsearch 只允许内网访问；nginx 是唯一外部入口。
 
+WP-13 管理员 `GET /api/stats` 仅聚合已确认脱敏、未软删除的 synthetic 病例及未软删除任务；不返回病例正文、影像、附件或存储键，不增加导出。沿用实时 access/admin 守卫，在聚合事务内锁定并复核账号/会话及到期状态；无阅片资格的管理员只能读取该聚合，不能因此阅片。参数白名单与参数化 SQL、单次数据库快照和 5 秒查询超时防止任意查询及部分指标；失败关闭，响应 no-store，浏览器失权清除旧指标并退出。详见 [统计契约](../contracts/stats-api.md) 与 [合成验证](../evidence/wp-13-stats-verification.md)。
+
 ## 必须防止的行为
 
 | 风险 | 源手册最小控制 |

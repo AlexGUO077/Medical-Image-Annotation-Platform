@@ -1,3 +1,6 @@
+import {statsApi} from '../dashboard/api';
+import {statsResult} from '../../../test/fixtures/synthetic/stats';
+vi.mock('../dashboard/api',()=>({statsApi:{read:vi.fn(),options:vi.fn()}}));
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +15,8 @@ import { tasksApi } from '../tasks/api';
 vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
 
 beforeEach(() => {
+  vi.mocked(statsApi.read).mockReset().mockResolvedValue(statsResult);
+  vi.mocked(statsApi.options).mockResolvedValue({items:[],page:1,total:0});
   vi.mocked(clearAccountDrafts).mockReset().mockResolvedValue(undefined);
   vi.mocked(reviewsApi.read).mockRejectedValue(new Error('审核病例不可访问'));
   vi.mocked(viewerApi.workbench).mockRejectedValue(new Error('工作台病例不可访问'));
@@ -29,14 +34,13 @@ describe('App', () => {
     expect(screen.queryByText('任务列表')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['/dashboard', '统计看板'],
-  ])('renders a neutral module placeholder for %s', async (path, label) => {
-    render(<App initialEntries={[path]} initialSession={session} />);
-
-    expect(await screen.findByRole('heading', { name: label })).toBeInTheDocument();
-    expect(screen.getByText('该模块将在对应工作包实现')).toBeInTheDocument();
-    expect(screen.queryByText(/已完成|可用|成功/)).not.toBeInTheDocument();
+  it('opens administrator stats and redirects direct member navigation without a stats request', async () => {
+    const view=render(<App initialEntries={['/dashboard']} initialSession={session}/>);
+    expect(await screen.findByText('1 / 3 次普通审核')).toBeInTheDocument();
+    expect(statsApi.read).toHaveBeenCalled();view.unmount();vi.mocked(statsApi.read).mockClear();
+    render(<App initialEntries={['/dashboard']} initialSession={{...session,role:'member'}}/>);
+    expect(await screen.findByRole('heading',{name:'个人任务与标注领取池'})).toBeInTheDocument();expect(screen.queryByRole('heading',{name:'统计看板'})).not.toBeInTheDocument();
+    expect(statsApi.read).not.toHaveBeenCalled();
   });
 
   it('guards the new review route through the authenticated server read',async()=>{

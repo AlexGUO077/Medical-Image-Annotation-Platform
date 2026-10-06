@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
 module.exports=async({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,checks})=>{
  const {QualityReviewsService}=require('../dist/modules/tasks/quality-reviews');
- const worker=app.get(QualityReviewsService),items=[];
+ const worker=app.get(QualityReviewsService),items=[],passedKinds=[];
  const first=await fixture({self:true});items.push(first);assert.equal((await first.decide()).status,201);
  for(let i=1;i<11;i++){const f=await fixture({self:true,sharedTask:first.task});assert.equal((await f.decide()).status,201);items.push(f);}
  const ids=items.map(f=>f.id),[admin]=await db.query("SELECT id,quals FROM users WHERE role='admin'"),[before]=await db.query('SELECT quals,status,in_flight_limit,updated_at FROM users WHERE id=$1',[other.id]);
@@ -75,7 +75,7 @@ module.exports=async({db,app,base,get,send,fixture,actor,other,token,otherToken,
  const pass=async a=>{
   assert(a);assert.equal((await send('/api/tasks/start-review',{task_id:first.task,case_id:a.case_id,assignment_id:a.id},otherToken)).status,201);
   const r=await send(`/api/reviews/${a.case_id}`,{assignment_id:a.id,expected_version:1,result:'通过',comments:[checks]},otherToken);assert.equal(r.status,201);
-  const value=await r.json();assert.equal(value.status,'已发布');assert.equal(value.is_gold,true);assert.equal(value.assigned_count+value.pending_count,0);
+  const value=await r.json();passedKinds.push(value.review_kind);assert.equal(value.status,'已发布');assert.equal(value.is_gold,true);assert.equal(value.assigned_count+value.pending_count,0);
   await worker.maintain();
  };
  await pass(await active());
@@ -104,5 +104,7 @@ module.exports=async({db,app,base,get,send,fixture,actor,other,token,otherToken,
  await assert.rejects(db.query("INSERT INTO task_assignments(case_id,assignee_id,task_role,state) VALUES($1,NULL,'review','pending')",[f.id]),e=>e.code==='23514');
  await db.query('UPDATE users SET quals=$2,status=$3,in_flight_limit=$4,updated_at=$5 WHERE id=$1',[other.id,JSON.stringify(before.quals),before.status,before.in_flight_limit,before.updated_at]);
  await db.query('UPDATE users SET quals=$2 WHERE id=$1',[admin.id,JSON.stringify(admin.quals)]);
+ const stats=await get(`/api/stats?task_id=${first.task}`,adminToken);assert.equal(stats.status,200);const summary=(await stats.json()).summary,passedSpotchecks=passedKinds.filter(kind=>kind==='spotcheck').length;
+ assert.deepEqual(summary,{completed:12,normal_passed:12,normal_returned:0,normal_total:12,spotcheck_passed:passedSpotchecks,spotcheck_returned:1,spotcheck_total:passedSpotchecks+1,return_rate:0,spotcheck_pass_rate:passedSpotchecks/(passedSpotchecks+1)},'rechecks/pending never change counts; old offline and restarted versions persist');
  console.log('PASS: quality review real HTTP sampling/rounding/concurrency, durable pending/capacity/refill, self-task peer-only start/read/frame, stale normal decision denial, failure cohort expansion/reuse, audit rollback, gold/history protection, offline/reactivation and protected migration rollback');
 };

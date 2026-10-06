@@ -17,6 +17,8 @@ const { Client } = require('pg');
 const { createClient } = require('redis');
 const { Test } = require('@nestjs/testing');
 const { JwtService } = require('@nestjs/jwt');
+const { DashboardModule } = require('../dist/modules/dashboard/dashboard.module');
+const { UsersModule } = require('../dist/modules/users/users.module');
 const { SearchModule } = require('../dist/modules/search/search.module');
 const { SearchSyncService } = require('../dist/modules/search/search-sync.service');
 const { ElasticService } = require('../dist/modules/search/elastic.service');
@@ -70,7 +72,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const builder = Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule, SearchModule] }).overrideProvider(SearchSyncService).useValue({}).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw});
+    const builder = Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule, SearchModule, DashboardModule, UsersModule] }).overrideProvider(SearchSyncService).useValue({}).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw});
     if(!realSearch)builder.overrideProvider(ElasticService).useValue({match:async()=>{throw new (require('@nestjs/common').ServiceUnavailableException)('合成检索故障');}});
     const module=await builder.compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
