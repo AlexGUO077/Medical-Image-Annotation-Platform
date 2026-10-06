@@ -16,7 +16,9 @@ const localDefaults = {
   REDIS_HOST: '127.0.0.1',
   REDIS_PORT: '6379',
   ELASTICSEARCH_HOST: '127.0.0.1',
-  ELASTICSEARCH_PORT: '9200'
+  ELASTICSEARCH_PORT: '9200',
+  SEARCH_ELASTIC_USERNAME: 'miap_search',
+  SEARCH_ELASTIC_INDEX: 'miap-published-v1'
 };
 
 const secretKeys = [
@@ -29,7 +31,8 @@ const secretKeys = [
   'MINIO_ROOT_USER',
   'MINIO_ROOT_PASSWORD',
   'REDIS_PASSWORD',
-  'ELASTIC_PASSWORD'
+  'ELASTIC_PASSWORD',
+  'SEARCH_ELASTIC_PASSWORD'
 ];
 
 function createRandomSecret() {

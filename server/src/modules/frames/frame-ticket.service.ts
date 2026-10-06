@@ -8,6 +8,8 @@ export interface FrameTarget {
   series_uid: string;
   frame_index: number;
   window: { center: number; width: number } | null;
+  access_mode?: 'library';
+  expected_version?: number;
 }
 
 export interface FrameSession {
@@ -32,6 +34,7 @@ function validTarget(value: FrameTarget): boolean {
     typeof value.series_uid === 'string' && value.series_uid.length <= 64 &&
     /^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$/.test(value.series_uid) &&
     Number.isSafeInteger(value.frame_index) && value.frame_index >= 0 &&
+    ((value.access_mode===undefined&&value.expected_version===undefined)||(value.access_mode==='library'&&Number.isSafeInteger(value.expected_version)&&value.expected_version!>=0)) &&
     (value.window === null || (typeof value.window === 'object' && value.window !== null &&
       Number.isFinite(value.window.center) && Number.isFinite(value.window.width) && value.window.width > 0));
 }
@@ -63,6 +66,7 @@ export class FrameTicketService {
     if (!validSession(session) || !validTarget(target)) throw new BadRequestException('帧票据参数无效');
     // Copy only bound fields; do not spread arbitrary input into JWT claims.
     const token = this.jwt.sign({
+      ...(target.access_mode==='library'?{access_mode:target.access_mode,expected_version:target.expected_version}:{}),
       purpose: 'frame', session_digest: digest(session.access_token),
       case_id: target.case_id, series_uid: target.series_uid, frame_index: target.frame_index,
       window: target.window === null ? null : { center: target.window.center, width: target.window.width },
@@ -80,7 +84,7 @@ export class FrameTicketService {
         throw new Error('Invalid frame binding');
       }
       return { case_id: claims.case_id, series_uid: claims.series_uid,
-        frame_index: claims.frame_index, window: claims.window };
+        frame_index: claims.frame_index, window: claims.window,...(claims.access_mode==='library'?{access_mode:claims.access_mode,expected_version:claims.expected_version}:{}) };
     } catch {
       throw new ForbiddenException('帧票据无效或已过期');
     }

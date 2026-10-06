@@ -29,7 +29,7 @@ export function AuthenticatedLayout({ session, children, onLogout }: Authenticat
         <Menu
           mode="inline"
           items={items}
-          selectedKeys={[location.pathname]}
+          selectedKeys={[location.pathname.startsWith('/library/')?'/library':location.pathname]}
           onClick={({ key }) => navigate(key)}
         />
       </Sider>

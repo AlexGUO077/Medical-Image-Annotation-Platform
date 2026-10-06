@@ -1,3 +1,4 @@
+import { requestSearchSync } from '../search/search-events';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -80,6 +81,7 @@ export class CasesClinicalService {
           [actor.id, teaching ? 'case.teaching_updated' : 'case.clinical_updated', `cases:${id}`, JSON.stringify({ masked_count: result.masked_count, mask_map_id: mapId }), ip]);
       });
       committed = true;
+      requestSearchSync(id);
       return { ...safe, masked_count: result.masked_count };
     } finally {
       if (intent) {

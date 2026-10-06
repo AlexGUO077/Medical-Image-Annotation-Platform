@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import { reviewAuthorSql } from '../tasks/review-assignment';
 import { DATABASE_SOURCE } from '../database/database.tokens';
 import type { AuthUser, Qualification } from './auth.models';
+import { publishedPredicate } from '../search/published-case';
 
 @Injectable()
 export class PermissionService {
@@ -10,6 +11,18 @@ export class PermissionService {
 
   assertQualification(user: AuthUser, systemCode: string, required: Qualification): void {
     if (!user.quals[systemCode]?.includes(required)) throw new ForbiddenException('缺少对应系统资格');
+  }
+
+  async assertPublishedCase(user:AuthUser,caseId:string,systemCode:string,version:number):Promise<void> {
+    if(!user.quals[systemCode]?.some(q=>q==='annotate'||q==='review'))throw new ForbiddenException('缺少对应系统资格');
+    const rows=await this.dataSource.query(`SELECT c.id FROM cases c JOIN users u ON u.id=$2
+      WHERE c.id=$1 AND c.system_code=$3 AND c.annotation_version=$4 AND ${publishedPredicate}
+       AND u.deleted_at IS NULL AND u.status='active' AND u.expire_at>=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
+       AND NOT u.must_change_password AND (u.role<>'admin' OR u.mfa_secret_encrypted IS NOT NULL)
+       AND date_trunc('milliseconds',u.updated_at)=$5
+       AND ((u.quals->$3) @> '["annotate"]'::jsonb OR (u.quals->$3) @> '["review"]'::jsonb)`,
+      [caseId,user.id,systemCode,version,user.updated_at]);
+    if(!rows[0])throw new ForbiddenException('已发布病例不可访问或版本已失效');
   }
 
   async assertCaseAssignment(

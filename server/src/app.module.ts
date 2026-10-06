@@ -1,3 +1,4 @@
+import { SearchModule } from './modules/search/search.module';
 import { AnnotationsModule } from './modules/annotations/annotations.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './modules/auth/auth.module';
@@ -12,5 +13,5 @@ import { FramesModule } from './modules/frames/frames.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 
-@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule] })
+@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule, SearchModule] })
 export class AppModule {}

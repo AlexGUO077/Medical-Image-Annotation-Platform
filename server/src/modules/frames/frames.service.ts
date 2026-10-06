@@ -13,7 +13,7 @@ import { FrameRateService, type FrameModality } from './frame-rate.service';
 
 interface Series {
   id: string; orthanc_id: string; series_uid: string; frame_count: number;
-  default_window: FrameTarget['window']; modality: FrameModality; system_code: string; source: string; status: string;
+  default_window: FrameTarget['window']; modality: FrameModality; system_code: string; source: string; status: string; annotation_version:number;
 }
 @Injectable()
 export class FramesService {
@@ -70,12 +70,16 @@ export class FramesService {
     return this.db.transaction(async manager => {
       const [current] = await manager.query(`SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [actor.id]) as AuthUser[];
       if (!current || !accountAvailable(current) || current.updated_at.getTime() !== actor.updated_at.getTime()) throw new ForbiddenException('账号或会话已失效');
-      const [series] = await manager.query(`SELECT s.id,s.orthanc_id,s.series_uid,s.frame_count,s.default_window,s.modality,c.system_code,c.source,c.status
+      const [series] = await manager.query(`SELECT s.id,s.orthanc_id,s.series_uid,s.frame_count,s.default_window,s.modality,c.system_code,c.source,c.status,c.annotation_version
         FROM series s JOIN studies st ON st.id=s.study_id AND st.deleted_at IS NULL
         JOIN cases c ON c.id=st.case_id AND c.deleted_at IS NULL
         WHERE s.series_uid=$1 AND st.case_id=$2 AND s.deleted_at IS NULL`, [target.series_uid, target.case_id]) as Series[];
       if (!series || !['synthetic','teacher_provided_teaching'].includes(series.source) || target.frame_index >= series.frame_count) {
         throw new ForbiddenException('帧资源不可访问');
+      }
+      if(target.access_mode==='library'){
+        await new PermissionService(manager as unknown as DataSource).assertPublishedCase(current,target.case_id,series.system_code,target.expected_version!);
+        return work(manager,current,series);
       }
       const role = series.status === '标注中' ? 'annotate' : ['审核中','已发布'].includes(series.status) ? 'review' : null;
       if (!role) throw new ForbiddenException('病例无有效工作分派');
@@ -107,7 +111,8 @@ export class FramesService {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('帧参数无效');
     const value = body as Record<string, unknown>;
     const window = value.window ?? null;
-    if (Object.keys(value).some(k => !['case_id','series_uid','frame_index','window'].includes(k)) ||
+    if (Object.keys(value).some(k => !['case_id','series_uid','frame_index','window','access_mode','expected_version'].includes(k)) ||
+        !((value.access_mode===undefined&&value.expected_version===undefined)||(value.access_mode==='library'&&Number.isSafeInteger(value.expected_version)&&(value.expected_version as number)>=0)) ||
         typeof value.case_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.case_id) ||
         typeof value.series_uid !== 'string' || value.series_uid.length > 64 || !/^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$/.test(value.series_uid) ||
         !Number.isSafeInteger(value.frame_index) || (value.frame_index as number) < 0 ||
@@ -116,6 +121,6 @@ export class FramesService {
           !Number.isFinite((window as { width: number }).width) || (window as { width: number }).width <= 0))) {
       throw new BadRequestException('帧参数无效');
     }
-    return { case_id: value.case_id.toLowerCase(), series_uid: value.series_uid, frame_index: value.frame_index as number, window: window as FrameTarget['window'] };
+    return { case_id: value.case_id.toLowerCase(), series_uid: value.series_uid, frame_index: value.frame_index as number, window: window as FrameTarget['window'],...(value.access_mode==='library'?{access_mode:'library' as const,expected_version:value.expected_version as number}:{}) };
   }
 }

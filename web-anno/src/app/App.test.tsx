@@ -30,7 +30,6 @@ describe('App', () => {
   });
 
   it.each([
-    ['/library', '检索与归类'],
     ['/dashboard', '统计看板'],
   ])('renders a neutral module placeholder for %s', async (path, label) => {
     render(<App initialEntries={[path]} initialSession={session} />);

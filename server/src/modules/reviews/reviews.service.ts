@@ -1,3 +1,4 @@
+import { requestSearchSync } from '../search/search-events';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { AuthUser } from '../auth/auth.models';
@@ -38,7 +39,7 @@ export class ReviewsService {
   }
   async decide(actor:AuthUser,caseId:string,body:unknown,ip:string){
     const id=uuid(caseId),input=parseReview(body);
-    return this.db.transaction(async manager=>{
+    const result=await this.db.transaction(async manager=>{
       // Same fixed user -> task -> case order as submit and all capacity mutations.
       const users=await manager.query('SELECT *,expire_at::text FROM users WHERE deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE') as CapacityUser[];
       const context=await this.context(manager,actor,id,input.expected_version);
@@ -89,6 +90,8 @@ export class ReviewsService {
       if(!context.quality&&input.result==='通过')await this.audit(manager,actor.id,'cases.published',id,{review_id:review.id,version:input.expected_version},ip);
       return {review_id:review.id,case_id:id,version:input.expected_version,status,is_gold:context.quality||input.result==='通过',reannotation,...(context.quality?{review_kind:active[0].review_kind,...expansion}:{})};
     });
+    requestSearchSync(id);
+    return result;
   }
   private async context(manager:EntityManager,actor:AuthUser,id:string,expected?:number){
     const [user]=await manager.query('SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR NO KEY UPDATE',[actor.id]) as CapacityUser[];
