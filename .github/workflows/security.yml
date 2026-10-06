@@ -129,7 +129,7 @@ jobs:
             context: .
             dockerfile: docker/redis/Dockerfile
           - service: elasticsearch
-            image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11
+            image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2
             source: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21
             digest: sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
             context: .
@@ -149,3 +149,7 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           exit-code: '1'
+
+      - name: Verify Elasticsearch runtime and bundled dependency patches
+        if: matrix.service == 'elasticsearch'
+        run: python3 scripts/verify-elasticsearch-image.py "${{ matrix.image }}" linux/amd64
