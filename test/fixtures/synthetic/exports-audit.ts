@@ -1,0 +1,2 @@
+export const exportFixture={id:'10000000-0000-4000-8000-000000000001',requester_id:'20000000-0000-4000-8000-000000000001',approver_id:null,status:'待审批',case_versions:[{id:'30000000-0000-4000-8000-000000000001',version:1}],created_at:'2026-10-07T00:00:00Z',expire_at:null,url:null,download_count:0};
+export const auditFixture={id:'40000000-0000-4000-8000-000000000001',actor:exportFixture.requester_id,action:'exports.requested',target:'exports:'+exportFixture.id,detail:{case_count:1},ip:'synthetic',created_at:'2026-10-07T00:00:00Z'};

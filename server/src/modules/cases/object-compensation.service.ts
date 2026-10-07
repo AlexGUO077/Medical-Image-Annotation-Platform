@@ -38,7 +38,8 @@ export class ObjectCompensationService implements OnModuleInit, OnModuleDestroy 
       const intent = JSON.parse(await readFile(join(ROOT, `${id}.json`), 'utf8')) as Intent;
       // A transaction may have committed even if its response was lost. Never delete referenced objects.
       if (intent.key) {
-        const used = await this.db.query('SELECT 1 FROM "attachments" WHERE "object_key" = $1 LIMIT 1', [intent.key]) as unknown[];
+        const used = await this.db.query(`SELECT 1 FROM "attachments" WHERE "object_key" = $1
+          UNION ALL SELECT 1 FROM export_requests WHERE 'exports/'||id::text||'.json'=$1 AND status='已批准' LIMIT 1`, [intent.key]) as unknown[];
         if (used.length === 0) {
           if (intent.pages === 0) await this.objects.remove(intent.key);
           else await this.objects.removePages(intent.key, intent.pages);

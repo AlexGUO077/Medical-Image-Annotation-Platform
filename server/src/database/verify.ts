@@ -87,6 +87,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
   export_requests: {
     status: ['character varying', false], approver_id: ['uuid', true],
     expire_at: ['timestamp with time zone', true], url: ['character varying', true],
+    requester_id: ['uuid', false], case_versions: ['jsonb', false], download_count: ['integer', false], package_sha256: ['character varying', true],
   },
 };
 

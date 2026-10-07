@@ -7,7 +7,7 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-rout
 
 import type { Session } from '../auth/types';
 import { LoginPage } from '../pages/LoginPage';
-import { AdminTaxonomyPage } from '../pages/AdminTaxonomyPage';
+import { AdminPage } from '../pages/AdminPage';
 import { CaseImportPage } from '../pages/CaseImportPage';
 import { CaseClinicalPage } from '../pages/CaseClinicalPage';
 import { WorkbenchPage } from '../pages/WorkbenchPage';
@@ -68,7 +68,7 @@ function AppRoutes({ initialSession }: { initialSession?: Session }) {
                       : route.path === '/tasks'
                       ? <TasksPage session={session} />
                       : route.path === '/admin'
-                      ? <AdminTaxonomyPage session={session} />
+                      ? <AdminPage key={session.token} session={session} onExpired={logout} />
                       : route.path === '/cases/import'
                         ? <CaseImportPage session={session} />
                         : route.path === '/cases/:id'

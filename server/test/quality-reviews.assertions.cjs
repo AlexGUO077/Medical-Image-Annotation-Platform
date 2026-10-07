@@ -55,7 +55,9 @@ module.exports=async({db,app,base,get,send,fixture,actor,other,token,otherToken,
  assert.equal((await get(`/api/frames/${frameToken}`,otherToken)).status,403);
  assert.equal((await db.query('SELECT bool_and(is_gold) gold FROM annotation_objects WHERE case_id=ANY($1::uuid[]) AND version=1',[ids]))[0].gold,true);
  assert.equal((await db.query("SELECT count(*)::int n FROM reviews WHERE case_id=$1 AND is_spotcheck",[f.id]))[0].n,1);
- await assert.rejects(db.undoLastMigration(),/Preserve quality review history/);
+ const {QualityReviewAssignments1790942400000}=require('../dist/database/migrations/1790942400000-QualityReviewAssignments');
+ const qualityRunner=db.createQueryRunner();
+ try{await assert.rejects(new QualityReviewAssignments1790942400000().down(qualityRunner),/Preserve quality review history/);}finally{await qualityRunner.release();}
  // Reclaim keeps publication and pending target; revoking qualification releases it immediately.
  let [next]=await db.query("SELECT * FROM task_assignments WHERE case_id=ANY($1::uuid[]) AND state='active' AND review_kind<>'normal'",[ids]);
  assert.equal((await send('/api/tasks/reclaim',{assignment_id:next.id,reason:'quality'},adminToken)).status,201);

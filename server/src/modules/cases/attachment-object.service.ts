@@ -28,6 +28,20 @@ export class AttachmentObjectService {
     return Buffer.from(await response.Body.transformToByteArray());
   }
 
+  async storeJson(key: string, bytes: Buffer): Promise<void> {
+    await this.ensureBucket();
+    await this.s3().send(new PutObjectCommand({Bucket:this.bucket(),Key:key,Body:bytes,ContentType:'application/json'}));
+  }
+
+  async readJson(key: string): Promise<Buffer> {
+    await this.ensureBucket();
+    const result=await this.s3().send(new GetObjectCommand({Bucket:this.bucket(),Key:key}));
+    if(!result.Body||result.ContentType!=='application/json'||!result.ContentLength||result.ContentLength>5*1024*1024)throw new ServiceUnavailableException('导出包不可用');
+    const bytes=Buffer.from(await result.Body.transformToByteArray());
+    if(bytes.length>5*1024*1024)throw new ServiceUnavailableException('导出包不可用');
+    return bytes;
+  }
+
   async remove(key: string): Promise<void> {
     await this.ensureBucket();
     await this.s3().send(new DeleteObjectCommand({ Bucket: this.bucket(), Key: key }));

@@ -1,3 +1,5 @@
+import {ExportsModule} from './modules/exports/exports.module';
+import {AuditModule} from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SearchModule } from './modules/search/search.module';
 import { AnnotationsModule } from './modules/annotations/annotations.module';
@@ -14,5 +16,5 @@ import { FramesModule } from './modules/frames/frames.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 
-@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule, SearchModule, DashboardModule] })
+@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule, SearchModule, DashboardModule, ExportsModule, AuditModule] })
 export class AppModule {}

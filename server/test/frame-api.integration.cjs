@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { randomUUID, randomBytes } = require('node:crypto');
 const path = require('node:path');
 require('dotenv').config({ path: process.env.MIAP_ENV_FILE ?? path.resolve(__dirname, '../../.env.local'), quiet: true });
+const exportQuarantine=path.join(require('node:os').tmpdir(),'miap-export-it-'+randomBytes(8).toString('hex'));
+process.env.IMPORT_QUARANTINE_DIR=exportQuarantine;
 if (!process.env.POSTGRES_DB?.includes('synthetic')) throw new Error('Requires a synthetic database');
 process.env.JWT_SECRET = randomBytes(32).toString('hex');
 process.env.FRAME_TOKEN_SECRET = randomBytes(32).toString('hex');
@@ -17,6 +19,9 @@ const { Client } = require('pg');
 const { createClient } = require('redis');
 const { Test } = require('@nestjs/testing');
 const { JwtService } = require('@nestjs/jwt');
+const {TaxonomyModule}=require('../dist/modules/taxonomy/taxonomy.module');
+const {ExportsModule}=require('../dist/modules/exports/exports.module');
+const {AuditModule}=require('../dist/modules/audit/audit.module');
 const { DashboardModule } = require('../dist/modules/dashboard/dashboard.module');
 const { UsersModule } = require('../dist/modules/users/users.module');
 const { SearchModule } = require('../dist/modules/search/search.module');
@@ -47,6 +52,12 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
   let db, app, renderHook, renders = 0;
   const realSearch=process.env.MIAP_TEST_SEARCH_ES==='1';
   if(realSearch)process.env.SEARCH_ELASTIC_INDEX=`miap-published-it-${randomBytes(8).toString('hex')}`;
+  const exportKeys=new Set(),exportBytes=new Map();
+  const realObjects=process.env.MIAP_EXPORTS_REAL_OBJECTS==='1'?new AttachmentObjectService():null;
+  const objects={pageCount:async()=>2,readPng:async()=>raw,
+   storeJson:async(key,bytes)=>{exportKeys.add(key);if(realObjects)await realObjects.storeJson(key,bytes);exportBytes.set(key,bytes);},
+   readJson:async key=>{if(realObjects)return realObjects.readJson(key);if(!exportBytes.has(key))throw Error('Synthetic missing object');return exportBytes.get(key);},
+   remove:async key=>{if(realObjects)await realObjects.remove(key);exportBytes.delete(key);}};
   const raw = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#808080' } }).png().toBuffer();
   const upstream = {
     resolveSeriesFrame: async () => ({ instance_id: '11111111-22222222-33333333-44444444-55555555', frame_index: 0 }),
@@ -72,7 +83,7 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     class FixturesModule {}
     Global()(FixturesModule);
     Module({ providers: [AuditService, { provide: DATABASE_SOURCE, useValue: db }, { provide: REDIS_CLIENT, useValue: instrumented }], exports: [DATABASE_SOURCE, REDIS_CLIENT, AuditService] })(FixturesModule);
-    const builder = Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule, SearchModule, DashboardModule, UsersModule] }).overrideProvider(SearchSyncService).useValue({}).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue({pageCount:async()=>2,readPng:async()=>raw});
+    const builder = Test.createTestingModule({ imports: [FixturesModule, FramesModule, WorkbenchModule, AnnotationsModule, TasksModule, ReviewsModule, CasesLifecycleModule, SearchModule, DashboardModule, UsersModule, ExportsModule, AuditModule, TaxonomyModule] }).overrideProvider(SearchSyncService).useValue({}).overrideProvider(TaskMaintenanceService).useValue({}).overrideProvider(OrthancService).useValue(upstream).overrideProvider(AttachmentObjectService).useValue(objects);
     if(!realSearch)builder.overrideProvider(ElasticService).useValue({match:async()=>{throw new (require('@nestjs/common').ServiceUnavailableException)('合成检索故障');}});
     const module=await builder.compile();
     app = module.createNestApplication({ logger: false }); app.setGlobalPrefix('api'); app.useGlobalFilters(new ApiExceptionFilter());
@@ -189,6 +200,8 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
     let searchCleanupFailed=false;
     if(realSearch)try{const index=process.env.SEARCH_ELASTIC_INDEX;if(!/^miap-published-it-[a-f0-9]+$/.test(index))throw Error('Unsafe test index cleanup');const response=await fetch(`http://${process.env.ELASTICSEARCH_HOST}:${process.env.ELASTICSEARCH_PORT}/${index}`,{method:'DELETE',signal:AbortSignal.timeout(10_000),headers:{Authorization:`Basic ${Buffer.from(`elastic:${process.env.ELASTIC_PASSWORD}`).toString('base64')}`}});if(![200,404].includes(response.status))throw Error('Synthetic index cleanup failed');}catch{searchCleanupFailed=true;}
     if (app) await app.close();
+    if(realObjects)for(const key of exportKeys)await realObjects.remove(key);
+    await require('node:fs/promises').rm(exportQuarantine,{recursive:true,force:true});
     if (db?.isInitialized) await db.destroy();
     if (redis.isReady && keys.size) await redis.del([...keys]);
     if (redis.isOpen) redis.destroy();
