@@ -1,0 +1,4 @@
+#!/bin/sh
+# Paddle 2.6 exports bundled zlib symbols. Resolve Cython extension calls against
+# the same maintained system zlib before loading Paddle, independent of import order.
+LD_PRELOAD=libz.so.1 exec /usr/local/bin/python3 "$@"

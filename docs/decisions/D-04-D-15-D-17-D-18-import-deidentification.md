@@ -27,6 +27,8 @@
 
 ## D-18 NER 集成
 
+部署兼容依赖和最小打包补丁由已批准 [D-44](D-44-worker-container-security-compatibility.md)约束；UIE-mini、中文 PP-OCRv3、单个本地子进程和以下处理规则不变。
+
 - 使用 PaddleNLP UIE，与 PaddleOCR 共用一个本地 Python 子进程；不新增 HTTP 服务、端口、数据库或独立平台。
 - NestJS 负责队列、权限、状态和持久化，通过固定的 JSON 标准输入输出协议调用子进程。原始文本不得离开本机进程边界，不得写入日志。
 - NER 命中与称谓正则命中取并集，姓名替换为“某”，年龄数字保留；替换前后的最小映射按 D-04 加密保存。

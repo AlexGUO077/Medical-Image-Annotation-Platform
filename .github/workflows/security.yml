@@ -99,7 +99,7 @@ jobs:
   trivy-images:
     name: Trivy image scan (${{ matrix.service }} @ ${{ matrix.digest }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.service == 'server' && 45 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -134,6 +134,18 @@ jobs:
             digest: sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
             context: .
             dockerfile: docker/elasticsearch/Dockerfile
+          - service: server
+            image: miap/server:wp16
+            source: ubuntu:26.04
+            digest: sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
+            context: .
+            dockerfile: deploy/server/Dockerfile
+          - service: nginx
+            image: miap/nginx:wp16
+            source: nginx:alpine
+            digest: sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+            context: .
+            dockerfile: deploy/nginx/Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
