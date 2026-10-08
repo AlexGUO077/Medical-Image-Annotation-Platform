@@ -6,6 +6,7 @@ on:
       - '.github/workflows/worker-inference.yml'
       - 'server/workers/**'
       - 'server/test/m1-real.integration.cjs'
+      - 'deploy/server/**'
   workflow_dispatch:
 
 permissions:
@@ -26,8 +27,19 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0
           python -m pip install -r server/workers/requirements.txt
+          python -m pip check
+          python - <<'PY'
+          import os, pathlib, shlex, sys
+          wrapper = pathlib.Path(os.environ['RUNNER_TEMP']) / 'miap-python'
+          wrapper.write_text('#!/bin/sh\nLD_PRELOAD=libz.so.1 exec ' + shlex.quote(sys.executable) + ' "$@"\n')
+          wrapper.chmod(0o755)
+          PY
       - name: Run real OCR and NER on generated synthetic inputs
-        run: python server/workers/verify_real_inference.py
+        run: '"$RUNNER_TEMP/miap-python" server/workers/verify_real_inference.py'
+      - name: Verify packaged worker on native Linux
+        run: |
+          docker build -f deploy/server/Dockerfile -t miap/server:wp16 .
+          docker run --rm --user 10001:10001 -v "$PWD/server/workers:/checks:ro" miap/server:wp16 /usr/local/bin/miap-python /checks/verify_real_inference.py
       - uses: actions/setup-node@v7
         with:
           node-version: 24.14.0
@@ -51,7 +63,7 @@ jobs:
           set +a
           npm run migration:run --workspace server
           npm run build --workspace server
-          DEID_WORKER_PYTHON="$(which python)" node server/test/m1-real.integration.cjs
+          DEID_WORKER_PYTHON="$RUNNER_TEMP/miap-python" node server/test/m1-real.integration.cjs
       - name: Diagnose failed synthetic storage startup
         if: failure()
         run: |

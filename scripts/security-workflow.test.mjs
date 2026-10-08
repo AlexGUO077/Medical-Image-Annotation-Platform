@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import yaml from 'js-yaml';
+import { resolve } from 'node:path';
 
 const workflow = yaml.load(readFileSync('.github/workflows/security.yml', 'utf8'));
 const compose = yaml.load(readFileSync('docker-compose.yml', 'utf8'));
+const deployment = yaml.load(readFileSync('deploy/compose.yml', 'utf8'));
 const imageContract = readFileSync('docs/contracts/container-images.md', 'utf8');
 
 const serviceNames = {
@@ -13,12 +15,14 @@ const serviceNames = {
   MinIO: 'minio',
   Redis: 'redis',
   Elasticsearch: 'elasticsearch',
+  Server: 'server',
+  Nginx: 'nginx',
 };
-const expectedServices = ['postgres', 'orthanc', 'minio', 'redis', 'elasticsearch'];
+const expectedServices = ['postgres', 'orthanc', 'minio', 'redis', 'elasticsearch', 'server', 'nginx'];
 
 function documentedImages(markdown) {
   return [...markdown.matchAll(
-    /^\| (PostgreSQL|Orthanc|MinIO|Redis|Elasticsearch) \| `([^`]+)` \| `([^`]+)` \| `(sha256:[a-f0-9]{64})` \| `([^`]+)` \|$/gm,
+    /^\| (PostgreSQL|Orthanc|MinIO|Redis|Elasticsearch|Server|Nginx) \| `([^`]+)` \| `([^`]+)` \| `(sha256:[a-f0-9]{64})` \| `([^`]+)` \|$/gm,
   )].map(([, label, image, source, digest, dockerfile]) => ({
     service: serviceNames[label],
     image,
@@ -31,10 +35,10 @@ function documentedImages(markdown) {
 
 test('Trivy builds and blocks HIGH and CRITICAL findings in every documented hardened Compose image', () => {
   const documented = documentedImages(imageContract);
-  const composeImages = Object.entries(compose.services).map(([service, definition]) => ({
+  const composeImages = Object.entries(deployment.services).map(([service, definition]) => ({
     service,
     image: definition.image,
-    context: definition.build?.context,
+    context: resolve('deploy', definition.build?.context) === process.cwd() ? '.' : definition.build?.context,
     dockerfile: definition.build?.dockerfile,
   }));
 
@@ -42,8 +46,12 @@ test('Trivy builds and blocks HIGH and CRITICAL findings in every documented har
   assert.deepEqual(
     documented.map(({ service, image, context, dockerfile }) => ({ service, image, context, dockerfile })),
     composeImages,
-    'the image contract must cover exactly the five Compose hardened build definitions',
+    'the image contract must cover all seven deployed runtime images',
   );
+  for (const [service, definition] of Object.entries(compose.services)) {
+    assert.equal(deployment.services[service].image, definition.image, 'deployment must retain the hardened middleware image');
+    assert.equal(deployment.services[service].build.dockerfile, definition.build.dockerfile);
+  }
 
   const imageJob = workflow.jobs['trivy-images'];
   assert.ok(imageJob, 'security.yml must define the trivy-images job');
