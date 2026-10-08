@@ -1,5 +1,7 @@
+import { assertCaseDisease } from './case-disease';
+import { accountAvailable } from '../tasks/assignment-release';
 import { requestSearchSync } from '../search/search-events';
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -17,11 +19,13 @@ export function caseUuid(value: unknown): string {
   if (typeof value !== 'string' || !CASE_UUID.test(value)) throw new BadRequestException('标识必须是 UUID');
   return value;
 }
-export async function editableCase(db: Pick<EntityManager, 'query'>, id: string, lock = false): Promise<void> {
-  const rows = await db.query(`SELECT "status", "source" FROM "cases" WHERE "id" = $1 AND "deleted_at" IS NULL${lock ? ' FOR UPDATE' : ''}`, [id]) as Array<{ status: string; source: string }>;
+interface EditableCase { status: string; source: string; system_code: string; disease_tag_id: string | null }
+export async function editableCase(db: Pick<EntityManager, 'query'>, id: string, lock = false): Promise<EditableCase> {
+  const rows = await db.query(`SELECT "status", "source", "system_code", "disease_tag_id" FROM "cases" WHERE "id" = $1 AND "deleted_at" IS NULL${lock ? ' FOR UPDATE' : ''}`, [id]) as EditableCase[];
   if (!rows[0]) throw new NotFoundException('病例不存在');
   if (!['已录入', '待分配'].includes(rows[0].status)) throw new ConflictException('病例当前状态不允许编辑');
   if (!IMPORT_SOURCES.includes(rows[0].source as never)) throw new ConflictException('病例来源未获批准');
+  return rows[0];
 }
 
 @Injectable()
@@ -34,9 +38,13 @@ export class CasesClinicalService {
   ) {}
 
   async save(idValue: unknown, actor: AuthUser, body: unknown, teaching: boolean, ip: string) {
+    if (actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
     const id = caseUuid(idValue);
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('请求无效');
     const input = body as Record<string, unknown>;
+    const hasDisease = Object.hasOwn(input, 'disease_tag_id');
+    if (teaching && hasDisease) throw new BadRequestException('疾病标签须通过临床信息接口保存');
+    const diseaseId = hasDisease ? caseUuid(input.disease_tag_id).toLowerCase() : undefined;
     const text = (key: string, max: number) => {
       const value = input[key];
       if (typeof value !== 'string' || Buffer.byteLength(value) > max) throw new BadRequestException('文本为空或超过限制');
@@ -71,18 +79,26 @@ export class CasesClinicalService {
       intent = await this.compensation.reserve(null, 0, reservedMapId);
       mapId = await this.maps.storeFromFile(join(dir, 'mask-map.json'), reservedMapId);
       await this.db.transaction(async (manager) => {
-        await editableCase(manager, id, true);
+        if (hasDisease) {
+          const [current] = await manager.query('SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR SHARE', [actor.id]) as AuthUser[];
+          if (!current || current.role !== 'admin' || !accountAvailable(current) || current.updated_at.getTime() !== actor.updated_at.getTime()) throw new ForbiddenException('管理员账号或会话已失效');
+        }
+        const item = await editableCase(manager, id, true);
+        if (hasDisease) {
+          await assertCaseDisease(manager, diseaseId!, item.system_code);
+          await manager.query('UPDATE cases SET disease_tag_id=$2 WHERE id=$1', [id, diseaseId]);
+        }
         if (teaching) {
           await manager.query('UPDATE "cases" SET "teaching_fields" = $2::jsonb, "updated_at" = now() WHERE "id" = $1', [id, JSON.stringify(safe)]);
         } else {
           await manager.query('UPDATE "cases" SET "clinical_text" = $2, "age_band" = $3, "sex" = $4, "confirm_method" = $5, "updated_at" = now() WHERE "id" = $1', [id, ...result.fields, input.confirm_method]);
         }
         await manager.query('INSERT INTO "audit_logs" ("actor", "action", "target", "detail", "ip") VALUES ($1, $2, $3, $4::jsonb, $5)',
-          [actor.id, teaching ? 'case.teaching_updated' : 'case.clinical_updated', `cases:${id}`, JSON.stringify({ masked_count: result.masked_count, mask_map_id: mapId }), ip]);
+          [actor.id, teaching ? 'case.teaching_updated' : 'case.clinical_updated', `cases:${id}`, JSON.stringify({ masked_count: result.masked_count, mask_map_id: mapId, ...(hasDisease ? { disease_tag_id_before: item.disease_tag_id, disease_tag_id_after: diseaseId } : {}) }), ip]);
       });
       committed = true;
       requestSearchSync(id);
-      return { ...safe, masked_count: result.masked_count };
+      return { ...safe, masked_count: result.masked_count, ...(hasDisease ? { disease_tag_id: diseaseId } : {}) };
     } finally {
       if (intent) {
         if (committed) await this.compensation.complete(intent).catch(() => undefined);

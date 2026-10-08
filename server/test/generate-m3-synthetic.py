@@ -1,6 +1,7 @@
-"""Small DX/CT import fixtures for the business chain, not the 300-frame benchmark."""
+"""Synthetic DX/CT imports; optionally generate 300 CT frames for cached-flip checks."""
 from pathlib import Path
 import sys
+import os
 import zipfile
 
 import numpy as np
@@ -9,7 +10,10 @@ from pydicom.uid import CTImageStorage, DigitalXRayImageStorageForPresentation, 
 
 root = Path(sys.argv[1])
 root.mkdir(parents=True, exist_ok=True)
-for modality, count, storage in [('DX', 1, DigitalXRayImageStorageForPresentation), ('CT', 3, CTImageStorage)]:
+ct_frames = int(os.environ.get('MIAP_M3_CT_FRAMES', '3'))
+if ct_frames not in (3, 300):
+    raise ValueError('Only 3-frame business or 300-frame performance fixtures are allowed')
+for modality, count, storage in [('DX', 1, DigitalXRayImageStorageForPresentation), ('CT', ct_frames, CTImageStorage)]:
     study, series = generate_uid(), generate_uid()
     with zipfile.ZipFile(root / (modality + '.zip'), 'w', compression=zipfile.ZIP_STORED) as archive:
         for index in range(count):

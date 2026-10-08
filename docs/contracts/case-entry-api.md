@@ -23,6 +23,12 @@
 
 `PUT /api/cases/{id}/clinical` 接收 `{ "clinical_text": "...", "age_band": "...", "sex": "...", "confirm_method": "..." }`；服务端保存前按既有本地 NER＋规则脱敏，失败时不保存。响应仅返回脱敏值和安全的 `masked_count`，前端只据该响应显示“遮蔽 N 处”。`PATCH /api/cases/{id}/teaching` 接收 `{ "difficulty": "...", "applicable_level": "...", "sign_points": ["..."] }`，字符串与数组均限长，文本先按相同规则处理，再写入已有 `cases.teaching_fields`。仅未删除且当前允许编辑的病例可更新，写入审计。
 
+### D-45 病例疾病标签（2026-10-08 已确认）
+
+管理员在上述临床信息接口可选传入 `disease_tag_id`；省略保留，显式值必须是有效 UUID，不支持 null/清空。仅“已录入/待分配”可改；开始标注后先沿用现有回收操作，修正再分派。标签必须为所属系统下有效三级疾病或四级分型，祖先也必须有效，校验与审核通过保持一致。标签保存及审计同一事务，审计只增加 `disease_tag_id_before/after` 标识，临床正文仍经脱敏。处理期间管理员失效或病例状态改变则拒绝并补偿暂存映射。教学字段接口不接受疾病标签。
+
+病例详情增加 `disease_tag_id`、`disease_tag_name`（无有效名称时 null）；临床保存显式指定标签时回传该 ID，旧客户端省略时维持原响应。详情表单仅列所属系统的疾病/分型，其他状态只读。没有新增表、服务、角色或审批。
+
 ## 附件上传与预览
 
 `POST /api/cases/{id}/attachments` 接收 `multipart/form-data`，每次恰好一片：`chunk`、从 0 开始的 `part_index`、`part_count`、`file_size`（整个文件字节数）、`format`（`pdf|jpg|png|docx|xlsx`）；首片不传 `upload_id`，服务端创建并返回，后续片必须带该 ID。单片至多 5 MB，整文件至多 50 MB；片序必须连续、总片数和总大小必须与首片一致。浏览器发送通用 multipart 文件名，不传原文件名。重复片、缺片、超限或会话不属于当前病例／操作者时拒绝，不覆盖已接收内容。

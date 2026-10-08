@@ -2,7 +2,12 @@ import {statsApi} from '../dashboard/api';
 import {statsResult} from '../../../test/fixtures/synthetic/stats';
 vi.mock('../dashboard/api',()=>({statsApi:{read:vi.fn(),options:vi.fn()}}));
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { taxonomyApi } from '../taxonomy/api';
+import { libraryApi } from '../library/api';
+vi.mock('../taxonomy/api', () => ({ taxonomyApi: { tree: vi.fn().mockResolvedValue({ tree: [], sign_tags: [] }) } }));
+vi.mock('../library/api', () => ({ libraryApi: { search: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
+afterEach(() => { vi.restoreAllMocks(); });
 
 import { App } from './App';
 import { reviewsApi } from '../reviews/api';
@@ -15,6 +20,8 @@ import { tasksApi } from '../tasks/api';
 vi.mock('../tasks/api', async importOriginal => ({ ...await importOriginal<typeof import('../tasks/api')>(), tasksApi: { list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), mine: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }), pool: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }) } }));
 
 beforeEach(() => {
+  vi.mocked(taxonomyApi.tree).mockResolvedValue({ tree: [], sign_tags: [] });
+  vi.mocked(libraryApi.search).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
   vi.mocked(statsApi.read).mockReset().mockResolvedValue(statsResult);
   vi.mocked(statsApi.options).mockResolvedValue({items:[],page:1,total:0});
   vi.mocked(clearAccountDrafts).mockReset().mockResolvedValue(undefined);

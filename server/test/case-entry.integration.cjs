@@ -68,6 +68,7 @@ const { ApiExceptionFilter } = require('../dist/common/api-exception.filter');
     assert.equal((await req(`/${made.case_id}`, tokens[2])).status, 403);
     const clinical = await req(`/${made.case_id}/clinical`, tokens[0], json('PUT', { clinical_text: '合成人名，45岁', age_band: '40–49', sex: '男', confirm_method: '病理证实' }));
     assert.equal(clinical.status, 200); assert.equal((await clinical.json()).clinical_text, '某，45岁');
+    await require('./case-disease.assertions.cjs')({ db, req, json, caseId: made.case_id, tokens });
     const teaching = await req(`/${made.case_id}/teaching`, tokens[0], json('PATCH', { difficulty: '简单', applicable_level: '本科', sign_points: ['合成人名'] }));
     assert.equal(teaching.status, 200); assert.deepEqual((await teaching.json()).sign_points, ['某']);
     const chunk = new FormData(); for (const [k,v] of Object.entries({ part_index: '0', part_count: '1', file_size: String(png.length), format: 'png' })) chunk.set(k,v);

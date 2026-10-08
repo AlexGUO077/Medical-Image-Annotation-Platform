@@ -112,6 +112,14 @@ async function main() {
   stage = 'generated DX and CT inputs';
   if (!reuse) execFileSync(process.env.MIAP_PYTHON || 'python3', [path.join(__dirname, 'generate-m3-synthetic.py'), inputDir], { stdio: 'pipe' });
   const cases = reuse ? JSON.parse(await fs.readFile(path.join(instance, 'acceptance-cases.json'), 'utf8')) : [];
+  if (process.argv.includes('--quality-only')) {
+    assert(reuse, 'Quality continuation requires retained real imported cases');
+    stage = 'real spotcheck, same-author recheck and new-version round';
+    const task = JSON.parse(await fs.readFile(path.join(instance, 'acceptance-task.json'), 'utf8'));
+    await require('./m3-deployed-quality.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task });
+    await fs.writeFile(path.join(instance, 'acceptance-cases.json'), JSON.stringify(cases), { mode: 0o600 });
+    return;
+  }
   for (const modality of reuse ? [] : ['DX', 'CT']) {
     stage = `${modality} real ZIP deidentification and confirmation`;
     const boundary = 'miap-' + randomBytes(18).toString('hex');
@@ -145,7 +153,20 @@ async function main() {
     console.log(`PASS ${modality}: real ZIP, OCR/NER, safe preview and explicit confirmation`);
   }
   await fs.writeFile(path.join(instance, 'acceptance-cases.json'), JSON.stringify(cases), { mode: 0o600 });
-  if (process.env.MIAP_PLAYWRIGHT_MODULE) {
+  stage = 'D-45 actual diagnosis maintenance';
+  const tree = await get('/api/taxonomy/tree', admin);
+  const disease = tree.tree.find(node => node.name === '呼吸').children.flatMap(node => node.children).find(node => node.level === 3);
+  assert(disease, 'Seeded synthetic disease exists');
+  for (const item of cases) {
+    const detail = await get('/api/cases/' + item.id, admin);
+    const clinical = { clinical_text: detail.clinical_text ?? '', age_band: detail.age_band ?? '', sex: detail.sex ?? '', confirm_method: detail.confirm_method, disease_tag_id: disease.id };
+    assert.equal((await request(`/api/cases/${item.id}/clinical`, { token: annotator, method: 'PUT', body: clinical })).status, 403);
+    await json(`/api/cases/${item.id}/clinical`, clinical, admin, 200, 'PUT');
+    assert.equal((await get('/api/cases/' + item.id, admin)).disease_tag_id, disease.id);
+    item.disease_tag_id = disease.id;
+  }
+  console.log('PASS D-45 real administrator diagnosis save and member denial');
+  {
     stage = 'deployed annotation and browser boundaries';
     for (const item of cases) {
       const detail = await get('/api/cases/' + item.id, admin);
@@ -163,6 +184,7 @@ async function main() {
       for (const item of cases) {
         const workbench = await get('/api/workbench/' + item.id, annotator);
         const series = workbench.series[0];
+        item.frame_count = series.frame_count;
         const common = { series_id: series.id, frame_start: 0, frame_end: 0, key_frame_index: 0,
           window_preset: item.modality === 'CT' ? 'lung' : null,
           part_id: '11000000-0000-4000-8000-000000000003', sign_tag_ids: ['20000000-0000-4000-8000-000000000003'],
@@ -184,8 +206,12 @@ async function main() {
         assert.equal(image.headers['cache-control'], 'no-store, private');
         assert.match(image.headers['content-type'], /^image\/png/);
       }
-      await require('./m3-deployed.browser.cjs')({ base, ca, account: accounts.annotator, cases,
+      if (process.env.MIAP_PLAYWRIGHT_MODULE) await require('./m3-deployed.browser.cjs')({ base, ca, account: accounts.annotator, cases,
         artifacts: process.env.MIAP_M3_ARTIFACT_DIR || path.resolve(__dirname, '../../reports/wp17-local') });
+      stage = 'real submission, review, publication, search and lifecycle';
+      await require('./m3-deployed-cycle.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task });
+      stage = 'real spotcheck, same-author recheck and new-version round';
+      await require('./m3-deployed-quality.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task });
     } finally {
       const queue = await get('/api/tasks/mine?task_role=annotate', annotator);
       for (const item of queue.items.filter(item => cases.some(c => c.id === item.case_id))) {
@@ -193,12 +219,8 @@ async function main() {
       }
     }
   }
-  stage = 'case diagnosis required for real review/publication';
-  for (const item of cases) {
-    const detail = await get('/api/cases/' + item.id, admin);
-    assert(detail.disease_tag_id, 'D-45: actual imported case needs an authorized diagnosis write path; never seed this by SQL');
-  }
-  console.log('PASS deployed import preparation');
+  await fs.writeFile(path.join(instance, 'acceptance-cases.json'), JSON.stringify(cases), { mode: 0o600 });
+  console.log('PASS deployed DX/CT business cycle');
 }
 
 main().catch(error => {

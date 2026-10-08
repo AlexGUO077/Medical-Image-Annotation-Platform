@@ -14,6 +14,8 @@ export interface CaseDetail {
   source: string;
   system_code: string;
   confirm_method: string;
+  disease_tag_id?: string | null;
+  disease_tag_name?: string | null;
   clinical_text: string | null;
   age_band: string | null;
   sex: string | null;
@@ -56,7 +58,7 @@ export const casesDetailApi = {
   },
 };
 
-export interface ClinicalInput { clinical_text: string; age_band: string; sex: string; confirm_method: string }
+export interface ClinicalInput { disease_tag_id?: string; clinical_text: string; age_band: string; sex: string; confirm_method: string }
 export interface TeachingInput { difficulty: string; applicable_level: string; sign_points: string[] }
 export interface AttachmentProgress {
   status: 'receiving' | 'processing' | 'pending_confirmation' | 'failed';
