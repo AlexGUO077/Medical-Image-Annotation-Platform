@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build",
+    "test:coverage": "vitest run --coverage --coverage.include=\"src/**/*.{ts,tsx}\" --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.reporter=lcov --coverage.reportsDirectory=../reports/wp17-coverage/web"
   },
   "dependencies": {
     "@cornerstonejs/core": "5.11.1",
