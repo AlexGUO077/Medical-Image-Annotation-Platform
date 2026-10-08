@@ -12,7 +12,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import sharp from 'sharp';
+import { watermarkPreview } from './case-preview';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { AuthUser } from '../auth/auth.models';
 import { AuditService } from '../audit/audit.service';
@@ -190,17 +190,7 @@ export class CasesImportService implements OnModuleInit, OnModuleDestroy {
     if (item.status !== 'awaiting_confirmation' || !item.processed) {
       throw new ConflictException('当前病例不能预览脱敏结果');
     }
-    const label = `${actor.username} ${actor.real_name} ${new Date().toISOString()}`.slice(0, 160);
-    const escaped = label.replace(/[&<>"']/g, (value) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-    })[value] ?? value);
-    const watermark = Buffer.from(
-      `<svg width="520" height="180"><text x="12" y="90" fill="rgba(255,255,255,0.24)" font-size="22" transform="rotate(-18 260 90)">${escaped}</text></svg>`,
-    );
-    return sharp(item.processed.preview_path)
-      .composite([{ input: watermark, tile: true, blend: 'over' }])
-      .png()
-      .toBuffer();
+    return watermarkPreview(await readFile(item.processed.preview_path), actor);
   }
 
   async confirm(

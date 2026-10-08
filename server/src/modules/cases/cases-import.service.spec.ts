@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import sharp from 'sharp';
 import type { AuthUser } from '../auth/auth.models';
 import type { ImportBatch } from './cases-import.models';
 import { IMPORT_QUARANTINE_ROOT } from './cases-import.paths';
@@ -113,6 +114,27 @@ function processingBatch(): ImportBatch {
 }
 
 describe('CasesImportService', () => {
+  it.each([[512, 512], [256, 128], [800, 400]])('previews a %i × %i import with visible fitted watermark', async (width, height) => {
+    const dir = await mkdtemp(join(tmpdir(), 'synthetic-import-preview-'));
+    try {
+      const source = await sharp({ create: { width, height, channels: 3, background: '#777777' } }).png().toBuffer();
+      const filename = join(dir, 'safe.png');
+      await writeFile(filename, source);
+      const batch = processingBatch();
+      const item = batch.items[0]!;
+      item.status = 'awaiting_confirmation';
+      item.processed!.preview_path = filename;
+      const { instance, store } = service();
+      store.get.mockResolvedValue(batch);
+      const result = await instance.preview(batch.batch_id, item.item_id, admin);
+      expect(await sharp(result).metadata()).toMatchObject({ format: 'png', width, height });
+      expect(await sharp(result).removeAlpha().raw().toBuffer()).not.toEqual(await sharp(source).removeAlpha().raw().toBuffer());
+      item.status = 'processing';
+      await expect(instance.preview(batch.batch_id, item.item_id, admin)).rejects.toThrow('当前病例不能预览');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   it('rejects any source outside the approved D-31 boundary', async () => {
     const { instance } = service();
     const uploadName = '10000000-0000-4000-8000-000000000001.zip';
