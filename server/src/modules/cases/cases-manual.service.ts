@@ -226,7 +226,8 @@ export class CasesManualService implements OnModuleInit, OnModuleDestroy {
     const id = this.uuid(idValue);
     const rows = await this.dataSource.query(
       `SELECT "id", "case_no", "status", "source", "system_code", "confirm_method",
-              "clinical_text", "age_band", "sex", "teaching_fields", "annotation_version"
+              "clinical_text", "age_band", "sex", "teaching_fields", "annotation_version", "disease_tag_id",
+              (SELECT name FROM taxonomy_nodes WHERE id=cases.disease_tag_id AND deleted_at IS NULL) AS disease_tag_name
        FROM "cases" WHERE "id" = $1 AND "deleted_at" IS NULL`, [id],
     ) as Array<Record<string, unknown>>;
     if (!rows[0]) throw new NotFoundException('病例不存在');

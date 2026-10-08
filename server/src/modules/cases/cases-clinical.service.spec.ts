@@ -1,10 +1,10 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { CasesClinicalService } from './cases-clinical.service';
 const id = '00000000-0000-4000-8000-000000000001';
-const actor = { id } as never;
+const actor = { id, role: 'admin', status: 'active', expire_at: '2099-12-31', must_change_password: false, mfa_secret_encrypted: 'synthetic', updated_at: new Date('2026-01-01') } as never;
 const body = { clinical_text: '患者：张三，45岁', age_band: '40–49', sex: '男', confirm_method: '临床综合诊断' };
 function setup() {
   const query = vi.fn().mockResolvedValue([{ status: '已录入', source: 'synthetic' }]);
@@ -25,6 +25,34 @@ describe('clinical and teaching updates', () => {
     expect(h.manager.query.mock.calls[1]![1]).toEqual([id, '患者：某，45岁', '40–49', '男', body.confirm_method]);
     expect(h.maps.remove).not.toHaveBeenCalled();
     await expect(access(h.worker.processText.mock.calls[0]![0])).rejects.toThrow();
+  });
+  it('saves a validated disease with ID-only audit detail', async () => {
+    const h = setup();
+    h.manager.query.mockResolvedValueOnce([actor]).mockResolvedValueOnce([{ status: '待分配', source: 'synthetic', system_code: 'resp', disease_tag_id: null }]).mockResolvedValueOnce([{ id }]);
+    expect(await h.service.save(id, actor, { ...body, disease_tag_id: id }, false, 'local')).toMatchObject({ disease_tag_id: id });
+    const audit = h.manager.query.mock.calls.find(call => call[0].startsWith('INSERT INTO "audit_logs"'))!;
+    expect(JSON.parse(audit[1][3])).toMatchObject({ disease_tag_id_before: null, disease_tag_id_after: id });
+    expect(JSON.stringify(h.manager.query.mock.calls)).not.toContain('张三');
+  });
+  it.each([null, '', 'invalid'])('rejects explicit invalid disease %j before NER', async disease => {
+    const h = setup();
+    await expect(h.service.save(id, actor, { ...body, disease_tag_id: disease }, false, 'local')).rejects.toThrow();
+    expect(h.worker.processText).not.toHaveBeenCalled();
+  });
+  it('denies members and an administrator revoked during NER', async () => {
+    const h = setup();
+    await expect(h.service.save(id, { id, role: 'member' } as never, body, false, 'local')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.worker.processText).not.toHaveBeenCalled();
+    h.manager.query.mockResolvedValueOnce([]);
+    await expect(h.service.save(id, actor, { ...body, disease_tag_id: id }, false, 'local')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.maps.remove).toHaveBeenCalledWith(id);
+  });
+  it('rejects invalid taxonomy and compensates the mapping', async () => {
+    const h = setup();
+    h.manager.query.mockResolvedValueOnce([actor]).mockResolvedValueOnce([{ status: '已录入', source: 'synthetic', system_code: 'resp' }]).mockResolvedValueOnce([]);
+    await expect(h.service.save(id, actor, { ...body, disease_tag_id: id }, false, 'local')).rejects.toThrow('疾病标签');
+    expect(h.maps.remove).toHaveBeenCalledWith(id);
+    expect(h.manager.query.mock.calls.some(call => call[0].startsWith('UPDATE'))).toBe(false);
   });
   it('does not write if NER fails', async () => {
     const h = setup(); h.worker.processText.mockRejectedValueOnce(new Error('NER unavailable'));

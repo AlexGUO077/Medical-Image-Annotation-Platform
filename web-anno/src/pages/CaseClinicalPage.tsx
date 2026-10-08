@@ -4,6 +4,8 @@ import { useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
 import { casesDetailApi, caseEditApi, type CaseDetail, type CaseReport, type ClinicalInput } from '../cases/detail-api';
 import { CONFIRM_METHODS, SYSTEM_OPTIONS } from '../cases/types';
+import { taxonomyApi } from '../taxonomy/api';
+import type { TaxonomyNode } from '../taxonomy/types';
 import { CaseAttachmentsPanel } from './CaseAttachmentsPanel';
 import { CaseLifecyclePanel } from './CaseLifecyclePanel';
 
@@ -17,6 +19,8 @@ function CaseClinicalContent({ id, session }: { id: string; session: Session }) 
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [taxonomy, setTaxonomy] = useState<TaxonomyNode[]>([]);
+  const [taxonomyError, setTaxonomyError] = useState(false);
   const [clinical] = Form.useForm<ClinicalInput>();
   const [teaching] = Form.useForm<{ difficulty: string; applicable_level: string; sign_points: string }>();
   useEffect(() => {
@@ -27,12 +31,31 @@ function CaseClinicalContent({ id, session }: { id: string; session: Session }) 
     return () => { active = false; };
   }, [id, session.token]);
   useEffect(() => {
+    let active = true;
+    void taxonomyApi.tree(session.token).then(data => { if (active) setTaxonomy(data.tree); })
+      .catch(() => { if (active) setTaxonomyError(true); });
+    return () => { active = false; };
+  }, [session.token]);
+  useEffect(() => {
     if (!detail) return;
-    clinical.setFieldsValue({ clinical_text: detail.clinical_text ?? '', age_band: detail.age_band ?? '', sex: detail.sex ?? '', confirm_method: detail.confirm_method });
+    clinical.setFieldsValue({ disease_tag_id: detail.disease_tag_id ?? undefined, clinical_text: detail.clinical_text ?? '', age_band: detail.age_band ?? '', sex: detail.sex ?? '', confirm_method: detail.confirm_method });
     teaching.setFieldsValue({ difficulty: String(detail.teaching_fields?.difficulty ?? ''), applicable_level: String(detail.teaching_fields?.applicable_level ?? ''),
       sign_points: Array.isArray(detail.teaching_fields?.sign_points) ? detail.teaching_fields.sign_points.join('\n') : '' });
   }, [detail?.id, clinical, teaching]);
-  const editable = !!detail && ['已录入', '待分配'].includes(detail.status);
+  const editable = session.role === 'admin' && !!detail && ['已录入', '待分配'].includes(detail.status);
+  const root = taxonomy.find(node => node.level === 1 && node.name === SYSTEM_OPTIONS.find(system => system.value === detail?.system_code)?.label);
+  const diseaseOptions: { value: string; label: string }[] = [];
+  function append(nodes: TaxonomyNode[], prefix = '') {
+    for (const node of nodes) {
+      const label = prefix ? `${prefix} / ${node.name}` : node.name;
+      if (node.level === 3 || node.level === 4) diseaseOptions.push({ value: node.id, label });
+      append(node.children, label);
+    }
+  }
+  append(root?.children ?? []);
+  if (detail?.disease_tag_id && !diseaseOptions.some(option => option.value === detail.disease_tag_id)) {
+    diseaseOptions.push({ value: detail.disease_tag_id, label: detail.disease_tag_name ?? '原标签已失效，请重新选择' });
+  }
   async function save(isTeaching: boolean) {
     setBusy(true); setError(undefined); setNotice(undefined);
     try {
@@ -68,6 +91,10 @@ function CaseClinicalContent({ id, session }: { id: string; session: Session }) 
       {!editable ? <Alert type="info" message="病例当前状态仅允许查看" /> : null}
       <Card title="临床信息">
         <Form form={clinical} layout="vertical" disabled={!editable || busy} onFinish={() => void save(false)}>
+          {taxonomyError ? <Alert type="warning" message="疾病标签选项读取失败，请刷新后重试" /> : null}
+          <Form.Item name="disease_tag_id" label="疾病/分型" extra="提交审核前请确认疾病标签；标注开始后须先回收病例再修正。">
+            <Select showSearch optionFilterProp="label" options={diseaseOptions} disabled={!editable || busy || taxonomyError} placeholder="选择所属系统的疾病或分型" />
+          </Form.Item>
           <Form.Item name="clinical_text" label="临床信息"><Input.TextArea rows={6} maxLength={2 * 1024 * 1024} placeholder="粘贴临床信息，保存时自动脱敏" /></Form.Item>
           <Form.Item name="age_band" label="年龄段"><Input maxLength={100} /></Form.Item>
           <Form.Item name="sex" label="性别"><Select options={['', '男', '女', '未知'].map((value) => ({ value, label: value || '未填写' }))} /></Form.Item>

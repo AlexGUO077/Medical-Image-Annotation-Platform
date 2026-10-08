@@ -32,8 +32,21 @@ PR #55 合并提交 `923ca70e1aa8cd261ca347942241ec5a55c53829` 的 Security 已�
 - `manage.py restore`：新空实例恢复同批数据、验证仅 synthetic、重建搜索；再次运行三例 HTTPS/映射/权限检查全部通过，并实际拒绝原实例 JWT。核对 JWT、帧密钥和服务密码变化，MFA/映射/UID 密钥保留；无秘密值输出。
 - 两实例均实际核对七服务 healthy，只有 nginx 绑定回环 HTTP/HTTPS；server 不含 PG owner、MinIO root、ES elastic 或 seed 管理秘密，保留 cap_drop=ALL。
 
-上述部署/恢复功能验证使用已有依赖候选加最终 Express 入口的临时功能镜像。它仍含未采用的系统 pip，不视为最终安全镜像或部署放行；最终无 pip 镜像与远端原生 Linux 核验尚需单独完成。修复候选中的真实模型测试已验证固定 PaddleNLP 惰性 pip 导入补丁 + datasets 5.0.1/fsspec 2026.6.0：手工 NER/OCR、ZIP DICOM/报告及附件清洁接受/标识拒绝全部通过。
+最初的部署/恢复功能验证使用已有依赖候选加最终 Express 入口的临时功能镜像。它仍含未采用的系统 pip，不视为最终安全镜像或部署放行；最终无 pip 镜像与远端原生 Linux 核验的补齐结果见下节。修复候选中的真实模型测试已验证固定 PaddleNLP 惰性 pip 导入补丁 + datasets 5.0.1/fsspec 2026.6.0：手工 NER/OCR、ZIP DICOM/报告及附件清洁接受/标识拒绝全部通过。
 
 最终干净镜像构建期间官方 PyPI 下载显著变慢：126 MB Paddle wheel 实际耗时 9 分 12 秒；主机和容器的 1 MB 分段探测均正常但只有低速，不把停滞误记为成功。未降低 HIGH/CRITICAL 阈值或添加豁免。原始输出继续放 `reports/wp16-preflight-20261008/`，最终证据补齐前不标记 WP-16/SG-6 完成。
 
 健康检查占位符使用与根 Compose 一致的 YAML 双引号转义写法，运行含义不变。官方 Gitleaks 8.24.3 下载包通过官方 SHA256 校验；修复后 `gitleaks dir deploy --redact` 无发现，真实容器执行解析后的健康检查返回成功。原分支历史保留，新分支从 main 汇总实现；没有豁免或共享历史改写。原提交远端 CI、七镜像扫描与原生打包 worker 推理步骤已通过，最终 head 状态见 STATUS。
+
+PR #57 首次 CI 的存储启动再次遇到 Maven 下载异常：多个不同 JAR 同得 `807ceab0…`，固定 SHA256 校验阻断。独立 HTTPS 获取官方 netty-codec 4.1.137.Final（360116 bytes，ZIP/JAR 签名正确）匹配 Dockerfile 固定 SHA256；同 head Security 的 ES 构建也已通过。仅重跑失败 CI 作业，没有修改来源、校验值或扫描阈值。修复提交 `10e8a1c` 的完整提交范围经官方 Gitleaks 8.24.3 扫描无发现；原始输出保存在上述忽略目录。
+
+## 最终镜像与修复提交核验
+
+- 最终 Dockerfile 的依赖安装、`pip check` 和惰性导入补丁执行成功，随后移除 pip/ensurepip。慢速下载完成后按提交 `10e8a1c` 的源文件再构建一次，复用依赖层并纳入最终 Express 入口；没有以临时功能镜像替代最终产物。
+- 本机最终镜像 manifest `sha256:e369d89b8b15ae1563a48300d24b643fbd6c9ca01dc4e23ae6c3059de637f910`，config `sha256:928855bffa3d5aa0f415d13f2b20911f36405b265ee0e0bbcbf2ec5f8a725210`。`docker save` 后由 Trivy 0.70.0 更新数据库再扫描，HIGH/CRITICAL=0、退出 0；报告 `reports/wp16-preflight-20261008/server-clean-trivy.json`，原始镜像归档为同目录 `server-clean.tar`。
+- `miap-wp16-final-runtime-verify.py` 只重建两个演练项目的 server，确认镜像一致、UID 10001、Python 3.11、系统 zlib/pyarrow 可用且无 pip/ensurepip；不重建原开发项目或再次生成病例。两个实例分别执行已提交的 `deploy/test-restore.cjs verify`，此前备份并恢复的三例 HTTPS 影像/附件、三份加密映射和权限负向检查全部通过。
+- 原实例本轮刚签发的会话已成功访问三例且未过期，随后用于恢复实例的拒绝断言（401），避免把自然过期当成密钥轮换证据。两个实例的公开 CA 验证健康接口为 200；各七服务 healthy，仅 nginx 回环端口，server 保留 cap_drop=ALL、使用应用数据库账号且不含管理员秘密。
+- 临时复验脚本起初按变量名误将 `POSTGRES_PASSWORD` 视为 owner 密码，已纠正为检查 `miap_runtime`、应用密码对应关系及与四类管理员秘密不相等；实际产品配置始终映射 `POSTGRES_APP_PASSWORD`，没有放宽权限。
+- 修复提交的远端 CI（首次 Maven 瞬态失败后仅重跑失败作业）、Security 全部七镜像及真实 OCR/NER/原生镜像/HTTP 存储检查均通过；精确 head 和 run 链接统一在 STATUS。没有新增代码推送或扫描豁免。
+
+最终构建、复验脚本/日志、扫描输出和远端检查快照保存在上述忽略目录。本地实现与验证批次已完成，PR 可进入人工评审；这不替代独立人工评审、组长复核、云端/异地演练或 SG-6/M3 放行。

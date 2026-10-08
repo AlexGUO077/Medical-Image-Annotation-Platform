@@ -22,7 +22,8 @@
     "test:tasks:integration": "npm run build && node test/tasks.integration.cjs",
     "test:frames:api": "npm run build && node test/frame-api.integration.cjs",
     "test:frames:render": "npm run build && node test/frame-render.integration.cjs",
-    "test:m2:browser": "npm run build && node test/m2-browser.integration.cjs"
+    "test:m2:browser": "npm run build && node test/m2-browser.integration.cjs",
+    "test:coverage": "vitest run --coverage --coverage.include=\"src/**/*.ts\" --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.reporter=lcov --coverage.reportsDirectory=../reports/wp17-coverage/server"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1143.0",
