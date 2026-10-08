@@ -1,10 +1,14 @@
 import type {Assignee} from '../tasks/api';
+import type {Qualifications} from '../auth/types';
 import {ViewerRequestError} from '../viewer/api';
 export interface Version {id:string;version:number}
 export interface ExportRow {id:string;requester_id:string;approver_id:string|null;status:string;case_versions:Version[];created_at:string;expire_at:string|null;download_count:number;url:string|null}
 export interface AuditRow {id:string;actor:string|null;action:string;target:string;detail:Record<string,unknown>;ip:string;created_at:string}
 export interface Page<T>{items:T[];page:number;pageSize:number;total:number}
 export interface Candidate extends Version{source:string;system_code:string}
+export interface CreateAccount {real_name:string;email?:string;phone?:string;role:'admin'|'member';quals:Qualifications;expire_at:string}
+export interface InitialAccount {id:string;username:string;initial_password:string;must_change_password:true}
+export interface AccountUpdate {id:string;status?:'active'|'disabled';expire_at?:string;quals?:Qualifications;reset_mfa?:true}
 async function request<T>(token:string,path:string,body?:unknown,signal?:AbortSignal,method=body===undefined?'GET':'POST'):Promise<T>{
  const response=await fetch('/api'+path,{method,headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',redirect:'error',signal});
  if(!response.headers.get('content-type')?.includes('application/json'))throw new ViewerRequestError(response.status,'服务响应格式无效');
@@ -12,6 +16,8 @@ async function request<T>(token:string,path:string,body?:unknown,signal?:AbortSi
 }
 export const adminApi={
  users:(token:string,page:number,signal?:AbortSignal)=>request<Page<Assignee>>(token,`/users?page=${page}&pageSize=20`,undefined,signal),
+ createUser:(token:string,input:CreateAccount)=>request<InitialAccount>(token,'/users',input),
+ updateUser:(token:string,input:AccountUpdate)=>request<{id:string;updated:true;released_assignments:number}>(token,'/users',input,undefined,'PATCH'),
  enable:(token:string,id:string)=>request(token,'/users',{id,status:'active'},undefined,'PATCH'),
  exports:(token:string,page:number,signal?:AbortSignal)=>request<Page<ExportRow>>(token,`/exports?page=${page}&pageSize=20`,undefined,signal),
  candidates:(token:string,page:number,signal?:AbortSignal)=>request<Page<Candidate>>(token,`/exports/candidates?page=${page}&pageSize=20`,undefined,signal),

@@ -13,3 +13,6 @@ it('requires current enabled administrator security settings for both participan
  query.mockResolvedValue([{...user,status:'disabled'}]);await expect(lockAdmins({query} as never,user as never)).rejects.toThrow('管理员账号不可用');
  query.mockResolvedValue([user]);await expect(lockAdmins({query} as never,{...user,updated_at:new Date(0)} as never)).rejects.toThrow('会话已失效');
 });
+it('preserves account permission change tracing while excluding private fields and arbitrary capabilities',()=>{
+ expect(safeAuditDetail({quals:{before:{resp:['annotate'],raw:['secret']},after:{resp:['review'],cns:['download']}},status:{before:'active',after:'disabled',token:'private'},expire_at:'2099-12-31',mfa_reset:true,email:'private',mfa_secret_encrypted:'private'})).toEqual({quals:{before:{resp:['annotate']},after:{resp:['review']}},status:{before:'active',after:'disabled'},expire_at:'2099-12-31',mfa_reset:true});
+});

@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { hashPassword } from '../../database/password';
 import type { AccountRole, AuthUser, Qualification, Qualifications } from '../auth/auth.models';
 import { accountAvailable, releaseIneligibleAnnotations } from '../tasks/assignment-release';
@@ -22,24 +22,23 @@ interface CreateUserInput {
 export class UsersService {
   constructor(@Inject(DATABASE_SOURCE) private readonly dataSource: DataSource) {}
 
-  async list(pageValue: unknown, pageSizeValue: unknown) {
-    const page = this.pageNumber(pageValue, 1, 1, Number.MAX_SAFE_INTEGER);
-    const pageSize = this.pageNumber(pageSizeValue, 20, 1, 100);
+  async list(actor: AuthUser, query: Record<string, unknown>) {
+    if (Object.keys(query).some(key => !['page', 'pageSize'].includes(key))) throw new BadRequestException('查询参数无效');
+    const page = this.pageNumber(query.page, 1, 1, Number.MAX_SAFE_INTEGER);
+    const pageSize = this.pageNumber(query.pageSize, 20, 1, 100);
     const offset = (page - 1) * pageSize;
-    const [items, totals] = await Promise.all([
-      this.dataSource.query(
-        `SELECT "id", "username", "real_name", "email", "phone", "role", "quals", "status",
-                "expire_at"::text AS "expire_at", "must_change_password", ("mfa_secret_encrypted" IS NOT NULL) AS "mfa_enabled",
-                "created_at", "updated_at", "in_flight_limit"
-         FROM "users" WHERE "deleted_at" IS NULL
-         ORDER BY "created_at", "id" LIMIT $1 OFFSET $2`,
-        [pageSize, offset],
-      ),
-      this.dataSource.query(
-        'SELECT count(*)::int AS "total" FROM "users" WHERE "deleted_at" IS NULL',
-      ) as Promise<Array<{ total: number }>>,
-    ]);
-    return { items, page, pageSize, total: totals[0]?.total ?? 0 };
+    if (!Number.isSafeInteger(offset)) throw new BadRequestException('分页参数无效');
+    return this.dataSource.transaction(async manager => {
+      await this.currentAdmin(manager, actor);
+      const [result] = await manager.query(`WITH rows AS MATERIALIZED (
+        SELECT id,username,real_name,email,phone,role,quals,status,expire_at::text AS expire_at,
+          must_change_password,(mfa_secret_encrypted IS NOT NULL) AS mfa_enabled,created_at,updated_at,in_flight_limit
+        FROM users WHERE deleted_at IS NULL)
+        SELECT (SELECT count(*)::int FROM rows) total,
+          COALESCE((SELECT jsonb_agg(x ORDER BY x.created_at,x.id) FROM
+          (SELECT * FROM rows ORDER BY created_at,id LIMIT $1 OFFSET $2)x),'[]'::jsonb) items`, [pageSize, offset]);
+      return { ...result, page, pageSize };
+    });
   }
 
   async create(actor: AuthUser, body: unknown, ip: string) {
@@ -47,6 +46,7 @@ export class UsersService {
     const username = `u_${randomBytes(6).toString('hex')}`;
     const initialPassword = `Aa1!${randomBytes(15).toString('base64url')}`;
     const id = await this.dataSource.transaction(async (manager) => {
+      await this.currentAdmin(manager, actor);
       const rows = await manager.query(
         `INSERT INTO "users" (
           "username", "password_hash", "real_name", "email", "phone", "role", "quals",
@@ -60,6 +60,7 @@ export class UsersService {
       ) as Array<{ id: string }>;
       const userId = rows[0]?.id;
       if (!userId) throw new Error('Account creation returned no id');
+      await this.currentAdmin(manager, actor);
       await manager.query(
         `INSERT INTO "audit_logs" ("actor", "action", "target", "detail", "ip")
          VALUES ($1, 'users.created', $2, $3::jsonb, $4)`,
@@ -79,6 +80,8 @@ export class UsersService {
     if (actor.role !== 'admin') throw new ForbiddenException('需要管理员权限');
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('账号更新请求无效');
     const input = body as Record<string, unknown>;
+    if (Object.keys(input).some(key => !['id','status','expire_at','quals','reset_mfa'].includes(key)) ||
+        (input.reset_mfa !== undefined && typeof input.reset_mfa !== 'boolean')) throw new BadRequestException('账号更新字段无效');
     if (typeof input.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id)) throw new BadRequestException('账号 id 必须是 UUID');
     const id = input.id.toLowerCase();
     if (input.status !== undefined && !['active','disabled'].includes(input.status as string)) throw new BadRequestException('账号状态无效');
@@ -111,8 +114,9 @@ export class UsersService {
   }
 
   private createInput(body: unknown): CreateUserInput {
-    if (!body || typeof body !== 'object') throw new BadRequestException('账号创建请求无效');
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('账号创建请求无效');
     const input = body as Record<string, unknown>;
+    if (Object.keys(input).some(key => !['real_name','email','phone','role','quals','expire_at'].includes(key))) throw new BadRequestException('账号创建字段无效');
     if (typeof input.real_name !== 'string' || input.real_name.trim().length === 0) {
       throw new BadRequestException('real_name 必填');
     }
@@ -144,7 +148,7 @@ export class UsersService {
   }
 
   private date(value: unknown, field: string): string {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0,10) !== value) {
       throw new BadRequestException(`${field} 必须是 YYYY-MM-DD`);
     }
     return value;
@@ -158,8 +162,15 @@ export class UsersService {
 
   private pageNumber(value: unknown, fallback: number, min: number, max: number): number {
     if (value === undefined) return fallback;
+    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) throw new BadRequestException('分页参数无效');
     const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new BadRequestException('分页参数无效');
+    if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) throw new BadRequestException('分页参数无效');
     return parsed;
+  }
+
+  private async currentAdmin(manager: EntityManager, actor: AuthUser) {
+    const [current] = await manager.query('SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR SHARE', [actor.id]) as AuthUser[];
+    if (!current || current.updated_at.getTime() !== actor.updated_at.getTime()) throw new UnauthorizedException('会话已失效，请重新登录');
+    if (current.role !== 'admin' || !accountAvailable(current)) throw new ForbiddenException('管理员账号不可用');
   }
 }
