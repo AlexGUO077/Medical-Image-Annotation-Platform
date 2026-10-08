@@ -34,7 +34,7 @@
 | `annotation_tags` | `annotation_id uuid`、`sign_tag_id uuid` | 外键到 `annotation_objects`、`sign_tags`；活跃组合唯一；至少一条由保存标注业务事务校验 |
 | `reviews` | `case_id uuid`、`reviewer_id uuid`、`result varchar`、`comments jsonb`、`is_spotcheck bool` | 外键到 `cases`、`users`；`result=通过/打回` |
 | `audit_logs` | `actor uuid?`、`action varchar`、`target varchar`、`detail jsonb`、`ip varchar` | 非空 `actor → users.id`；仅已批准的任务后台事件允许空 actor，见下文；触发器和角色权限共同保证只增不改不删 |
-| `export_requests` | `status varchar`、`approver_id uuid?`、`expire_at timestamptz?`、`url varchar?` | 申请初始阶段审批人、链接和过期时间可为空；`approver_id → users.id`；申请人与审批人不同由导出业务事务校验 |
+| `export_requests` | `status varchar`、`approver_id uuid?`、`expire_at timestamptz?`、`url varchar?` | WP-14 新增 `requester_id uuid NOT NULL`、`case_versions jsonb NOT NULL`、`download_count integer DEFAULT 0`、`package_sha256 varchar?`；申请初始阶段审批人、链接和过期时间可为空；`approver_id → users.id`；申请人与审批人不同由导出业务事务校验 |
 
 ## 种子数据
 
@@ -72,3 +72,5 @@ npm run db:verify --workspace server
 ## 任务后台系统审计增量（2026-09-29）
 
 按[已批准分派决策](../decisions/D-09-D-10-D-23-task-dispatch.md)，迁移 `1790640000002` 允许 audit_logs.actor 为 NULL，但 CHECK 限制仅 `tasks.assignment_released` / `tasks.auto_dispatched` 且 `detail.executor="task-worker"`、`ip="system"`；人工事件继续记录真实用户外键，追加约束和角色权限不变。已有空 actor 审计时 down 拒绝，不删除历史或补造操作者；应用回退可保留兼容 schema 后向前修复。
+
+WP-14 的既有 export_requests 扩展见 [受控导出契约](exports-audit-api.md) 和已确认 D-13。仅支持固定病例版本清单，数据库约束阻止自批、状态/链接/摘要不一致或领取次数超出 0/1；有无法归属的旧请求时 up 拒绝，有导出历史时 down 拒绝，不删除或补造历史。迁移先于页面，只在独立合成 schema 验证。
