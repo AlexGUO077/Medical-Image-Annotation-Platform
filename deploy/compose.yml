@@ -1,0 +1,159 @@
+services:
+  postgres:
+    build: {context: .., dockerfile: docker/postgres/Dockerfile}
+    image: miap/postgres:16.15-alpine3.24
+    environment:
+      POSTGRES_DB: miap_synthetic
+      POSTGRES_USER: miap_owner
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:?}
+    volumes: [pg:/var/lib/postgresql/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U miap_owner -d miap_synthetic']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  orthanc:
+    build: {context: .., dockerfile: docker/orthanc/Dockerfile}
+    image: miap/orthanc:26.9.0-openssl-r7
+    environment:
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME:?}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:?}
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USERNAME}":"${ORTHANC_PASSWORD}"}'
+    volumes: [orthanc:/var/lib/orthanc/db]
+    networks: [imaging]
+    healthcheck:
+      test: [CMD, /probes/test-aliveness.py]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  minio:
+    build: {context: .., dockerfile: docker/minio/Dockerfile}
+    image: miap/minio:2026-07-17-hardened
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:9000
+    volumes: [minio:/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    build: {context: .., dockerfile: docker/redis/Dockerfile}
+    image: miap/redis:7.4.11-alpine3.21-openssl-r2
+    command: [redis-server, --appendonly, "yes", --requirepass, '${REDIS_PASSWORD:?}']
+    environment: {REDIS_PASSWORD: '${REDIS_PASSWORD:?}'}
+    volumes: [redis:/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli --no-auth-warning ping | grep -qx PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  elasticsearch:
+    build: {context: .., dockerfile: docker/elasticsearch/Dockerfile}
+    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?}
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes: [es:/usr/share/elasticsearch/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent --output /dev/null --user "elastic:$$ELASTIC_PASSWORD" "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    mem_limit: 1g
+  server:
+    platform: linux/amd64
+    build: {context: .., dockerfile: deploy/server/Dockerfile}
+    image: miap/server:wp16
+    init: true
+    stop_grace_period: 120s
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: miap_synthetic
+      POSTGRES_USER: miap_runtime
+      POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      FRAME_TOKEN_SECRET: ${FRAME_TOKEN_SECRET:?}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?}
+      MASK_MAP_ENCRYPTION_KEY: ${MASK_MAP_ENCRYPTION_KEY:?}
+      DICOM_UID_SECRET: ${DICOM_UID_SECRET:?}
+      CORS_ORIGINS: https://localhost:${DEPLOY_HTTPS_PORT:?}
+      ORTHANC_HOST: orthanc
+      ORTHANC_PORT: "8042"
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME:?}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:?}
+      MINIO_HOST: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: miap_runtime
+      MINIO_SECRET_KEY: ${MINIO_APP_PASSWORD:?}
+      MINIO_MASK_MAP_BUCKET: miap-mask-maps
+      MINIO_ATTACHMENT_BUCKET: miap-attachments
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: "9200"
+      SEARCH_ELASTIC_USERNAME: miap_search
+      SEARCH_ELASTIC_PASSWORD: ${SEARCH_ELASTIC_PASSWORD:?}
+      SEARCH_ELASTIC_INDEX: miap-published-v1
+      FRAME_RATE_WINDOW_SECONDS: ${FRAME_RATE_WINDOW_SECONDS:?}
+      FRAME_RATE_CR: ${FRAME_RATE_CR:?}
+      FRAME_RATE_DX: ${FRAME_RATE_DX:?}
+      FRAME_RATE_CT: ${FRAME_RATE_CT:?}
+      FRAME_RATE_MR: ${FRAME_RATE_MR:?}
+      FRAME_RATE_US: ${FRAME_RATE_US:?}
+    networks: [edge, data, imaging]
+    volumes: [models:/home/miap]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/api/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  nginx:
+    depends_on:
+      server: {condition: service_healthy}
+    build: {context: .., dockerfile: deploy/nginx/Dockerfile}
+    image: miap/nginx:wp16
+    ports: ['127.0.0.1:${DEPLOY_HTTP_PORT:?}:8080', '127.0.0.1:${DEPLOY_HTTPS_PORT:?}:8443']
+    volumes:
+      - '${DEPLOY_INSTANCE_DIR:?}/nginx.conf:/etc/nginx/nginx.conf:ro'
+      - tls:/etc/miap/tls:ro
+      - acme:/var/www/acme:ro
+    networks: [edge]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q --no-check-certificate -O /dev/null https://127.0.0.1:8443/']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+networks:
+  edge: {}
+  data: {internal: true}
+  imaging: {internal: true}
+volumes:
+  pg: {}
+  orthanc: {}
+  minio: {}
+  redis: {}
+  es: {}
+  models: {}
+  tls: {}
+  acme: {}

@@ -104,3 +104,13 @@ Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 | MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
 | Redis | `miap/redis:7.4.11-alpine3.21-openssl-r2` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
 | Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
+| Server | `miap/server:wp16` | `ubuntu:26.04` | `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7` | `deploy/server/Dockerfile` |
+| Nginx | `miap/nginx:wp16` | `nginx:alpine` | `sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2` | `deploy/nginx/Dockerfile` |
+
+WP-16 adds the last two images in `deploy/compose.yml`, preserving the same five
+middleware definitions. Server/nginx run as UID 10001/101. Server retains official
+Python 3.11 (`sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce`)
+and Node 24.14.0 (`sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8`);
+nginx uses that Node source only to build static files. D-44 records the fixed
+worker dependencies and optional-installer import patch. See the WP-16 evidence
+and STATUS for actual verification; this table does not grant deployment approval.

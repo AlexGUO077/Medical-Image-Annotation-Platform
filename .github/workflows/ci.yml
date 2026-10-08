@@ -26,6 +26,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Verify backup failure and restore protection paths
+        run: python3 -m unittest discover -s deploy -p 'test_*.py' -v
       - run: docker compose --env-file .env.example config --quiet
       - name: Start synthetic PostgreSQL, Redis and ES for transaction tests
         run: |
