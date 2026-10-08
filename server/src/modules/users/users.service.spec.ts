@@ -50,7 +50,7 @@ describe('UsersService validation', () => {
   it('rejects page sizes above 100 before querying the database', async () => {
     const { service, dataSource } = serviceWithTarget();
 
-    await expect(service.list('1', '101')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.list(admin, {page:'1',pageSize:'101'})).rejects.toBeInstanceOf(BadRequestException);
     expect(dataSource.query).not.toHaveBeenCalled();
   });
 
@@ -68,5 +68,21 @@ describe('UsersService validation', () => {
     await expect(service.update(admin, { id: admin.id, status: 'disabled' }, '127.0.0.1'))
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects ambiguous pagination, unsafe offsets, extra fields and invalid calendar dates', async () => {
+    const {service,dataSource}=serviceWithTarget();
+    for(const query of [{page:['1','2']},{page:'01'},{page:'9007199254740991',pageSize:'100'},{role:'member'}])await expect(service.list(admin,query)).rejects.toBeInstanceOf(BadRequestException);
+    for(const input of [{id:admin.id,role:'member'},{id:admin.id,reset_mfa:'true'},{id:admin.id,expire_at:'2026-02-30'}])await expect(service.update(admin,input,'synthetic')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.create(admin,{real_name:'合成',role:'member',expire_at:'2026-02-30'},'synthetic')).rejects.toBeInstanceOf(BadRequestException);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('rechecks current administrator permissions in both read and creation transactions',async()=>{
+    const {service,dataSource}=serviceWithTarget();
+    const query=vi.fn().mockResolvedValue([{...admin,status:'disabled'}]);dataSource.transaction.mockImplementation(async run=>run({query}));
+    await expect(service.list(admin,{})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.create(admin,{real_name:'合成',role:'member',quals:{},expire_at:'2099-12-31'},'synthetic')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(query.mock.calls.every(([sql])=>sql.includes('FOR SHARE'))).toBe(true);
   });
 });

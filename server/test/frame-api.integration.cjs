@@ -66,6 +66,9 @@ const schema = `frame_api_${randomBytes(8).toString('hex')}`;
   };
   const instrumented = {
     withTypeMapping: redis.withTypeMapping.bind(redis),
+    incr: key => { keys.add(key); return redis.incr(key); },
+    expire: (key, seconds) => redis.expire(key, seconds),
+    del: key => redis.del(key),
     set: (key, ...args) => { keys.add(key); return redis.set(key, ...args); },
     eval: (script, options) => { options.keys.forEach(key => keys.add(key)); return redis.eval(script, options); },
   };

@@ -105,5 +105,6 @@ module.exports=async({db,app,base,get,actor,other,token,otherToken,adminToken,re
  await require('./library.assertions.cjs')({db,app,base,get,send,fixture,actor,other,token,otherToken,adminToken,realSearch,setRenderHook});
  await require('./stats.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken,dx:f,ct:returned});
  await require('./exports-audit.assertions.cjs')({db,app,base,get,actor,other,token,otherToken,adminToken,dx:f,ct:returned});
+ await require('./admin-users.assertions.cjs')({db,app,base,get,token,adminToken});
  console.log('PASS: review HTTP read/attachments, self/peer isolation, veto checks, optimistic/concurrent decisions, atomic audit rollback, DX/CT publication gold lock, return/re-submit history, self capacity and unavailable/qualification/capacity fallback');
 };
