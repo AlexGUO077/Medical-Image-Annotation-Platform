@@ -42,6 +42,9 @@ COPY --from=build /app/server/dist ./dist
 COPY server/workers/deid_worker.py ./workers/deid_worker.py
 COPY deploy/bootstrap.cjs ./bootstrap.cjs
 COPY --chmod=755 deploy/server/worker-python /usr/local/bin/miap-python
+# Ubuntu includes this unmanaged service supervisor; this image runs Node directly
+# with Compose's init. Remove the unused Go binary instead of shipping its CVEs.
+RUN rm /usr/bin/pebble
 RUN groupadd --gid 10001 miap && useradd --uid 10001 --gid 10001 --create-home miap \
     && mkdir -p /home/miap/.cache/paddle && chown -R 10001:10001 /home/miap
 ENV NODE_ENV=production DEID_WORKER_PYTHON=/usr/local/bin/miap-python \

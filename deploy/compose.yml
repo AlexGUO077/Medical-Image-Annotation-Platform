@@ -58,7 +58,7 @@ services:
       retries: 30
   elasticsearch:
     build: {context: .., dockerfile: docker/elasticsearch/Dockerfile}
-    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2
+    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4
     environment:
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?}
       discovery.type: single-node
@@ -76,7 +76,7 @@ services:
   server:
     platform: linux/amd64
     build: {context: .., dockerfile: deploy/server/Dockerfile}
-    image: miap/server:wp16
+    image: miap/server:wp16-pebble-free
     init: true
     stop_grace_period: 120s
     environment:
