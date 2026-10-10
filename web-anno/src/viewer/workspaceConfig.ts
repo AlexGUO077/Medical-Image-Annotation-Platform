@@ -6,6 +6,8 @@ export const panelSizes = {
   viewportMin: 640,
 };
 
+export const annotationPanelSplit = { defaultShare: 40, minList: 96, minProperties: 160, handle: 12 };
+
 export const objectColors = annotationColors;
 export const objectColor = (index: number) => objectColors[Math.max(0, index) % objectColors.length];
 export const windowPresets = [

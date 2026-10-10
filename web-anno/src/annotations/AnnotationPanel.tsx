@@ -1,5 +1,6 @@
 import { Alert,Button,Checkbox,InputNumber,Modal,Radio,Select,Space,Tooltip,Typography } from 'antd';
 import { useState } from 'react';
+import { AnnotationSections } from './AnnotationSections';
 import { ViewerIcon } from '../viewer/ViewerIcon';
 import { objectColor } from '../viewer/workspaceConfig';
 import type { Annotation } from './types';
@@ -28,7 +29,7 @@ export function AnnotationPanel(p:Props){
  };
  return <div className="annotation-panel">
  <div className="object-list-toolbar"><span>{p.annotations.length} 个对象</span><Button size="small" disabled={p.disabled||!batch.some(id=>!p.locked.has(id))} onClick={()=>Modal.confirm({title:'删除所选未锁定对象？',onOk:()=>{p.onChange(p.annotations.filter(a=>!batch.includes(a.id)||p.locked.has(a.id)));setBatch([]);}})}>批量删除</Button></div>
- {!p.annotations.length&&<p className="panel-empty">选择工具并在影像上绘制对象。</p>}
+ <AnnotationSections list={<>{!p.annotations.length&&<p className="panel-empty">选择工具并在影像上绘制对象。</p>}
  <ul className="annotation-object-list">{p.annotations.map(item=><li key={item.id} className={`annotation-object${item.id===p.selected?' is-selected':''}`} style={{borderLeftColor:objectColor(index(item.id))}}>
  <div className="object-row"><Checkbox disabled={p.disabled} aria-label={`选择对象 ${index(item.id)+1}`} checked={batch.includes(item.id)} onChange={e=>setBatch(old=>e.target.checked?[...old,item.id]:old.filter(id=>id!==item.id))}/>
  <button className="object-select" type="button" onClick={()=>p.onSelect(item.id)}><ViewerIcon name={item.tool}/><b>对象 {index(item.id)+1} · {toolNames[item.tool]}</b></button>
@@ -36,7 +37,7 @@ export function AnnotationPanel(p:Props){
  <Tooltip title={p.locked.has(item.id)?'对象已锁定':'锁定对象'}><Button type="text" size="small" disabled={p.disabled} aria-label={`${p.locked.has(item.id)?'解锁':'锁定'}对象 ${index(item.id)+1}`} icon={<ViewerIcon name={p.locked.has(item.id)?'lock':'unlock'}/>} onClick={()=>p.onLocked(item.id)}/></Tooltip></div>
  <button className="object-summary" type="button" onClick={()=>p.onSelect(item.id)}>{parts.find(n=>n.id===item.part_id)?.name??'部位待填写'} · 第 {item.frame_start+1}–{item.frame_end+1} 帧<span>{signs.filter(s=>item.sign_tag_ids.includes(s.id)).map(s=>s.name).join('、')||'征象待填写'}</span></button>
  {(!item.part_id||!item.confidence||!item.sign_tag_ids.length||!item.report_sent_ids.length)&&<span className="object-incomplete">属性或报告关联未完整</span>}{p.locked.has(item.id)&&<span className="object-state">已锁定</span>}{p.hidden.has(item.id)&&<span className="object-state">已隐藏</span>}
- </li>)}</ul>
+ </li>)}</ul></>} properties={<>
  {a&&<div className="annotation-properties">
  <div className="properties-heading"><span style={{color:objectColor(index(a.id))}}>对象 {index(a.id)+1}</span><b>属性</b></div>
  <span>序列 {p.series.findIndex(s=>s.id===a.series_id)+1}</span>
@@ -55,5 +56,6 @@ export function AnnotationPanel(p:Props){
  <span>关联句：{a.report_sent_ids.includes(-1)?'报告未提及':a.report_sent_ids.length?a.report_sent_ids.join('、'):'尚未关联'}</span>
  </div>}
  {!a&&!!p.annotations.length&&<p className="panel-empty">选择对象查看与编辑属性</p>}
+ </>}/>
  </div>;
 }
