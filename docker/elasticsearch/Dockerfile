@@ -41,4 +41,11 @@ RUN test "$(find /usr/share/elasticsearch -type f -name 'jsoup-*.jar' | wc -l)" 
     && install -m 0644 -o 1000 -g 0 /tmp/jsoup.jar /usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar \
     && rm /tmp/jsoup.jar
 
+# Preserve Elastic's policy-bound path while replacing the sole LZ4 dependency.
+ADD --checksum=sha256:58c8e0b813960d2a248e050c353baea73139b48a2ffc55382d42c69707e17325 https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.11.4/lz4-java-1.11.4.jar /tmp/lz4-java.jar
+RUN test "$(find /usr/share/elasticsearch -type f -name 'lz4-java-*.jar' | wc -l)" -eq 1 \
+    && test -f /usr/share/elasticsearch/lib/lz4-java-1.11.1.jar \
+    && install -m 0644 -o 1000 -g 0 /tmp/lz4-java.jar /usr/share/elasticsearch/lib/lz4-java-1.11.1.jar \
+    && rm /tmp/lz4-java.jar
+
 USER 1000:0

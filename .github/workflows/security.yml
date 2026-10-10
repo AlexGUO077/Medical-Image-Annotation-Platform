@@ -129,13 +129,13 @@ jobs:
             context: .
             dockerfile: docker/redis/Dockerfile
           - service: elasticsearch
-            image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2
+            image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4
             source: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21
             digest: sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
             context: .
             dockerfile: docker/elasticsearch/Dockerfile
           - service: server
-            image: miap/server:wp16
+            image: miap/server:wp16-pebble-free
             source: ubuntu:26.04
             digest: sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
             context: .
