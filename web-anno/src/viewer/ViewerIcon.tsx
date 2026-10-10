@@ -7,6 +7,7 @@ const paths = {
   select: 'm5 3 14 9-7 1-3 7Z',
   window: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 3v18 M12 6l5 5 M12 10l6 6 M12 14l4 4',
   zoom: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0 M15 15l6 6 M7 10h6 M10 7v6',
+  zoomOut: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0 M15 15l6 6 M7 10h6',
   measure: 'm3 16 13-13 5 5-13 13Z M7 12l3 3 M10 9l3 3 M13 6l3 3',
   undo: 'M9 5 3 11l6 6 M3 11h11a6 6 0 0 1 6 6',
   redo: 'm15 5 6 6-6 6 M21 11H10a6 6 0 0 0-6 6',
@@ -29,7 +30,6 @@ const paths = {
   settings: 'M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6',
   help: 'M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 3 M12 17h.01 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
   save: 'M4 3h13l3 3v15H4Z M8 3v6h8V3 M8 21v-7h8v7',
-  minus: 'M5 12h14',
 } as const;
 export type IconName = keyof typeof paths;
 export function ViewerIcon({ name, className = '' }: { name: IconName; className?: string }) {
