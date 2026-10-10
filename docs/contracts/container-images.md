@@ -103,8 +103,8 @@ Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 | Orthanc | `miap/orthanc:26.9.0-openssl-r7` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
 | MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
 | Redis | `miap/redis:7.4.11-alpine3.21-openssl-r2` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
-| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
-| Server | `miap/server:wp16` | `ubuntu:26.04` | `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7` | `deploy/server/Dockerfile` |
+| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
+| Server | `miap/server:wp16-pebble-free` | `ubuntu:26.04` | `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7` | `deploy/server/Dockerfile` |
 | Nginx | `miap/nginx:wp16` | `nginx:alpine` | `sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2` | `deploy/nginx/Dockerfile` |
 
 WP-16 adds the last two images in `deploy/compose.yml`, preserving the same five
@@ -114,3 +114,35 @@ and Node 24.14.0 (`sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb19922
 nginx uses that Node source only to build static files. D-44 records the fixed
 worker dependencies and optional-installer import patch. See the WP-16 evidence
 and STATUS for actual verification; this table does not grant deployment approval.
+
+On 2026-10-10, PRs #60/#61/#62 were blocked by the same four HIGH findings.
+Elasticsearch's sole `lz4-java` 1.11.1 payload is replaced with Maven Central's
+1.11.4 ([artifact](https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.11.4/)),
+fixing CVE-2026-106451. SHA512 was checked before pinning SHA256; the existing
+JAR path, module name and UID/GID are retained. The isolated runtime smoke checks
+its hash/metadata, LZ4 compression/decompression with the selected implementation
+and safe Java fallback, and flushed ES source readback alongside existing search,
+SQL and attachment tests.
+
+The server's three Go findings (CVE-2026-78667, CVE-2026-78669 and
+CVE-2026-97031) belong to Ubuntu's `/usr/bin/pebble`. Image inspection confirmed
+that this binary has no dpkg package owner. It is removed from the final image:
+the application starts Node directly, Compose supplies `init: true`, and no
+application, worker or deployment script invokes Pebble. No package database is
+altered, and required Node/Python/document conversion tools remain present.
+The updated image tags are used consistently by Compose, scans and worker
+verification. Source digests, non-root users and HIGH/CRITICAL gates are unchanged;
+no ignore rules are added. Existing containers and data volumes are not replaced.
+Reverting these image changes reintroduces the blocked findings.
+
+Local verification for this patch (2026-10-10): both final `linux/amd64` images
+built successfully and Trivy 0.70.0 with freshly downloaded vulnerability/Java
+DBs returned exit 0, zero HIGH/CRITICAL. The ES scan retains its existing
+133-package PURL namespace coverage warning; this is not a claim of complete OS
+coverage. The same ES Dockerfile's native arm64 smoke passed the checks above;
+CI runs that smoke on native amd64. The server's isolated non-root smoke verified
+Pebble absence, Node 24.14.0, Python 3.11.17, Poppler and LibreOffice. All 45
+script tests, forbidden-file check and both Compose config checks passed; the
+read-only reviewer found no blocking issue. Raw local evidence is ignored under
+`reports/security-20261010/`. Remote results are the checks on each PR's current
+head; no local scan grants release approval.
