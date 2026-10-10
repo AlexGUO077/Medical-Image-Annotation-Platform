@@ -75,4 +75,7 @@ jobs:
           fi
       - name: Stop synthetic services
         if: always()
-        run: docker compose --env-file .env.local down --volumes
+        run: |
+          if [ -f .env.local ]; then
+            docker compose --env-file .env.local down --volumes
+          fi
