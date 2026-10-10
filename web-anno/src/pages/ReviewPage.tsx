@@ -1,7 +1,8 @@
 import { CaseDetails, WorkspaceLayout } from '../viewer/WorkspaceLayout';
 import { ViewerToolbar, SeriesNavigation } from '../viewer/ViewerToolbar';
 import { isTextInput, objectColor } from '../viewer/workspaceConfig';
-import { Alert,Button,Checkbox,Empty,Input,Modal,Select,Space,Spin,Tabs } from 'antd';
+import { Alert,Button,Checkbox,Empty,Input,Modal,Select,Space,Tabs } from 'antd';
+import { ViewerPageState } from '../viewer/ViewerPageState';
 import { useEffect,useRef,useState } from 'react';
 import { Link,useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
@@ -23,8 +24,8 @@ export function ReviewPage({session,onExpired}:{session:Session;onExpired?():voi
   reviewsApi.read(caseId,session.token,controller.signal).then(value=>{if(!controller.signal.aborted)setData(value);}).catch(e=>{if(!controller.signal.aborted){setError(errorText(e));if(e instanceof ViewerRequestError&&e.status===401)onExpired?.();}});
   return()=>{controller.abort();viewerApi.clearPreloads(session.token,caseId);};
  },[caseId,session.token,retry]);
- if(error)return <Alert type="error" message={error} action={<Button onClick={()=>setRetry(n=>n+1)}>重试读取审核台</Button>}/>;
- if(!data||data.case.id!==caseId)return <Spin tip="加载审核台"><div/></Spin>;
+ if(error)return <ViewerPageState><Alert type="error" message={error} action={<Button onClick={()=>setRetry(n=>n+1)}>重试读取审核台</Button>}/></ViewerPageState>;
+ if(!data||data.case.id!==caseId)return <ViewerPageState loading="加载审核台"/>;
  return <ReviewContent key={`${caseId}:${session.token}:${retry}`} data={data} session={session} onExpired={onExpired} onReload={()=>setRetry(n=>n+1)}/>;
 }
 function ReviewContent({data,session,onExpired,onReload}:{data:ReviewData;session:Session;onExpired?():void;onReload():void}){

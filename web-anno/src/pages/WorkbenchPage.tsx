@@ -1,6 +1,6 @@
 import { Alert, Button, Empty, Space, Spin, Tabs, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate,useParams } from 'react-router-dom';
+import { Link,useNavigate,useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
 import { ViewerRequestError, viewerApi, type FrameGeometry, type FrameWindow, type Series, type Workbench } from '../viewer/api';
 import { AnnotationLayer } from '../annotations/AnnotationLayer';
@@ -20,6 +20,7 @@ import type { TaxonomyTreeResponse } from '../taxonomy/types';
 import { CaseDetails, WorkspaceLayout } from '../viewer/WorkspaceLayout';
 import { SeriesNavigation, ViewerToolbar } from '../viewer/ViewerToolbar';
 import { ViewerIcon } from '../viewer/ViewerIcon';
+import { ViewerPageState } from '../viewer/ViewerPageState';
 import { isTextInput, objectColor } from '../viewer/workspaceConfig';
 const message = (e: unknown) => e instanceof Error ? e.message : '工作台加载失败';
 export function FramePane({ token, data, series, frame, window, layer, onGeometry, onExpired, windowDrag, onWindow, libraryVersion, onDenied }: { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void;libraryVersion?:number;onDenied?(e:unknown):void }) {
@@ -57,14 +58,17 @@ export function FramePane({ token, data, series, frame, window, layer, onGeometr
   </div>;
 }
 export function WorkbenchPage({ session,onExpired }: { session:Session;onExpired?:()=>void }) {
-  const {caseId=''}=useParams(); const [data,setData]=useState<Workbench>(),[error,setError]=useState<string>();
+  const {caseId=''}=useParams(); const [data,setData]=useState<Workbench>(),[error,setError]=useState<string>(),[retry,setRetry]=useState(0);
   useEffect(()=>{
     const controller=new AbortController();setData(undefined);setError(undefined);
-    viewerApi.workbench(caseId,session.token,controller.signal).then(value=>{if(controller.signal.aborted)return;setData(value);})
-      .catch(e=>{if(!controller.signal.aborted){setError(message(e));if(e instanceof ViewerRequestError&&e.status===401)onExpired?.();}});return ()=>{controller.abort();viewerApi.clearPreloads(session.token,caseId);};
-  },[caseId,session.token]);
-  if(error)return <Alert type="error" message={error}/>;
-  if(!data || data.case.id !== caseId)return <Spin tip="加载工作台"><div/></Spin>;
+    const timeout=setTimeout(()=>{controller.abort();setError('工作台加载超时，请检查网络后重试');},30_000);
+    viewerApi.workbench(caseId,session.token,controller.signal).then(value=>{if(controller.signal.aborted)return;if(value?.case?.id!==caseId)throw new Error('工作台返回的病例与当前任务不一致，请重试或返回任务列表');setData(value);})
+      .catch(e=>{if(!controller.signal.aborted){setError(message(e));if(e instanceof ViewerRequestError&&e.status===401)onExpired?.();}})
+      .finally(()=>clearTimeout(timeout));
+    return ()=>{clearTimeout(timeout);controller.abort();viewerApi.clearPreloads(session.token,caseId);};
+  },[caseId,session.token,retry]);
+  if(error)return <ViewerPageState><Alert type="error" showIcon message={error} action={<Space wrap><Button onClick={()=>setRetry(n=>n+1)}>重试加载</Button><Link to="/tasks">返回任务列表</Link></Space>}/></ViewerPageState>;
+  if(!data || data.case.id !== caseId)return <ViewerPageState loading="加载工作台"/>;
   return <WorkbenchContent key={`${caseId}:${session.token}`} session={session} data={data} onExpired={onExpired}/>;
 }
 function WorkbenchContent({session,data,onExpired}:{session:Session;data:Workbench;onExpired?:()=>void}){

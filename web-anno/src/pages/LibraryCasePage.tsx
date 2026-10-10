@@ -1,7 +1,8 @@
 import { CaseDetails, WorkspaceLayout } from '../viewer/WorkspaceLayout';
 import { ViewerToolbar, SeriesNavigation } from '../viewer/ViewerToolbar';
 import { isTextInput, objectColor } from '../viewer/workspaceConfig';
-import { Alert,Button,Checkbox,Empty,Space,Spin,Tabs } from 'antd';
+import { Alert,Button,Checkbox,Empty,Space,Tabs } from 'antd';
+import { ViewerPageState } from '../viewer/ViewerPageState';
 import { useEffect,useState } from 'react';
 import { Link,useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
@@ -19,8 +20,8 @@ export function LibraryCasePage({session,onExpired}:{session:Session;onExpired?(
   return()=>{stopped=true;controller.abort();clearInterval(interval);globalThis.removeEventListener('focus',focus);viewerApi.clearPreloads(session.token,caseId);};
  },[caseId,session.token,retry]);
  const denied=()=>{setData(undefined);setError('影像或附件已不可访问，请重新打开病例');viewerApi.clearPreloads(session.token,caseId);};
- if(error)return <Alert type="error" message={error} action={<Space><Button onClick={()=>setRetry(n=>n+1)}>重新打开病例</Button><Link to="/library">返回病例库</Link></Space>}/>;
- if(!data||data.case.id!==caseId)return <Spin tip="读取已发布病例"><div/></Spin>;
+ if(error)return <ViewerPageState><Alert type="error" message={error} action={<Space><Button onClick={()=>setRetry(n=>n+1)}>重新打开病例</Button><Link to="/library">返回病例库</Link></Space>}/></ViewerPageState>;
+ if(!data||data.case.id!==caseId)return <ViewerPageState loading="读取已发布病例"/>;
  return <LibraryContent key={`${caseId}:${data.version}:${retry}`} data={data} session={session} onExpired={onExpired} onDenied={denied}/>;
 }
 function LibraryContent({data,session,onExpired,onDenied}:{data:LibraryData;session:Session;onExpired?():void;onDenied():void}){
