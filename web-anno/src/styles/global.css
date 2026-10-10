@@ -295,6 +295,15 @@ body {
 .viewport-actions .ant-btn { height: 32px; width: 32px; padding: 5px; color: var(--viewer-action); }
 .viewport-overlay { position: absolute; z-index: 2; pointer-events: none; color: var(--viewer-neutral); font-size: 12px; text-shadow: 0 1px 3px #000; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .viewport-overlay-bottom { bottom: 12px; left: 14px; right: 14px; display: flex; justify-content: space-between; }
+/* Drawing guidance stays inside the viewport; it never reduces the image area. */
+.annotation-drawing-hint { position: absolute; z-index: 4; bottom: 40px; left: 12px; right: 50px; width: fit-content; max-width: calc(100% - 62px); padding: 8px 10px; border: 1px solid var(--viewer-border); border-radius: 4px; background: var(--viewer-panel); color: var(--viewer-muted); font-size: 12px; box-shadow: 0 4px 16px #0006; }
+.annotation-drawing-hint > div { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.annotation-drawing-hint button, .annotation-context-menu button { border: 0; border-radius: 3px; background: transparent; color: var(--viewer-action); padding: 5px 8px; cursor: pointer; font: inherit; }
+.annotation-drawing-hint button:hover:not(:disabled), .annotation-context-menu button:hover:not(:disabled) { background: var(--viewer-hover); }
+.annotation-drawing-hint button:disabled, .annotation-context-menu button:disabled { opacity: .4; cursor: not-allowed; }
+.annotation-context-menu { position: absolute; z-index: 6; width: 156px; padding: 6px; border: 1px solid var(--viewer-border); border-radius: 4px; background: var(--viewer-panel); box-shadow: 0 4px 16px #0008; font-size: 13px; }
+.annotation-context-menu > span { display: block; padding: 5px 8px; color: var(--viewer-muted); font-size: 12px; }
+.annotation-context-menu button { width: 100%; text-align: left; }
 .viewport-feedback { position: absolute; z-index: 4; inset: 54px 16px auto; }
 .viewer-status { display: flex; justify-content: space-between; gap: 8px; min-height: 24px; padding: 3px 10px; color: var(--viewer-muted); background: var(--viewer-panel); font-size: 12px; flex: 0 0 auto; }
 .workspace-size-hint { position: absolute; left: 48px; bottom: 28px; z-index: 5; padding: 3px 8px; font-size: 11px; color: #ffd166; background: var(--viewer-header); pointer-events: none; }

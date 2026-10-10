@@ -1,5 +1,5 @@
 import { Alert,Button,Checkbox,InputNumber,Modal,Radio,Select,Space,Tooltip,Typography } from 'antd';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnnotationSections } from './AnnotationSections';
 import { ViewerIcon } from '../viewer/ViewerIcon';
 import { objectColor } from '../viewer/workspaceConfig';
@@ -12,6 +12,8 @@ export const toolNames={point:'点',box:'矩形',polygon:'多边形',brush:'画�
 interface Props {colorIds?:string[];annotations:Annotation[];selected?:string;dictionary?:TaxonomyTreeResponse;system:string;series:Series[];frame:number;disabled:boolean;hidden:Set<string>;locked:Set<string>;onSelect(id:string):void;onChange(items:Annotation[]):void;onHidden(id:string):void;onLocked(id:string):void;onFrame(frame:number):void;}
 export function AnnotationPanel(p:Props){
  const [batch,setBatch]=useState<string[]>([]),a=p.annotations.find(a=>a.id===p.selected);
+ const list=useRef<HTMLUListElement>(null);
+ useEffect(()=>{list.current?.querySelector('.is-selected')?.scrollIntoView?.({block:'nearest'});},[p.selected]);
  const index=(id:string)=>(p.colorIds??p.annotations.map(a=>a.id)).indexOf(id);
  const parts=p.dictionary?.tree.find(root=>root.name===roots[p.system])?.children??[],signs=p.dictionary?.sign_tags.filter(s=>s.system_code===p.system)??[];
  const locked=!!a&&p.locked.has(a.id),disabled=p.disabled||locked;
@@ -30,9 +32,9 @@ export function AnnotationPanel(p:Props){
  return <div className="annotation-panel">
  <div className="object-list-toolbar"><span>{p.annotations.length} 个对象</span><Button size="small" disabled={p.disabled||!batch.some(id=>!p.locked.has(id))} onClick={()=>Modal.confirm({title:'删除所选未锁定对象？',onOk:()=>{p.onChange(p.annotations.filter(a=>!batch.includes(a.id)||p.locked.has(a.id)));setBatch([]);}})}>批量删除</Button></div>
  <AnnotationSections list={<>{!p.annotations.length&&<p className="panel-empty">选择工具并在影像上绘制对象。</p>}
- <ul className="annotation-object-list">{p.annotations.map(item=><li key={item.id} className={`annotation-object${item.id===p.selected?' is-selected':''}`} style={{borderLeftColor:objectColor(index(item.id))}}>
+ <ul ref={list} className="annotation-object-list">{p.annotations.map(item=><li key={item.id} className={`annotation-object${item.id===p.selected?' is-selected':''}`} style={{borderLeftColor:objectColor(index(item.id))}}>
  <div className="object-row"><Checkbox disabled={p.disabled} aria-label={`选择对象 ${index(item.id)+1}`} checked={batch.includes(item.id)} onChange={e=>setBatch(old=>e.target.checked?[...old,item.id]:old.filter(id=>id!==item.id))}/>
- <button className="object-select" type="button" onClick={()=>p.onSelect(item.id)}><ViewerIcon name={item.tool}/><b>对象 {index(item.id)+1} · {toolNames[item.tool]}</b></button>
+ <button className="object-select" type="button" aria-pressed={item.id===p.selected} onClick={()=>p.onSelect(item.id)}><ViewerIcon name={item.tool}/><b>对象 {index(item.id)+1} · {toolNames[item.tool]}</b></button>
  <Tooltip title={p.hidden.has(item.id)?'显示对象':'隐藏对象'}><Button type="text" size="small" aria-label={`${p.hidden.has(item.id)?'显示':'隐藏'}对象 ${index(item.id)+1}`} icon={<ViewerIcon name={p.hidden.has(item.id)?'hidden':'eye'}/>} onClick={()=>p.onHidden(item.id)}/></Tooltip>
  <Tooltip title={p.locked.has(item.id)?'对象已锁定':'锁定对象'}><Button type="text" size="small" disabled={p.disabled} aria-label={`${p.locked.has(item.id)?'解锁':'锁定'}对象 ${index(item.id)+1}`} icon={<ViewerIcon name={p.locked.has(item.id)?'lock':'unlock'}/>} onClick={()=>p.onLocked(item.id)}/></Tooltip></div>
  <button className="object-summary" type="button" onClick={()=>p.onSelect(item.id)}>{parts.find(n=>n.id===item.part_id)?.name??'部位待填写'} · 第 {item.frame_start+1}–{item.frame_end+1} 帧<span>{signs.filter(s=>item.sign_tag_ids.includes(s.id)).map(s=>s.name).join('、')||'征象待填写'}</span></button>
