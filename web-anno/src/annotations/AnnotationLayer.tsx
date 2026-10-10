@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isTextInput, objectColor } from '../viewer/workspaceConfig';
 import type { mountFrame } from '../viewer/cornerstone';
 import type { Annotation, Geometry } from './types';
 import type { RleMask } from './rle';
@@ -6,11 +7,10 @@ import { decodeMaskInto } from './rle';
 import { brushStroke, clampPoint, frameMask, inside, measurement, polygonValid, updateMask, type DrawingTool, type Point } from './drawing';
 type Controls=Awaited<ReturnType<typeof mountFrame>>;
 interface Props {
- controls:Controls; annotations:Annotation[]; comparison?:Annotation[]; frame:number; selected?:string; hidden:Set<string>; locked:Set<string>;
+ colorIds?:string[]; opacity?:number; controls:Controls; annotations:Annotation[]; comparison?:Annotation[]; frame:number; selected?:string; hidden:Set<string>; locked:Set<string>;
  tool:DrawingTool; diameter:number; erase:boolean; freehand:boolean; disabled:boolean;
  onSelect(id:string):void; onCreate(tool:Annotation['tool'],geometry:Geometry):void; onChange(id:string,geometry:Geometry):void;
 }
-const colors=['#ffe066','#69db7c','#74c0fc','#faa2c1','#b197fc'];
 function vertices(a:Annotation):Point[]{
  const g=a.geometry;
  if(a.tool==='point')return [[(g as {x:number}).x,(g as {y:number}).y]];
@@ -29,7 +29,7 @@ export function AnnotationLayer(p:Props){
  const finishPolygon=()=>{if(!p.disabled&&polygonValid(polygon)){p.onCreate('polygon',{points:polygon});setPolygon([]);}};
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
-   if((e.target as HTMLElement).closest('input,textarea,select,[role=combobox],[contenteditable=true]'))return;
+   if(isTextInput(e.target))return;
    if(e.key==='Escape'){gesture.current=undefined;setPolygon([]);redraw(n=>n+1);}
    if(p.tool==='polygon'&&e.key==='Enter'){e.preventDefault();finishPolygon();}
    if(p.tool==='polygon'&&e.key==='Backspace'){e.preventDefault();setPolygon(old=>old.slice(0,-1));}
@@ -41,24 +41,28 @@ export function AnnotationLayer(p:Props){
   const project=(point:Point)=>p.controls.toCanvas(...point);
   const path=(points:Point[],close=false)=>{if(!points.length)return;ctx.beginPath();points.forEach((point,i)=>{const q=project(point);if(i)ctx.lineTo(...q);else ctx.moveTo(...q);});if(close)ctx.closePath();ctx.stroke();};
   const draw=(a:Annotation,color:string)=>{
+   let labelPoint=vertices(a)[0];
    ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=a.id===p.selected?3:2;ctx.shadowColor='#000';ctx.shadowBlur=2;
    if(a.tool==='brush'){
     const mask=frameMask(a,p.frame);if(!mask)return;if(mask.width!==p.controls.geometry.width||mask.height!==p.controls.geometry.height){invalidMask=true;return;}const pixels=decodeMaskInto(mask,new Uint8Array(p.controls.geometry.width*p.controls.geometry.height));
+    const first=pixels.findIndex(value=>value>0);if(first>=0)labelPoint=[first%mask.width,Math.floor(first/mask.width)];
     const off=document.createElement('canvas');off.width=mask.width;off.height=mask.height;const c=off.getContext('2d')!;const image=c.createImageData(mask.width,mask.height);
-    pixels.forEach((value,i)=>{if(value){image.data[i*4]=255;image.data[i*4+1]=220;image.data[i*4+2]=80;image.data[i*4+3]=85;}});c.putImageData(image,0,0);
+    pixels.forEach((value,i)=>{if(value){image.data[i*4]=parseInt(color.slice(1,3),16);image.data[i*4+1]=parseInt(color.slice(3,5),16);image.data[i*4+2]=parseInt(color.slice(5,7),16);image.data[i*4+3]=85;}});c.putImageData(image,0,0);
     const o=project([0,0]),x=project([1,0]),y=project([0,1]);ctx.save();ctx.transform(x[0]-o[0],x[1]-o[1],y[0]-o[0],y[1]-o[1],o[0],o[1]);ctx.drawImage(off,0,0);ctx.restore();
    }else if(a.tool==='point'){const q=project(vertices(a)[0]);ctx.beginPath();ctx.arc(q[0],q[1],5,0,Math.PI*2);ctx.stroke();}
    else path(vertices(a),true);
+   const number=ids.indexOf(a.id)+1;
+   if(labelPoint&&number>0){const q=project(labelPoint);ctx.save();ctx.shadowBlur=0;ctx.font='12px sans-serif';ctx.fillStyle='#08101de6';ctx.fillRect(q[0]-2,q[1]-20,ctx.measureText(String(number)).width+10,17);ctx.fillStyle=color;ctx.fillText(String(number),q[0]+3,q[1]-7);ctx.restore();}
    if(a.id===p.selected&&!p.locked.has(a.id)){ctx.fillStyle='#fff';for(const point of vertices(a)){const q=project(point);ctx.fillRect(q[0]-3,q[1]-3,6,6);}}
   };
-  const ids=[...new Set([...p.annotations,...(p.comparison??[])].map(a=>a.id))];
-  const color=(id:string)=>colors[ids.indexOf(id)%colors.length];
+  const ids=p.colorIds??[...new Set([...p.annotations,...(p.comparison??[])].map(a=>a.id))];
+  const color=(id:string)=>objectColor(ids.indexOf(id));
   ctx.save();ctx.globalAlpha=0.45;ctx.setLineDash([6,4]);
   (p.comparison??[]).filter(a=>!p.hidden.has(a.id)&&p.frame>=a.frame_start&&p.frame<=a.frame_end).forEach(a=>draw(a,color(a.id)));
   ctx.restore();
   visible.forEach(a=>draw(gesture.current?.id===a.id&&gesture.current.geometry?{...a,geometry:gesture.current.geometry}:a,color(a.id)));
   const g=gesture.current;
-  if(g?.geometry&&!g.id&&['point','box','brush','polygon'].includes(p.tool))draw({id:'preview',tool:p.tool as Annotation['tool'],geometry:g.geometry,key_frame_index:p.frame} as Annotation,'#fff');
+  if(g?.geometry&&!g.id&&['point','box','brush','polygon'].includes(p.tool))draw({id:'preview',tool:p.tool as Annotation['tool'],geometry:g.geometry,key_frame_index:p.frame} as Annotation,'#FFFFFF');
   ctx.strokeStyle='#fff';ctx.lineWidth=2;path(polygon);if(polygon.length&&cursor)path([polygon.at(-1)!,cursor]);
   if(measure){path(measure);const mm=measurement(...measure,p.controls.geometry);const q=project(measure[1]);ctx.fillStyle='#fff';ctx.font='14px sans-serif';ctx.fillText(mm===undefined?'未标定':`${mm.toFixed(2)} mm`,q[0]+8,q[1]-8);}
   if(cursor&&p.tool==='brush'&&p.controls.geometry.row_spacing&&p.controls.geometry.column_spacing){const q=project(cursor),x=project([cursor[0]+p.diameter/2/p.controls.geometry.column_spacing,cursor[1]]),y=project([cursor[0],cursor[1]+p.diameter/2/p.controls.geometry.row_spacing]);ctx.strokeStyle=p.erase?'#ff8787':'#fff';ctx.beginPath();ctx.ellipse(q[0],q[1],Math.hypot(x[0]-q[0],x[1]-q[1]),Math.hypot(y[0]-q[0],y[1]-q[1]),0,0,Math.PI*2);ctx.stroke();}
@@ -70,7 +74,7 @@ export function AnnotationLayer(p:Props){
   const points=vertices(a),xs=points.map(v=>v[0]),ys=points.map(v=>v[1]);const q=p.controls.toCanvas(...point);
   return points.some(v=>{const c=p.controls.toCanvas(...v);return Math.hypot(c[0]-q[0],c[1]-q[1])<9;})||(point[0]>=Math.min(...xs)&&point[0]<=Math.max(...xs)&&point[1]>=Math.min(...ys)&&point[1]<=Math.max(...ys));
  };
- return <><canvas ref={canvas} aria-label="标注绘图层" style={{position:'absolute',inset:0,width:'100%',height:'100%',touchAction:'none',pointerEvents:p.disabled?'none':'auto'}}
+ return <><canvas ref={canvas} aria-label="标注绘图层" style={{position:'absolute',inset:0,width:'100%',height:'100%',touchAction:'none',opacity:p.opacity??1,pointerEvents:p.disabled?'none':'auto'}}
   onContextMenu={e=>e.preventDefault()} onPointerDown={e=>{
    if(e.button!==0||p.disabled)return;if((p.tool==='brush'||p.tool==='measure')&&(!p.controls.geometry.row_spacing||!p.controls.geometry.column_spacing))return;const q=point(e);if(p.tool!=='pan'&&!inside(q,p.controls.geometry))return;
    canvas.current?.setPointerCapture(e.pointerId);

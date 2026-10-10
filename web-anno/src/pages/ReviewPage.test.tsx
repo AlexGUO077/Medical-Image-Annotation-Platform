@@ -16,7 +16,7 @@ async function checks(failed=false){for(const [i,name] of ['脱敏是否合格',
  fireEvent.mouseDown(screen.getByRole('combobox',{name}));const options=await screen.findAllByTitle(failed&&i===2?'不合格 / 缺失 / 错误':'合格 / 完整 / 正确');fireEvent.click(options.filter(e=>e.classList.contains('ant-select-item-option')).at(-1)!);
 }}
 it('keeps annotations locked, requires checks and confirmation, then disables new frame access',async()=>{
- show();await screen.findByText('审核台 · SYN-REVIEW');expect(screen.getByLabelText('只读影像')).toHaveTextContent('锁定对象 1');
+ show();await screen.findByRole('button',{name:'查看病例详情'});expect(screen.getByLabelText('只读影像')).toHaveTextContent('锁定对象 1');
  expect(screen.getByRole('button',{name:'审核通过'})).toBeDisabled();expect(screen.queryByRole('button',{name:'提交审核'})).not.toBeInTheDocument();
  await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));expect(reviewsApi.decide).not.toHaveBeenCalled();expect(await screen.findByText(/通过后病例立即发布/)).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'确认发布'}));expect(await screen.findByText('审核通过，当前版本已发布并锁定为金标准')).toBeInTheDocument();
@@ -25,26 +25,26 @@ it('keeps annotations locked, requires checks and confirmation, then disables ne
 });
 it('blocks a veto failure from passing and sends the object comment when returning',async()=>{
  vi.mocked(reviewsApi.decide).mockResolvedValue({review_id:'review',case_id:'case',version:2,status:'标注中',is_gold:false,reannotation:{assignment_id:'assignment',assignee_id:'author',reason:null}});
- show();await screen.findByText('审核台 · SYN-REVIEW');await checks(true);expect(screen.getByRole('button',{name:'审核通过'})).toBeDisabled();expect(screen.getByRole('button',{name:'打回重标'})).toBeDisabled();
+ show();await screen.findByRole('button',{name:'查看病例详情'});await checks(true);expect(screen.getByRole('button',{name:'审核通过'})).toBeDisabled();expect(screen.getByRole('button',{name:'打回重标'})).toBeDisabled();
  fireEvent.change(screen.getByLabelText('对象 1 审核意见'),{target:{value:'请调整轮廓。'}});fireEvent.click(screen.getByRole('button',{name:'打回重标'}));fireEvent.click(await screen.findByRole('button',{name:'确认打回'}));
  await screen.findByText('已打回，原标注人可继续修改');expect(vi.mocked(reviewsApi.decide).mock.calls[0][5][1]).toEqual({kind:'object',annotation_id:'object',text:'请调整轮廓。'});
 });
 it('loads the previous outline without replacing the version being reviewed',async()=>{
  vi.mocked(reviewsApi.read).mockImplementation(async(_id,_token,_signal,version)=>({...structuredClone(data),version:version??2}));
- show();await screen.findByText('审核台 · SYN-REVIEW');fireEvent.click(screen.getByRole('button',{name:'叠加上一版本'}));await screen.findByText('当前版本：实线；历史版本 1：同色虚线与低透明度');
+ show();await screen.findByRole('button',{name:'查看病例详情'});fireEvent.click(screen.getByRole('button',{name:'叠加上一版本'}));await screen.findByText('当前版本：实线；历史版本 1：同色虚线与低透明度');
  expect(screen.getByLabelText('只读影像')).toHaveTextContent('历史对象 1');await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
  await waitFor(()=>expect(reviewsApi.decide).toHaveBeenCalled());expect(vi.mocked(reviewsApi.decide).mock.calls[0][3]).toBe(2);
 });
 it('shows a conflict without success, and clears the review on loss of authority',async()=>{
  vi.mocked(reviewsApi.decide).mockRejectedValue(new ViewerRequestError(403,'审核资格已撤销'));
- show();await screen.findByText('审核台 · SYN-REVIEW');await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
+ show();await screen.findByRole('button',{name:'查看病例详情'});await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
  expect(await screen.findByText('审核资格已撤销')).toBeInTheDocument();expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();expect(screen.queryByText('审核通过，当前版本已发布并锁定为金标准')).not.toBeInTheDocument();
 });
 
 it('submits the pinned quality assignment and clears the image immediately after offline',async()=>{
  vi.mocked(reviewsApi.read).mockResolvedValue({...structuredClone(data),case:{...data.case,status:'已发布'},review_kind:'spotcheck',assignment_id:'quality-id',review_version:2,started_at:'2026-10-02T13:00:00Z'});
  vi.mocked(reviewsApi.decide).mockResolvedValue({review_id:'quality-review',case_id:'case',version:2,status:'已下线',is_gold:true,reannotation:null,review_kind:'spotcheck',assigned_count:1,pending_count:8});
- show();await screen.findByText('审核台 · SYN-REVIEW');await checks(true);
+ show();await screen.findByRole('button',{name:'查看病例详情'});await checks(true);
  fireEvent.change(screen.getByLabelText('总体审核意见'),{target:{value:'请修正边界。'}});fireEvent.click(screen.getByRole('button',{name:'打回并下线'}));
  expect(await screen.findByText(/同时触发本轮同标注人/)).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'确认打回'}));
  await screen.findByText('抽检未通过，病例已下线');expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();
@@ -54,6 +54,6 @@ it('submits the pinned quality assignment and clears the image immediately after
 it('clears the published quality view when a decision response cannot be trusted',async()=>{
  vi.mocked(reviewsApi.read).mockResolvedValue({...structuredClone(data),case:{...data.case,status:'已发布'},review_kind:'spotcheck',assignment_id:'quality-id',review_version:2,started_at:'2026-10-02T13:00:00Z'});
  vi.mocked(reviewsApi.decide).mockRejectedValue(new ViewerRequestError(502,'审核响应无效，请返回任务列表核对'));
- show();await screen.findByText('审核台 · SYN-REVIEW');await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
+ show();await screen.findByRole('button',{name:'查看病例详情'});await checks();fireEvent.click(screen.getByRole('button',{name:'审核通过'}));fireEvent.click(await screen.findByRole('button',{name:'确认发布'}));
  await screen.findByText('审核响应无效，请返回任务列表核对');expect(screen.queryByLabelText('只读影像')).not.toBeInTheDocument();
 });

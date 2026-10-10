@@ -1,7 +1,7 @@
 import type { FrameGeometry } from '../viewer/api';
 import { decodeMaskInto, encodeMask, type RleMask } from './rle';
 import type { Annotation, Geometry } from './types';
-export type DrawingTool = Annotation['tool']|'select'|'pan'|'measure';
+export type DrawingTool = Annotation['tool']|'select'|'pan'|'zoom'|'measure';
 export type Point = [number,number];
 export function inside(point:Point,size:FrameGeometry){return point.every(Number.isFinite)&&point[0]>=0&&point[1]>=0&&point[0]<size.width&&point[1]<size.height;}
 export function clampPoint(p:Point,size:FrameGeometry):Point{return [Math.max(0,Math.min(size.width-1e-6,p[0])),Math.max(0,Math.min(size.height-1e-6,p[1]))];}

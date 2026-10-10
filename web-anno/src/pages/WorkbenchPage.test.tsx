@@ -23,11 +23,12 @@ it('loads assigned data, changes frame/window, and aborts old frame reads', asyn
   fireEvent.click(screen.getByRole('button', { name: '下一帧' }));
   await waitFor(() => expect(mountFrame).toHaveBeenLastCalledWith(expect.any(HTMLDivElement), session.token, 'case', data.series[0], 1, { center: 40, width: 400 }, expect.any(AbortSignal)));
   expect(oldSignal.aborted).toBe(true);
-  fireEvent.change(screen.getByRole('spinbutton', { name: '窗位' }), { target: { value: '50' } });
+  fireEvent.click(screen.getByRole('button', { name: '窗设置' }));
+  fireEvent.change(await screen.findByRole('spinbutton', { name: '窗位' }), { target: { value: '50' } });
   fireEvent.click(screen.getByRole('button', { name: '应用窗设置' }));
   await waitFor(() => expect(mountFrame).toHaveBeenLastCalledWith(expect.anything(), session.token, 'case', data.series[0], 1, { center: 50, width: 400 }, expect.any(AbortSignal)));
   fireEvent.click(screen.getByRole('button', { name: '影像专注模式' }));
-  expect(screen.queryByText('合成报告句子')).not.toBeInTheDocument();
+  expect(screen.getByText('合成报告句子')).not.toBeVisible();
   const activeSignal = vi.mocked(mountFrame).mock.calls.at(-1)![6];
   view.unmount(); expect(activeSignal.aborted).toBe(true);
 });

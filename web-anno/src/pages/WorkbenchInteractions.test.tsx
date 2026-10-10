@@ -1,0 +1,48 @@
+import {useRef,useState} from 'react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {MemoryRouter,Route,Routes} from 'react-router-dom';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {WorkbenchPage} from './WorkbenchPage';
+import {viewerApi} from '../viewer/api';
+import {taxonomyApi} from '../taxonomy/api';
+import {mountFrame} from '../viewer/cornerstone';
+import {annotations,data} from '../../../test/fixtures/synthetic/viewer-interactions';
+vi.mock('../annotations/useAnnotations',()=>({useAnnotations:()=>{
+ const [items,setItems]=useState(annotations);
+ const engine=useRef({change:setItems,saveNow:vi.fn()});
+ return {state:{initialized:true,checking:false,status:'saved',version:2,annotations:items,dirty:false},engine,editable:true};
+}}));
+vi.mock('../viewer/cornerstone',()=>({mountFrame:vi.fn()}));
+const controls={geometry:{width:640,height:480,row_spacing:1,column_spacing:1},toCanvas:(x:number,y:number):[number,number]=>[x,y],toImage:(x:number,y:number):[number,number]=>[x,y],subscribe:()=>()=>{},zoom:vi.fn(),pan:vi.fn(),reset:vi.fn(),dispose:vi.fn()};
+beforeEach(()=>{vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(null);vi.spyOn(viewerApi,'workbench').mockResolvedValue(data);vi.spyOn(viewerApi,'clearPreloads').mockImplementation(()=>{});vi.spyOn(taxonomyApi,'tree').mockResolvedValue({tree:[],sign_tags:[]});vi.mocked(mountFrame).mockResolvedValue(controls);});
+afterEach(()=>vi.restoreAllMocks());
+const show=()=>render(<MemoryRouter initialEntries={['/workbench/case']}><Routes><Route path="/workbench/:caseId" element={<WorkbenchPage session={{token:'synthetic',role:'member',quals:{}}}/>}/></Routes></MemoryRouter>);
+it('keeps object identity across delete/undo and prevents locked or text-focused deletion',async()=>{
+ const view=show();await screen.findByRole('button',{name:'对象 1 · 点'});
+ fireEvent.click(screen.getByRole('button',{name:'对象 1 · 点'}));
+ fireEvent.click(screen.getByRole('button',{name:'锁定对象 1'}));
+ const workbench=view.container.querySelector('.workbench')!;
+ fireEvent.keyDown(workbench,{key:'Delete'});
+ expect(screen.getByRole('button',{name:'对象 1 · 点'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'解锁对象 1'}));
+ fireEvent.keyDown(screen.getByRole('spinbutton',{name:'标注结束帧'}),{key:'Backspace'});
+ expect(screen.getByRole('button',{name:'对象 1 · 点'})).toBeInTheDocument();
+ fireEvent.keyDown(workbench,{key:'Delete'});
+ expect(screen.queryByRole('button',{name:'对象 1 · 点'})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'对象 2 · 点'})).toBeInTheDocument();
+ fireEvent.keyDown(workbench,{key:'z',ctrlKey:true});
+ expect(screen.getByRole('button',{name:'对象 1 · 点'})).toBeInTheDocument();
+ fireEvent.keyDown(workbench,{key:'z'});
+ expect(screen.getByRole('button',{name:'缩放'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(screen.getByRole('button',{name:'影像专注模式'}));fireEvent.keyDown(workbench,{key:'Escape'});
+ expect(screen.getByRole('button',{name:'影像专注模式'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'拖拽调窗'})).toHaveAttribute('aria-pressed','true');
+});
+it('selects linked objects from the report and jumps to their representative frame',async()=>{
+ show();await screen.findByRole('button',{name:'对象 2 · 点'});
+ fireEvent.click(within(screen.getByRole('complementary',{name:'病例与报告'})).getByRole('button',{name:'对象 2'}));
+ await waitFor(()=>expect(mountFrame).toHaveBeenLastCalledWith(expect.anything(),'synthetic','case',data.series[0],1,data.series[0].default_window,expect.any(AbortSignal)));
+ expect(screen.getByRole('spinbutton',{name:'标注代表帧'})).toHaveValue('2');
+ fireEvent.click(screen.getByRole('button',{name:/\[0\] 合成报告第一句/}));
+ expect(screen.getByText('关联句：1、0')).toBeInTheDocument();
+});

@@ -19,8 +19,18 @@ export const darkTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {
     ...sharedTokens,
-    colorBgBase: '#101418',
-    colorTextBase: '#F5F7FA',
-    colorBorder: '#30363D',
+    colorPrimary: '#58CDE0',
+    colorInfo: '#58CDE0',
+    colorBgBase: '#050911',
+    colorBgContainer: '#0D172B',
+    colorBgElevated: '#142440',
+    colorTextBase: '#EDF4FF',
+    colorText: '#E4ECF7',
+    colorTextSecondary: '#A4BAD4',
+    colorBorder: '#415877',
+    controlHeight: 36,
   },
 };
+
+// UI requirements §6.3: identity colors, independent of clinical or workflow status.
+export const annotationColors = ['#22D3EE', '#FACC15', '#FB7185', '#A78BFA', '#A3E635', '#FB923C', '#60A5FA', '#F472B6', '#2DD4BF', '#D9F99D', '#C084FC', '#FDBA74'];
