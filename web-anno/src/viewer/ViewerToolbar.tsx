@@ -34,26 +34,35 @@ export function ViewerToolbar(p: {
     </div>
     {p.drawing && <div className="viewer-tool-group"><ToolButton label="撤销" icon="undo" shortcut="⌘ / Ctrl + Z" disabled={!p.editable || !p.canUndo || p.disabled} onClick={() => p.onUndo?.()} /><ToolButton label="重做" icon="redo" shortcut="⌘ / Ctrl + Shift + Z" disabled={!p.editable || !p.canRedo || p.disabled} onClick={() => p.onRedo?.()} /></div>}
     <Tooltip title="快捷键帮助"><Button type="text" aria-label="快捷键帮助" icon={<ViewerIcon name="help" />} onClick={() => setHelp(true)} /></Tooltip>
+    {p.drawing && (p.tool === 'brush' || p.tool === 'polygon') && <Popover key={p.tool} trigger="click" title={p.tool === 'brush' ? '画笔设置' : '多边形设置'} content={<div className="viewer-tool-options">{p.tool === 'brush' ? <><label>画笔直径（mm）<InputNumber aria-label="画笔直径" min={0.1} value={p.diameter} disabled={!p.editable} onChange={value => { if (value && Number.isFinite(value)) p.onDiameter?.(value); }} /></label><Checkbox disabled={!p.editable} checked={p.erase} onChange={e => p.onErase?.(e.target.checked)}>橡皮擦</Checkbox><span>拖动绘制当前帧掩膜</span></> : <><Checkbox disabled={!p.editable} checked={p.freehand} onChange={e => p.onFreehand?.(e.target.checked)}>自由手绘</Checkbox><span>双击 / Enter 完成 · Backspace 撤末点 · Esc 取消</span></>}</div>}><Button type="text" className="viewer-tool" aria-label={p.tool === 'brush' ? '画笔设置' : '多边形设置'} title={p.tool === 'brush' ? '画笔设置' : '多边形设置'} icon={<ViewerIcon name="down" />} /></Popover>}
   </div>
-  {p.drawing && p.tool === 'brush' && <div className="viewer-tool-options"><label>画笔直径（mm）<InputNumber aria-label="画笔直径" min={0.1} value={p.diameter} disabled={!p.editable} onChange={value => { if (value && Number.isFinite(value)) p.onDiameter?.(value); }} /></label><Checkbox disabled={!p.editable} checked={p.erase} onChange={e => p.onErase?.(e.target.checked)}>橡皮擦</Checkbox><span>拖动绘制当前帧掩膜</span></div>}
-  {p.drawing && p.tool === 'polygon' && <div className="viewer-tool-options"><Checkbox disabled={!p.editable} checked={p.freehand} onChange={e => p.onFreehand?.(e.target.checked)}>自由手绘</Checkbox><span>双击 / Enter 完成 · Backspace 撤末点 · Esc 取消</span></div>}
   <Modal title="快捷键与鼠标操作" open={help} onCancel={() => setHelp(false)} footer={<Button onClick={() => setHelp(false)}>知道了</Button>}><dl className="shortcut-list">
     {p.drawing && <><dt>1 / 2 / 3 / 4</dt><dd>矩形 / 画笔 / 多边形 / 点</dd><dt>Ctrl / ⌘ + Z</dt><dd>撤销；加 Shift 重做</dd><dt>Ctrl / ⌘ + S</dt><dd>保存标注</dd><dt>Delete / Backspace</dt><dd>删除选中对象（多边形绘制时 Backspace 撤末点）</dd><dt>[ / ]</dt><dd>调整画笔直径</dd></>}
     <dt>W / P / Z / M</dt><dd>窗宽窗位 / 平移 / 缩放 / 测量</dd><dt>滚轮 / ↑ ↓</dt><dd>翻层</dd><dt>中键 / 空格 + 左键</dt><dd>平移</dd><dt>右键拖动</dt><dd>缩放</dd><dt>R</dt><dd>重置视图</dd><dt>Esc</dt><dd>取消绘制 / 退出专注</dd>
   </dl><p>编辑文本时不触发工具快捷键；只读状态不能修改标注。</p></Modal></>;
 }
 
-export function SeriesNavigation({ series, selected, frame, window, disabled = false, onSeries, onFrame, annotatedFrames = [] }: {
-  series: Series[]; selected: Series; frame: number; window: FrameWindow | null; disabled?: boolean; onSeries(id: string): void; onFrame(frame: number): void; annotatedFrames?: { frame: number; color: string; number: number }[];
+export function SeriesNavigation({ series, selected, frame, disabled = false, onSeries, onFrame, annotatedFrames = [] }: {
+  series: Series[]; selected: Series; frame: number; disabled?: boolean; onSeries(id: string): void; onFrame(frame: number): void; annotatedFrames?: { frame: number; color: string; number: number }[];
 }) {
-  const marks: Record<number, { label: React.ReactNode }> = {};
+  const marks: Record<number, typeof annotatedFrames> = {};
   for (const item of annotatedFrames) {
-    if (item.frame < 0 || item.frame >= selected.frame_count || marks[item.frame]) continue;
-    marks[item.frame] = {label: <span className="annotated-frame-marks">{annotatedFrames.filter(a => a.frame === item.frame).map(a => <span key={a.number} className="annotated-frame-mark" style={{background: a.color}} title={`对象 ${a.number} · 第 ${a.frame + 1} 帧`} />)}</span>};
+    if (item.frame >= 0 && item.frame < selected.frame_count) (marks[item.frame] ??= []).push(item);
   }
-  return <div className="series-navigation"><Select aria-label="影像序列" disabled={disabled} value={selected.id} options={series.map((s, i) => ({ value: s.id, label: `序列 ${i + 1} · ${s.modality} · ${s.frame_count} 帧` }))} onChange={onSeries} />
-    <span className="viewport-window-values">WL {window?.center ?? '默认'} / WW {window?.width ?? '默认'}</span>
-    {selected.frame_count > 1 && <div className="frame-navigation"><Button type="text" aria-label="上一帧" icon={<ViewerIcon name="left" />} disabled={disabled || frame === 0} onClick={() => onFrame(frame - 1)} /><span>第 {frame + 1} / {selected.frame_count} 帧</span><Button type="text" aria-label="下一帧" icon={<ViewerIcon name="right" />} disabled={disabled || frame >= selected.frame_count - 1} onClick={() => onFrame(frame + 1)} /><Slider aria-label="切片导航" min={0} max={selected.frame_count - 1} value={frame} disabled={disabled} tooltip={{ formatter: value => `第 ${(value ?? 0) + 1} 帧` }} onChange={onFrame} marks={marks} /></div>}
-    {selected.frame_count === 1 && <span>单帧影像</span>}
-  </div>;
+  const last = selected.frame_count - 1;
+  return <>
+    <div className="viewport-series" onWheel={e => e.stopPropagation()}><Select aria-label="影像序列" variant="borderless" disabled={disabled} value={selected.id} options={series.map((s, i) => ({ value: s.id, label: `序列 ${i + 1} · ${s.modality} · ${s.frame_count} 帧` }))} onChange={onSeries} /></div>
+    {selected.frame_count > 1 && <nav className="frame-navigation" aria-label="帧导航" onKeyDownCapture={e => {
+      if (disabled || e.target instanceof HTMLButtonElement) return;
+      const next = ({ ArrowUp: frame - 1, ArrowDown: frame + 1, ArrowLeft: frame - 1, ArrowRight: frame + 1, Home: 0, End: last, PageUp: frame - 10, PageDown: frame + 10 } as Record<string, number>)[e.key];
+      if (next !== undefined) { e.preventDefault(); e.stopPropagation(); onFrame(Math.max(0, Math.min(last, next))); }
+    }} onWheel={e => e.stopPropagation()}>
+      <Tooltip title="上一帧 · ↑" placement="left"><Button type="text" aria-label="上一帧" icon={<ViewerIcon name="up" />} disabled={disabled || frame === 0} onClick={() => onFrame(frame - 1)} /></Tooltip>
+      <div className="frame-navigation-track">
+        <Slider vertical reverse ariaLabelForHandle="切片导航" ariaValueTextFormatterForHandle={value => `第 ${value + 1} / ${selected.frame_count} 帧`} min={0} max={last} value={frame} disabled={disabled} tooltip={{ placement: 'left', formatter: value => `第 ${(value ?? 0) + 1} / ${selected.frame_count} 帧` }} onChange={onFrame} />
+        <div className="annotated-frame-track">{Object.entries(marks).map(([index, items]) => <Tooltip key={index} placement="left" title={`第 ${+index + 1} 帧 · 对象 ${items.map(a => a.number).join('、')}`}><button type="button" className="annotated-frame-target" disabled={disabled} aria-label={`跳至第 ${+index + 1} 帧：对象 ${items.map(a => a.number).join('、')}`} style={{ top: `${+index / last * 100}%` }} onClick={() => onFrame(+index)}><span className="annotated-frame-marks">{items.map(a => <span key={a.number} className="annotated-frame-mark" style={{ background: a.color }} />)}</span></button></Tooltip>)}</div>
+      </div>
+      <Tooltip title="下一帧 · ↓" placement="left"><Button type="text" aria-label="下一帧" icon={<ViewerIcon name="down" />} disabled={disabled || frame >= last} onClick={() => onFrame(frame + 1)} /></Tooltip>
+    </nav>}
+  </>;
 }

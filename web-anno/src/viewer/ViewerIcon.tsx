@@ -11,6 +11,8 @@ const paths = {
   undo: 'M9 5 3 11l6 6 M3 11h11a6 6 0 0 1 6 6',
   redo: 'm15 5 6 6-6 6 M21 11H10a6 6 0 0 0-6 6',
   reset: 'M3 10a9 9 0 1 1 2 8 M3 3v7h7',
+  up: 'm5 14 7-7 7 7',
+  down: 'm5 10 7 7 7-7',
   left: 'm14 5-7 7 7 7',
   right: 'm10 5 7 7-7 7',
   layout: 'M3 4h18v16H3Z M8 4v16 M16 4v16',
