@@ -1,3 +1,3 @@
-FROM cgr.dev/chainguard/minio@sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e
+FROM cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56
 
 USER 65532:65532
