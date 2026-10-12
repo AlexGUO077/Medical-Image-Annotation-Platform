@@ -19,7 +19,9 @@ async function main() {
   const instance = await fs.realpath(process.env.MIAP_M3_INSTANCE);
   assert.equal((await fs.stat(instance)).mode & 0o077, 0);
   const marker = JSON.parse(await fs.readFile(path.join(instance, 'instance.json'), 'utf8'));
-  assert.equal(marker.project, 'miap-synthetic-wp17');
+  assert.equal(marker.format, 1);
+  assert.match(marker.project, /^miap-synthetic-[a-z0-9-]{1,40}$/);
+  assert.equal(marker.project, process.env.MIAP_M3_PROJECT || 'miap-synthetic-wp17');
   const envPath = path.join(instance, '.env');
   assert.equal((await fs.stat(envPath)).mode & 0o077, 0);
   const env = parse(await fs.readFile(envPath));
@@ -106,6 +108,18 @@ async function main() {
   }
   console.log('PASS member administration denials and guessed raw-image routes');
 
+  if (process.argv.includes('--management-only')) {
+    assert(process.env.MIAP_M3_UI_ACTIONS === '1' && process.env.MIAP_PLAYWRIGHT_MODULE);
+    const cases = JSON.parse(await fs.readFile(path.join(instance, 'acceptance-cases.json'), 'utf8'));
+    const task = JSON.parse(await fs.readFile(path.join(instance, 'acceptance-task.json'), 'utf8'));
+    const artifacts = process.env.MIAP_M3_ARTIFACT_DIR || path.resolve(__dirname, '../../reports/wp17-local');
+    const ui = await require('./m3-deployed-actions.browser.cjs')({ base, ca, accounts, get, annotator, artifacts });
+    stage = 'real management statistics, double approval and audit pages';
+    try { await require('./m3-deployed-management.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task, login, retainAccounts, ui, artifacts }); }
+    finally { await ui.close(); }
+    return;
+  }
+
   const inputDir = path.join(instance, 'acceptance-inputs');
   await fs.mkdir(inputDir, { recursive: true, mode: 0o700 });
   const reuse = process.argv.includes('--reuse-imports');
@@ -180,6 +194,7 @@ async function main() {
     await fs.writeFile(taskFile, JSON.stringify({ id: task.id, case_ids: cases.map(c => c.id) }), { mode: 0o600 });
     await json('/api/tasks/dispatch', { mode: 'manual', task_id: task.id, case_ids: cases.map(c => c.id),
       assignee_id: accounts.annotator.id, task_role: 'annotate' }, admin);
+    let ui, primaryError;
     try {
       for (const item of cases) {
         const workbench = await get('/api/workbench/' + item.id, annotator);
@@ -208,14 +223,37 @@ async function main() {
       }
       if (process.env.MIAP_PLAYWRIGHT_MODULE) await require('./m3-deployed.browser.cjs')({ base, ca, account: accounts.annotator, cases,
         artifacts: process.env.MIAP_M3_ARTIFACT_DIR || path.resolve(__dirname, '../../reports/wp17-local') });
+      if (process.env.MIAP_M3_UI_ACTIONS === '1') {
+        assert(process.env.MIAP_PLAYWRIGHT_MODULE, 'Browser runtime required for actual UI actions');
+        ui = await require('./m3-deployed-actions.browser.cjs')({ base, ca, accounts, get, annotator,
+          artifacts: process.env.MIAP_M3_ARTIFACT_DIR || path.resolve(__dirname, '../../reports/wp17-local') });
+        stage = 'real DX/CT drawing, report association and saving';
+        for (const item of cases) await ui.edit(item);
+      }
       stage = 'real submission, review, publication, search and lifecycle';
-      await require('./m3-deployed-cycle.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task });
+      await require('./m3-deployed-cycle.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task, ui });
       stage = 'real spotcheck, same-author recheck and new-version round';
-      await require('./m3-deployed-quality.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task });
+      await require('./m3-deployed-quality.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task, ui });
+      if (ui) {
+        await ui.published(cases);
+        stage = 'real management statistics, double approval and audit pages';
+        await require('./m3-deployed-management.cjs')({ get, json, request, admin, annotator, reviewer, accounts, cases, task, login, retainAccounts, ui,
+          artifacts: process.env.MIAP_M3_ARTIFACT_DIR || path.resolve(__dirname, '../../reports/wp17-local') });
+      }
+    } catch (error) {
+      primaryError = error;
+      throw error;
     } finally {
-      const queue = await get('/api/tasks/mine?task_role=annotate', annotator);
-      for (const item of queue.items.filter(item => cases.some(c => c.id === item.case_id))) {
-        await json('/api/tasks/reclaim', { assignment_id: item.assignment_id, reason: 'quality' }, admin);
+      await fs.writeFile(path.join(instance, 'acceptance-cases.json'), JSON.stringify(cases), { mode: 0o600 });
+      try {
+        await ui?.close();
+        const queue = await get('/api/tasks/mine?task_role=annotate', annotator);
+        for (const item of queue.items.filter(item => cases.some(c => c.id === item.case_id))) {
+          await json('/api/tasks/reclaim', { assignment_id: item.assignment_id, reason: 'quality' }, admin);
+        }
+      } catch (cleanupError) {
+        if (!primaryError) throw cleanupError;
+        console.error('Cleanup could not finish; original failure retained. Inspect the owned test account and task.');
       }
     }
   }
@@ -226,7 +264,7 @@ async function main() {
 main().catch(error => {
   // Never print response bodies, login challenges, request URLs containing tickets,
   // private environment or browser/worker logs. Only the safe stage and source line.
-  const line = String(error.stack || '').split('\n').find(value => value.includes('m3-deployed.'));
+  const line = String(error.stack || '').split('\n').find(value => value.includes('/m3-deployed'));
   console.error('FAIL stage:', stage, '; code:', error.code || error.name, '; status:', typeof error.actual === 'number' ? error.actual : 'n/a', ';', line?.trim() || 'no source line');
   if (String(error.message).startsWith('browserType.')) console.error(String(error.message).split('\n')[0].slice(0, 240));
   process.exitCode = 1;

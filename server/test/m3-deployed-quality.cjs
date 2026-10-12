@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-module.exports = async ({ get, json, request, admin, annotator, reviewer, accounts, cases, task }) => {
+module.exports = async ({ get, json, request, admin, annotator, reviewer, accounts, cases, task, ui }) => {
   const checks = { kind: 'checks', deidentification: true, confirmation_basis: true, disease_label: true };
   const users = await get('/api/users?pageSize=100', admin);
   assert(users.total <= 100, 'Quality fixture requires a bounded local test account set');
@@ -24,6 +24,7 @@ module.exports = async ({ get, json, request, admin, annotator, reviewer, accoun
       await json('/api/tasks/start-review', { task_id: task.id, case_id: assignment.case_id, assignment_id: assignment.assignment_id }, reviewer);
       const data = await get('/api/reviews/' + assignment.case_id, reviewer);
       assert.equal(data.review_kind, assignment.review_kind); assert(data.annotations.every(a => a.is_gold));
+      if (ui) return ui.review({ id: assignment.case_id }, result, assignment.review_kind);
       return json('/api/reviews/' + assignment.case_id, { expected_version: assignment.review_version, assignment_id: assignment.assignment_id, result,
         comments: result === '通过' ? [checks] : [checks, { kind: 'overall', text: '合成抽检：轮廓边界须重新标注。' }] }, reviewer);
     };

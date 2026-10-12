@@ -1,22 +1,33 @@
 'use strict';
 const assert = require('node:assert/strict');
-module.exports = async ({ get, json, request, admin, annotator, reviewer, accounts, cases, task }) => {
+module.exports = async ({ get, json, request, admin, annotator, reviewer, accounts, cases, task, ui, resumeReviewCase }) => {
+  // A stopped UI driver may resume only the first, undecided review in this owned task.
+  if (resumeReviewCase) {
+    assert.equal(resumeReviewCase, cases[0].id);
+    assert.equal((await get('/api/cases/' + resumeReviewCase, admin)).status, '审核中');
+  }
   const checks = { kind: 'checks', deidentification: true, confirmation_basis: true, disease_label: true };
   const saveObjects = data => data.annotations.map(({ version, is_gold, ...object }) => object);
   async function review(item, result = '通过') {
-    await json('/api/tasks/dispatch', { mode: 'manual', task_id: task.id, case_ids: [item.id], assignee_id: accounts.reviewer.id, task_role: 'review' }, admin);
-    await json('/api/tasks/start-review', { task_id: task.id, case_id: item.id }, reviewer);
+    if (item.id !== resumeReviewCase) {
+      await json('/api/tasks/dispatch', { mode: 'manual', task_id: task.id, case_ids: [item.id], assignee_id: accounts.reviewer.id, task_role: 'review' }, admin);
+      await json('/api/tasks/start-review', { task_id: task.id, case_id: item.id }, reviewer);
+    }
     const work = await get('/api/reviews/' + item.id, reviewer);
     assert.equal(work.disease.id, item.disease_tag_id);
     assert.equal(work.annotations.length, 4);
     const body = { expected_version: item.version, result, comments: result === '通过' ? [checks] : [checks, { kind: 'overall', text: '合成复验：请调整矩形边界并重新核对报告关联。' }] };
     assert.equal((await request('/api/reviews/' + item.id, { method: 'POST', body, token: annotator })).status, 403);
-    const decision = await json('/api/reviews/' + item.id, body, reviewer);
+    const decision = ui ? await ui.review(item, result) : await json('/api/reviews/' + item.id, body, reviewer);
+    resumeReviewCase = undefined;
     assert.equal(decision.status, result === '通过' ? '已发布' : '标注中');
     return decision;
   }
   for (const item of cases) {
-    await json(`/api/cases/${item.id}/submit`, { expected_version: item.version }, annotator);
+    if (item.id !== resumeReviewCase) {
+      if (ui) await ui.submit(item);
+      else await json(`/api/cases/${item.id}/submit`, { expected_version: item.version }, annotator);
+    }
     if (item.modality === 'CT') {
       await review(item, '打回');
       const returned = await get(`/api/cases/${item.id}/annotations`, annotator);
@@ -25,7 +36,8 @@ module.exports = async ({ get, json, request, admin, annotator, reviewer, accoun
       objects.find(o => o.tool === 'box').geometry.x += 2;
       await json(`/api/cases/${item.id}/annotations`, { expected_version: item.version, annotations: objects }, annotator, 200, 'PUT');
       item.version++;
-      await json(`/api/cases/${item.id}/submit`, { expected_version: item.version }, annotator);
+      if (ui) await ui.submit(item);
+      else await json(`/api/cases/${item.id}/submit`, { expected_version: item.version }, annotator);
       console.log('PASS CT return, actionable comments, amended version and resubmission');
     }
     await review(item);

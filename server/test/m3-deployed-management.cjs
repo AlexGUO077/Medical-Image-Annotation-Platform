@@ -1,0 +1,91 @@
+'use strict';
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+module.exports = async ({ get, json, request, admin, annotator, reviewer, accounts, cases, task, login, retainAccounts, ui, artifacts }) => {
+  assert(ui, 'Management acceptance requires built browser pages');
+  const stats = await get('/api/stats?task_id=' + task.id, admin);
+  assert.equal(stats.filters.timezone, 'Asia/Shanghai');
+  assert.equal(stats.summary.completed, 4);
+  assert.equal(stats.summary.normal_total, 5);
+  assert.equal(stats.summary.return_rate, 1 / 5);
+  assert.equal(stats.summary.spotcheck_total, 2);
+  assert.equal(stats.summary.spotcheck_pass_rate, 1 / 2);
+  for (const token of [annotator, reviewer]) {
+    for (const route of ['/api/stats', '/api/exports', '/api/audit', '/api/users']) assert.equal((await request(route, { token })).status, 403);
+  }
+  if (!accounts.approver) {
+    const made = await json('/api/users', { real_name: '合成M3-approver', role: 'admin', expire_at: '2099-12-31', quals: {} }, admin);
+    accounts.approver = { id: made.id, username: made.username, password: made.initial_password };
+    await retainAccounts();
+  }
+  const approver = await login(accounts.approver);
+  const page = await ui.pageFor('admin');
+  await page.getByRole('menuitem', { name: '统计看板', exact: true }).click();
+  await page.getByRole('heading', { name: '统计看板', exact: true }).waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.screenshot({ path: path.join(artifacts, 'admin-stats.png') });
+  const tab = async (p, label) => p.getByRole('tab', { name: label, exact: true }).click();
+  const confirm = async p => p.locator('.ant-popover:visible').getByRole('button', { name: /确\s*定|OK/ }).click();
+  await page.getByRole('menuitem', { name: '系统管理', exact: true }).click();
+  await tab(page, '导出审批');
+  const select = page.getByRole('combobox', { name: '选择导出病例', exact: true });
+  await select.press('ArrowDown');
+  await select.fill(cases[0].id);
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({ hasText: cases[0].id }).click();
+  await select.press('Escape');
+  await page.getByRole('button', { name: '提交申请', exact: true }).click();
+  const created = page.waitForResponse(r => new URL(r.url()).pathname === '/api/exports' && r.request().method() === 'POST');
+  await confirm(page);
+  const creation = await created;
+  assert.equal(creation.status(), 201);
+  const { id } = await creation.json();
+  assert(id);
+  const own = page.locator('.ant-table-row').filter({ hasText: id });
+  await own.getByText('本人不能自批').waitFor();
+  assert.equal((await request(`/api/exports/${id}/approve`, { method: 'POST', body: { decision: 'approve' }, token: admin })).status, 403);
+  assert.equal((await request(`/api/exports/${id}/download`, { token: admin })).status, 403);
+  const other = await ui.pageFor('approver');
+  await other.getByRole('menuitem', { name: '系统管理', exact: true }).click();
+  await tab(other, '导出审批');
+  const otherRow = other.locator('.ant-table-row').filter({ hasText: id });
+  await otherRow.getByRole('button', { name: /^批\s*准$/ }).click();
+  await confirm(other);
+  await otherRow.getByText('已批准', { exact: true }).waitFor();
+  assert.equal((await request(`/api/exports/${id}/download`, { token: approver })).status, 403);
+  const row = (await get('/api/exports', admin)).items.find(item => item.id === id);
+  const remaining = Date.parse(row.expire_at) - Date.now();
+  assert(remaining > 23 * 3600000 && remaining <= 24 * 3600000);
+  await page.getByRole('button', { name: '刷新队列', exact: true }).click();
+  await own.getByRole('button', { name: '领取 JSON', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await confirm(page);
+  const file = await download;
+  assert.equal(await file.failure(), null);
+  const stream = await file.createReadStream(), chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const packet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  await file.delete();
+  assert.equal(packet.schema_version, 1);
+  assert.equal(packet.cases.length, 1);
+  assert.equal(packet.cases[0].annotations.length, 4);
+  const contents = JSON.stringify(packet);
+  for (const key of ['clinical_text', 'sentences', 'raw_text', 'series_uid', 'orthanc_id', 'mask_map', 'object_key', 'password']) assert(!contents.includes('"' + key + '"'));
+  assert.equal((await request(`/api/exports/${id}/download`, { token: admin })).status, 403);
+  await own.getByText('已领取', { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(artifacts, 'admin-exports.png') });
+  const audit = await get(`/api/audit?target=exports:${id}`, admin);
+  for (const action of ['exports.requested', 'exports.approved', 'exports.downloaded']) assert(audit.items.some(event => event.action === action));
+  for (const action of ['frames.viewed', 'annotations.saved', 'annotations.submitted', 'reviews.decided', 'cases.published']) {
+    const events = await get('/api/audit?action=' + action + '&target=cases:' + cases[0].id, admin);
+    assert(events.items.length > 0, action + ' audit must exist for this run');
+  }
+  await tab(page, '审计日志');
+  await page.getByLabel('审计目标', { exact: true }).fill('exports:' + id);
+  await page.getByRole('button', { name: '查询日志', exact: true }).click();
+  await page.locator('.ant-table-row').filter({ hasText: 'exports.downloaded' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: /编辑|删除/ }).count(), 0);
+  await page.screenshot({ path: path.join(artifacts, 'admin-audit.png') });
+  console.log('PASS real statistics attribution, admin 2FA, UI double approval/one JSON download, safe package and audit tracing');
+  await retainAccounts();
+};
