@@ -65,3 +65,16 @@ it('starts a published quality assignment explicitly and keeps its assignment id
  fireEvent.click(await screen.findByRole('button',{name:'开始审核'}));expect(await screen.findByRole('link',{name:'进入审核台'})).toHaveAttribute('href','/review/case');
  expect(start).toHaveBeenCalledWith('token','task','case','quality-id');
 });
+
+it('shows selected task details without claiming and clears them when the account changes',async()=>{
+ const claim=vi.spyOn(tasksApi,'claim');
+ const view=render(<MemberTasksPanel token="token"/>);
+ fireEvent.click(await screen.findByRole('button',{name:/SYN-POOL/}));
+ expect(screen.getByRole('complementary',{name:'任务详情'})).toHaveTextContent('SYN-POOL');
+ expect(claim).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'收起任务详情面板'}));
+ fireEvent.click(screen.getByRole('button',{name:'展开任务详情'}));
+ expect(screen.getByRole('complementary',{name:'任务详情'})).toHaveTextContent('SYN-POOL');
+ view.rerender(<MemberTasksPanel token="other-account"/>);
+ await waitFor(()=>expect(screen.getByRole('complementary',{name:'任务详情'})).toHaveTextContent('选择一个病例'));
+});

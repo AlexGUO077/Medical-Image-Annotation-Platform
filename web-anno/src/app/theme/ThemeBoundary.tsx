@@ -1,9 +1,9 @@
 import { ConfigProvider } from 'antd';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { isDarkThemePath } from '../routes';
-import { darkTheme, lightTheme } from './tokens';
+import { darkTheme, lightTheme, viewerCssVariables } from './tokens';
 
 interface ThemeBoundaryProps {
   children: ReactNode;
@@ -15,7 +15,7 @@ export function ThemeBoundary({ children }: ThemeBoundaryProps) {
 
   return (
     <ConfigProvider theme={themeName === 'dark' ? darkTheme : lightTheme}>
-      <div data-testid="theme-boundary" data-theme={themeName}>
+      <div data-testid="theme-boundary" data-theme={themeName} style={themeName === 'dark' ? viewerCssVariables as CSSProperties : undefined}>
         {children}
       </div>
     </ConfigProvider>
