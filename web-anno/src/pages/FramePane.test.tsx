@@ -1,0 +1,47 @@
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { FramePane } from './WorkbenchPage';
+import { mountFrame } from '../viewer/cornerstone';
+import { annotationControls, mockAnnotationCanvas } from '../test/canvas';
+import { annotations, data } from '../../../test/fixtures/synthetic/viewer-interactions';
+vi.mock('../viewer/cornerstone',()=>({mountFrame:vi.fn()}));
+const layer={annotations,tool:'pan' as const,hidden:new Set<string>(),locked:new Set<string>(),diameter:5,erase:false,freehand:false,disabled:false,onSelect:vi.fn(),onCreate:vi.fn(),onChange:vi.fn()};
+const props={token:'synthetic',data,series:data.series[0],frame:0,window:data.series[0].default_window,layer,onGeometry:vi.fn(),windowDrag:true,onWindow:vi.fn()};
+beforeEach(()=>{vi.clearAllMocks();mockAnnotationCanvas();vi.mocked(mountFrame).mockImplementation(async()=>annotationControls());});
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
+it('a blank click or equal-valued window rerender does not dispose the displayed renderer',async()=>{
+  const view=render(<FramePane {...props}/>),canvas=await screen.findByLabelText('标注绘图层');
+  fireEvent.pointerDown(canvas,{button:0,clientX:300,clientY:300});fireEvent.pointerUp(canvas,{clientX:300,clientY:300});
+  expect(props.onWindow).not.toHaveBeenCalled();
+  const renderer=await vi.mocked(mountFrame).mock.results[0].value;
+  view.rerender(<FramePane {...props} window={{...props.window!}}/>);
+  expect(renderer.dispose).not.toHaveBeenCalled();expect(mountFrame).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('标注绘图层')).toBeInTheDocument();
+});
+it.each([{window:{center:50,width:450}},{frame:1}])('unmounts the old overlay before disposing its renderer on identity change',async changed=>{
+  const view=render(<FramePane {...props}/>);await screen.findByLabelText('标注绘图层');
+  const old=await vi.mocked(mountFrame).mock.results[0].value;
+  let finish!:(value:Awaited<ReturnType<typeof mountFrame>>)=>void;
+  vi.mocked(mountFrame).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  view.rerender(<FramePane {...props} {...changed}/>);
+  expect(old.dispose).toHaveBeenCalled();expect(screen.queryByLabelText('标注绘图层')).not.toBeInTheDocument();
+  const projections=vi.mocked(old.toCanvas).mock.calls.length;
+  await act(async()=>{});
+  await act(async()=>finish(annotationControls()));
+  expect(screen.getByLabelText('标注绘图层')).toBeInTheDocument();
+  expect(old.toCanvas).toHaveBeenCalledTimes(projections);
+});
+it('keeps window dragging, blank-image right dragging, middle panning and Space panning available',async()=>{
+  render(<FramePane {...props}/>);const canvas=await screen.findByLabelText('标注绘图层'),pane=canvas.closest('.frame-pane')!;
+  const renderer=await vi.mocked(mountFrame).mock.results[0].value;
+  fireEvent.pointerDown(canvas,{button:0,clientX:300,clientY:300});fireEvent.pointerMove(pane,{clientX:320,clientY:310});fireEvent.pointerUp(pane,{clientX:320,clientY:310});
+  expect(props.onWindow).toHaveBeenCalledWith({center:50,width:420});
+  fireEvent.pointerDown(canvas,{button:2,clientX:300,clientY:300});fireEvent.pointerMove(pane,{clientX:300,clientY:320});fireEvent.pointerUp(pane);
+  expect(renderer.zoom).toHaveBeenCalledWith(Math.exp(-.1));
+  fireEvent.pointerDown(canvas,{button:1,clientX:300,clientY:300});fireEvent.pointerMove(pane,{clientX:310,clientY:320});fireEvent.pointerUp(pane);
+  expect(renderer.pan).toHaveBeenCalledWith(10,20);
+  fireEvent.keyDown(canvas,{key:' ',code:'Space'});
+  fireEvent.pointerDown(canvas,{button:0,clientX:10,clientY:10});fireEvent.pointerMove(pane,{clientX:20,clientY:30});fireEvent.pointerUp(pane);
+  fireEvent.keyUp(canvas,{key:' ',code:'Space'});
+  expect(renderer.pan).toHaveBeenCalledTimes(2);expect(layer.onSelect).not.toHaveBeenCalled();
+});

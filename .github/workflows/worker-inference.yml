@@ -38,8 +38,8 @@ jobs:
         run: '"$RUNNER_TEMP/miap-python" server/workers/verify_real_inference.py'
       - name: Verify packaged worker on native Linux
         run: |
-          docker build -f deploy/server/Dockerfile -t miap/server:wp16 .
-          docker run --rm --user 10001:10001 -v "$PWD/server/workers:/checks:ro" miap/server:wp16 /usr/local/bin/miap-python /checks/verify_real_inference.py
+          docker build -f deploy/server/Dockerfile -t miap/server:wp16-pebble-free .
+          docker run --rm --user 10001:10001 -v "$PWD/server/workers:/checks:ro" miap/server:wp16-pebble-free /usr/local/bin/miap-python /checks/verify_real_inference.py
       - uses: actions/setup-node@v7
         with:
           node-version: 24.14.0
@@ -75,4 +75,7 @@ jobs:
           fi
       - name: Stop synthetic services
         if: always()
-        run: docker compose --env-file .env.local down --volumes
+        run: |
+          if [ -f .env.local ]; then
+            docker compose --env-file .env.local down --volumes
+          fi

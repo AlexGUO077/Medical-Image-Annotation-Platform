@@ -24,6 +24,8 @@ Python 阻断涉及 protobuf、onnx 及构建工具。现有 PaddleNLP 2.6.1 元
 
 保持 PaddlePaddle 2.6.2、PaddleOCR 2.10.0、UIE-mini/中文 PP-OCRv3；PaddleNLP 调为 2.8.1，配合 protobuf 5.29.6、ONNX 1.21.0、Paddle2ONNX 1.3.1、huggingface-hub 0.36.2、datasets 5.0.1 和 fsspec 2026.6.0。由官方元数据共同允许这些版本，执行 `pip check`；不使用 `--no-deps` 强装冲突组合。旧 datasets 3.6.0 的 fsspec 上限不满足扫描，未采用。
 
+2026-10-10，PR #60 的真实推理 CI 在全新安装时解析到间接依赖 PyArrow 26.0.0，虽通过 `pip check`，导入仍报 `requires NumPy 2.0 or newer, found 1.26.4`。现有可运行镜像使用 PyArrow 25.0.1；将该版本显式固定，使宿主 CI 与镜像沿用同一兼容组合，不升级 Paddle 所需的 NumPy 1.x 或更换模型。全新安装的 amd64 镜像构建、`pip check`、按真实 worker 顺序的 Paddle OCR/NER 导入及 Trivy HIGH/CRITICAL=0 已本地验证；实际 OCR/NER 与 HTTP 链路继续由原有远端检查验证。证据位于忽略目录 `reports/security-20261010/`，远端结果见当前 PR checks。
+
 系统候选 Debian 13 仍有阻断，改为固定摘要的 Ubuntu 26.04 底座，并保留官方 Python 3.11 文件。Paddle 2.6 导出的 zlib 符号与后来加载的 Cython 扩展冲突；固定 worker 启动器预先加载系统 `libz.so.1`，不依赖测试中的特殊模块导入顺序，也不传入额外业务秘密。
 
 PyPI pip 的内置旧依赖仍被扫描阻断，不能把顶层 urllib3/setuptools 升级当作内置副本已修复。PaddleNLP 2.8.1 未声明 pip 为正式推理依赖，但 `utils/import_utils.py` 提前导入它。打包层仅把此导入移入可选 `install_package` 函数、置于任何安装/卸载动作之前；固定原文件 SHA256，不匹配立即停止构建。已安装模型依赖不需要调用该函数，运行镜像完整移除 pip/ensurepip。这个补丁不改模型、推理结果、依赖约束或业务控制；真实 OCR/NER 合成检查负责验证。Ubuntu 系统 pip 候选也未采用，不以发行版归类差异绕过内置库风险。
