@@ -101,7 +101,7 @@ Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 | --- | --- | --- | --- | --- |
 | PostgreSQL | `miap/postgres:16.15-alpine3.24` | `postgres:16.15-alpine3.24` | `sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb` | `docker/postgres/Dockerfile` |
 | Orthanc | `miap/orthanc:26.9.0-openssl-r7` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
-| MinIO | `miap/minio:2026-07-17-hardened` | `cgr.dev/chainguard/minio` | `sha256:4e5b5ca6f76e889e07c6cf1d39d6cbe2efe8019819e3ac4e618bd5594731665e` | `docker/minio/Dockerfile` |
+| MinIO | `miap/minio:2026-09-22-hardened` | `cgr.dev/chainguard/minio` | `sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56` | `docker/minio/Dockerfile` |
 | Redis | `miap/redis:7.4.11-alpine3.21-openssl-r2` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
 | Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
 | Server | `miap/server:wp16-pebble-free` | `ubuntu:26.04` | `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7` | `deploy/server/Dockerfile` |
@@ -146,3 +146,26 @@ script tests, forbidden-file check and both Compose config checks passed; the
 read-only reviewer found no blocking issue. Raw local evidence is ignored under
 `reports/security-20261010/`. Remote results are the checks on each PR's current
 head; no local scan grants release approval.
+
+On 2026-10-12, PR #62's refreshed scan reported CVE-2026-78669 (HIGH) in
+the existing MinIO image's `mc` and `minio` Wolfi packages. The image now pins
+Chainguard's multi-architecture manifest
+`sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56`.
+The inspected amd64 packages are `mc 0.20250813.083541-r26` and
+`minio 0.20260922.192518-r2`, both built with Go 1.27.2. Compose and the
+blocking matrix use the same `miap/minio:2026-09-22-hardened` image. UID/GID
+65532, the `mc ready local` probe, bucket policies and scan thresholds remain
+unchanged; `mc` is retained for health checks and deployment provisioning.
+
+Local verification (macOS arm64 Docker Desktop, final image linux/amd64):
+Trivy 0.70.0 with a freshly downloaded DB returned zero HIGH/CRITICAL across
+23 recognized Wolfi packages. An isolated synthetic volume verified old-image
+write/new-image read, `mc` bucket/account/policy provisioning, and the locked
+AWS SDK 3.1147.0 Head/Put/Get/Delete operations with byte, content-type and
+metadata checks, plus readback after a container restart. Anonymous reads,
+wrong-key reads, runtime bucket creation and access outside the allowed
+buckets returned 403. Local diagnostics
+are retained under ignored `reports/minio-security-20261012/`; remote evidence
+is the current PR checks. Existing services and volumes are not replaced.
+Reverting the image reintroduces the finding; this forward-upgrade test does
+not establish that data written by the new version supports downgrade.

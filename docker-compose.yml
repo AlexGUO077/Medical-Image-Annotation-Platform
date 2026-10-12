@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: docker/minio/Dockerfile
-    image: miap/minio:2026-07-17-hardened
+    image: miap/minio:2026-09-22-hardened
     command: server /data --console-address ":9001"
     environment:
       MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:9000
