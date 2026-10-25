@@ -2,6 +2,8 @@
 
 依据源 Word §8.1～§8.3、已批准 D-43/D-44、WP-16/SG-6。首批只验证本地 synthetic，云端/异地地址未配置；不代表公网或真实数据放行。
 
+2026-10-25 用户明确要求既有老师教学样例在本机入库展示：实例私有配置 `DEPLOY_ALLOW_TEACHING=true` 可使启动初始化接受 synthetic 和 D-31 的 teacher_provided_teaching，未启用时保留原 synthetic 限制；未知来源继续拒绝。此扩展不改变下述 synthetic 备份恢复验收及公网准入范围。
+
 - 复用七个运行服务；nginx 托管前端并反代 `/api/`，仅其 HTTP/HTTPS 发布到本机回环。其余服务没有宿主端口；Orthanc 独立内部网络仅与 server 连接。
 - Node 24/Python 3.11 和本地 OCR/NER 子进程打包；应用、数据库运行账号与迁移账号分离；MinIO 私有桶使用仅限本项目桶的运行凭证，ES 仅发布索引权限。运行 server 不接收 PostgreSQL/MinIO/ES 管理员秘密。
 - 实例目录包含受保护的环境文件、证书及操作锁；不打入镜像或备份。实例名、固定 synthetic 数据库和回环端口在操作前校验；拒绝操作非本工具创建的实例。密钥不打印，故障仅输出步骤名称。

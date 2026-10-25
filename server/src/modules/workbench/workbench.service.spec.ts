@@ -13,10 +13,10 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 async function setup() {
   const pixels = await sharp({ create: { width: 128, height: 128, channels: 3, background: '#999' } }).png().toBuffer();
-  const h = { current: { ...actor }, missing: false, attachmentMissing: false, source: { object_key: `cases/${id}/attachment`, filename: 'safe.pdf' }, auditFailure: false };
+  const h = { current: { ...actor }, caseSource: 'synthetic', missing: false, attachmentMissing: false, source: { object_key: `cases/${id}/attachment`, filename: 'safe.pdf' }, auditFailure: false };
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
     if (sql.startsWith('SELECT *,expire_at')) return [h.current];
-    if (sql.startsWith('SELECT id,case_no')) return h.missing ? [] : [{ id, system_code: 'resp' }];
+    if (sql.startsWith('SELECT id,case_no')) return h.missing ? [] : [{ id, system_code: 'resp', source: h.caseSource }];
     if (sql.startsWith('SELECT s.id')) return [{ id: 'series', frame_count: 3 }];
     if (sql.startsWith('SELECT sentences')) return [{ sentences: [{ idx: 2, text: '后句', private: 'omit' }, { idx: 0, text: '首句' }] }];
     if (sql.startsWith('SELECT object_key')) return h.attachmentMissing ? [] : [h.source];
@@ -29,6 +29,18 @@ async function setup() {
   return { h, query, objects, service, pixels, attachment: (page: unknown = '2', role: 'annotate' | 'review' | 'library' = 'annotate', version?: number) => service.attachment(actor, id, id, page, 'local', role, version) };
 }
 describe('workbench safe metadata and attachments', () => {
+  it('admits approved teaching samples with assignment checks but keeps them out of the published library', async () => {
+    const s = await setup(); s.h.caseSource = 'teacher_provided_teaching';
+    await expect(s.service.read(actor, id, 'local')).resolves.toMatchObject({ case: { source: 'teacher_provided_teaching' } });
+    expect(PermissionService.prototype.assertCaseAssignment).toHaveBeenCalledTimes(2);
+    await expect(s.attachment('1', 'library', 0)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(s.objects.readPng).not.toHaveBeenCalled();
+  });
+  it('rejects unapproved sources before returning metadata or recording a successful view', async () => {
+    const s = await setup(); s.h.caseSource = 'unapproved';
+    await expect(s.service.read(actor, id, 'local')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(s.query.mock.calls.some(c => c[0].startsWith('INSERT INTO audit_logs'))).toBe(false);
+  });
   it('orders report sentences, exposes safe metadata, and rechecks assignment before output', async () => {
     const s = await setup(); const result = await s.service.read(actor, id, 'local');
     expect(result.sentences).toEqual([{ idx: 0, text: '首句' }, { idx: 2, text: '后句' }]);

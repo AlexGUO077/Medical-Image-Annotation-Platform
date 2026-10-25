@@ -11,7 +11,7 @@ beforeEach(() => { vi.spyOn(PermissionService.prototype, 'assertCaseAssignment')
 afterEach(() => vi.restoreAllMocks());
 function setup() {
   const h = { user: { ...actor }, task: { id: taskId, system_code: 'resp', review_mode: 'peer', dispatch_mode: 'manual', in_flight_limit: null },
-    item: { id: caseId, system_code: 'resp', annotation_version: 1 }, objects: [{ ...annotation, confidence: '典型', version: 1, is_gold: false }],
+    item: { id: caseId, system_code: 'resp', annotation_version: 1, source: 'synthetic' }, objects: [{ ...annotation, confidence: '典型', version: 1, is_gold: false }],
     series: [{ id: seriesId, modality: 'CT', frame_count: 3, orthanc_id: 'private', series_uid: '2.25.123' }], parts: [{ id: partId }], signs: [{ id: signId }],
     sentences: [{ idx: 0, text: '合成结节' }], found: true, gold: false, auditFailure: false, active: [{ id: uid(8), task_role: 'annotate' }] };
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
@@ -38,6 +38,16 @@ function setup() {
   return { h, query, db, orthanc, service, save };
 }
 describe('annotation versions, reference checks and submission', () => {
+  it('saves an approved teaching sample using the same live assignment checks', async () => {
+    const s = setup(); s.h.item.source = 'teacher_provided_teaching';
+    await expect(s.save()).resolves.toMatchObject({ version: 2 });
+    expect(PermissionService.prototype.assertCaseAssignment).toHaveBeenCalledTimes(2);
+  });
+  it('rejects an unapproved source before creating an annotation version', async () => {
+    const s = setup(); s.h.item.source = 'unapproved';
+    await expect(s.save()).rejects.toMatchObject({ status: 403 });
+    expect(s.query.mock.calls.some(c => /^(INSERT INTO annotation_objects|UPDATE cases)/.test(c[0]))).toBe(false);
+  });
   it('creates a new version and audits counts without copying geometry to logs', async () => {
     const s = setup(); expect(await s.save()).toMatchObject({ version: 2 });
     const audit = s.query.mock.calls.find(c => c[0].startsWith('INSERT INTO audit_logs'))!;

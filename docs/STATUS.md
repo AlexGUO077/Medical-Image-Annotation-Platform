@@ -4,6 +4,8 @@
 
 PR 合并、检查通过、WP 完成和 SG 放行分别记录，不相互推定；“未记录”表示未取得相应证据，不等同于失败或已批准。
 
+2026-10-25 本地教学展示补充：用户明确要求既有老师样例入库，确认采用临床综合诊断，并明确授权给现有 annotator 增加中枢神经系统标注资格及分派五例。五组检查、41 序列、2730 帧经本机无损解压及标准脱敏/确认接口入库，来源保留 teacher_provided_teaching；已验证工作台、水印帧、草稿保存/重读、未分派拒绝及旧版本冲突。未添加诊断标签或原始报告。应用修复位于本地 fix/teaching-sample-annotation 分支，未推送；私有批次/任务记录在 .credentials/teaching-demo-20261025/import-state.json，源文件不进入 Git。原压缩批次四项解码失败保留为失败，重新无损解压后五项全部通过。此记录仅补充本机展示准备，不改变上列主线 CI 基线或 M3/真实数据生产验收结论。
+
 | WP / SG | 当前状态 | 关联提交 / 证据 | 阻塞或下一步 |
 | --- | --- | --- | --- |
 | WP-00 / PR #2 | PR 已合并；项目 CI 和安全扫描通过；合成阶段所需 SG-0/SG-1 决定已记录，纳入已通过的 M1 合成数据阶段验收 | [PR #2](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/pull/2)；head `a43592ef52741f41620fea3aff25a92ca62d8fe5`；merge `3cf94f7cfbab7f430d4033015f1aea018848ee09`；[CI](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35442391874)、[Security](https://github.com/AlexGUO077/Medical-Image-Annotation-Platform/actions/runs/35442391920)；[本地验收历史](evidence/wp-00-verification.md)；[M1 核验](evidence/m1-acceptance-20260928.md) | 合成阶段与真实数据/生产门禁分开 |

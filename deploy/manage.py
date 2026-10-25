@@ -122,8 +122,9 @@ class Instance:
 
     def provision(self):
         admin = {**self.env, 'POSTGRES_USER': 'miap_owner', 'POSTGRES_PASSWORD': self.values['POSTGRES_OWNER_PASSWORD']}
+        admin['DEPLOY_ALLOW_TEACHING'] = self.values.get('DEPLOY_ALLOW_TEACHING', 'false')
         overrides = []
-        for key in ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'SEED_ADMIN_PASSWORD', 'ELASTIC_PASSWORD']:
+        for key in ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'SEED_ADMIN_PASSWORD', 'ELASTIC_PASSWORD', 'DEPLOY_ALLOW_TEACHING']:
             overrides.extend(['-e', key])
         self.compose('run', '--rm', '--no-deps', *overrides, 'server', 'node', 'bootstrap.cjs', env=admin)
         for bucket in ['miap-mask-maps', 'miap-attachments']:

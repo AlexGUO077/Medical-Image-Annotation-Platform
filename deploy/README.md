@@ -20,6 +20,8 @@ python3 deploy/manage.py --instance "$PWD/.credentials/synthetic-local" up
 
 运行 server 不接收数据库 owner、MinIO root 或 ES elastic 密码。一次性初始化容器使用 owner，日常数据库账号继承已有 `miap_app`；MinIO 仅可访问两个项目桶，ES 仅发布索引权限。不要用 owner 账号替换应用账号来处理权限错误。
 
+2026-10-25，用户要求本机老师教学样例入库展示。此类实例可在私有 `.env` 显式设置 `DEPLOY_ALLOW_TEACHING=true`，启动初始化将同时接受 D-31 的 `teacher_provided_teaching`；默认仍仅允许 synthetic，未知来源始终拒绝。该开关仅传给一次性初始化进程，不扩大公网、病例发布库或导出范围。当前备份恢复演练仍限定 synthetic，不将含教学样例的实例用于原三例合成恢复验收。
+
 ## 同批备份和新实例恢复
 
 ```sh
