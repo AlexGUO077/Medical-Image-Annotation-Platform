@@ -89,6 +89,25 @@ docker compose --env-file .env.local down
 - `.env.local` 只存在本地且已被 Git 忽略；不得将密码、Token、API key、私钥或生产凭据复制到代码、日志、PR 或 Issue。
 - SG-1 未完整放行前，不创建真实数据连接和生产秘密。
 
+## 学生考核与对照学习
+
+首版支持学生独立阅片、标注病变并填写报告，提交后对照病例已有参考报告及可用金标准轮廓，不自动评分。详见[学生功能手册](docs/学生考核与教学功能-开发手册.md)和[教育接口契约](docs/contracts/education-api.md)。
+
+- 管理员打开 `/education`，提前录入学号、姓名、班级和账号有效期，单独交接一次性激活码；选择有脱敏报告和影像的病例，指定学生并发布考核。
+- 学生打开 `/student/activate` 设置密码，再使用学号登录。登录后进入 `/student`；`/student/account` 可修改密码。首版未提供忘记密码重置。
+- 作答期不返回参考报告、详细病例或标准轮廓；部位使用通用字典，器官/位置及病变描述由学生填写。自动保存之外也可手动保存，离页前处理未同步修改；一经提交即锁定并开放对照。
+- 学生答卷独立于生产病例版本和状态。同题可以分配给多名学生；结束考核停止作答，撤销考核停止学生访问。
+
+升级先执行增量迁移并重新授予应用角色权限，不修改初始迁移：
+
+```bash
+npm run migration:run --workspace server
+npm run db:provision-role --workspace server
+npm run test:education:integration --workspace server
+```
+
+上述命令需加载对应的本地合成环境，迁移使用迁移账号；集成测试只在随机临时 schema 中建夹具。演示准备脚本 `server/test/prepare-education-demo.cjs` 只接受显式 `EDUCATION_PREPARE_SYNTHETIC=1`、`miap_synthetic` 和绝对私密凭据路径 `EDUCATION_DEMO_FILE`，需已有完成安全设置的管理员及可用Orthanc/Redis；会创建纯合成DX/CT题目及两个测试身份，已有凭据时不覆盖密码或答卷。它不代表脱敏或临床金标准验收。凭据不得进入Git。
+
 ## 开发基线
 
 - [项目执行规则](AGENTS.md)：单一实现者、按需阅读、风险分级和精简证据。

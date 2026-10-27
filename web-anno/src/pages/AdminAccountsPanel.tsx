@@ -45,11 +45,11 @@ export function AdminAccountsPanel({session,onExpired}:{session:Session;onExpire
   <Space><Button type="primary" disabled={busy} onClick={()=>{createForm.resetFields();setCreating(true);}}>开通账号</Button><Button disabled={busy} onClick={()=>setRevision(n=>n+1)}>刷新账号</Button></Space>
   {!data&&!error&&<Spin aria-label="加载账号"/>}
   {data&&<><Table rowKey="id" dataSource={data.items} pagination={false} scroll={{x:1100}} columns={[
-   {title:'账号',dataIndex:'username'},{title:'姓名',dataIndex:'real_name'}, {title:'角色',dataIndex:'role',render:(v:string)=>v==='admin'?'管理员':'业务人员'},
+   {title:'账号',dataIndex:'username'},{title:'姓名',dataIndex:'real_name'}, {title:'角色',dataIndex:'role',render:(v:string)=>v==='admin'?'管理员':v==='student'?'学生':'业务人员'},
    {title:'状态',dataIndex:'status',render:(v:string)=>v==='active'?'启用':'停用'}, {title:'有效期',dataIndex:'expire_at'},
    {title:'资格',dataIndex:'quals',render:qualificationText}, {title:'安全设置',render:(_:unknown,u:Assignee)=>u.must_change_password?'须首次改密':u.role==='admin'?(u.mfa_enabled?'2FA 已绑定':'须绑定 2FA'):'已完成'},
    {title:'操作',render:(_:unknown,u:Assignee)=><Space wrap>
-    <Button disabled={busy} onClick={()=>{editForm.setFieldsValue({quals:u.quals,expire_at:u.expire_at});setEditing(u);}}>编辑资格与有效期</Button>
+    <Button disabled={busy} onClick={()=>{editForm.setFieldsValue({quals:u.quals,expire_at:u.expire_at});setEditing(u);}}>{u.role==='student'?'编辑有效期':'编辑资格与有效期'}</Button>
     <Popconfirm title={u.status==='active'?'停用账号并使旧会话失效？':'已核实异常，重新启用此账号？'} onConfirm={()=>change({update:{id:u.id,status:u.status==='active'?'disabled':'active'}})}><Button disabled={busy||(u.id===me&&u.status==='active')}>{u.status==='active'?'停用账号':'启用账号'}</Button></Popconfirm>
     {u.role==='admin'&&<Popconfirm title="重置另一管理员的 2FA？其须重新登录并绑定。" onConfirm={()=>change({update:{id:u.id,reset_mfa:true}})}><Button disabled={busy||u.id===me}>重置 2FA</Button></Popconfirm>}
    </Space>},
@@ -67,10 +67,10 @@ export function AdminAccountsPanel({session,onExpired}:{session:Session;onExpire
    </Form>
   </Modal>
   <Modal title={`编辑账号：${editing?.username??''}`} open={!!editing} footer={null} onCancel={()=>{if(!busy)setEditing(undefined);}} maskClosable={false} destroyOnHidden>
-   <Form form={editForm} disabled={busy} layout="vertical" onFinish={values=>{if(!editing)return;const update:AccountUpdate={id:editing.id};if(values.expire_at!==editing.expire_at)update.expire_at=values.expire_at;if(!sameQualifications(values.quals,editing.quals))update.quals=values.quals;
+   <Form form={editForm} disabled={busy} layout="vertical" onFinish={values=>{if(!editing)return;const update:AccountUpdate={id:editing.id};if(values.expire_at!==editing.expire_at)update.expire_at=values.expire_at;if(editing.role!=='student'&&!sameQualifications(values.quals,editing.quals))update.quals=values.quals;
     if(Object.keys(update).length===1){setNotice('没有变更');setEditing(undefined);}else setPending({update});}}>
     <Form.Item name="expire_at" label="有效期" rules={[{required:true}]}><Input aria-label="账号有效期" type="date" disabled={busy}/></Form.Item>
-    <Form.Item name="quals" label="标注 / 审核资格"><QualificationsEditor/></Form.Item>
+    {editing?.role!=='student'&&<Form.Item name="quals" label="标注 / 审核资格"><QualificationsEditor/></Form.Item>}
     <Button htmlType="submit" type="primary" disabled={busy}>保存账号变更</Button>
    </Form>
   </Modal>

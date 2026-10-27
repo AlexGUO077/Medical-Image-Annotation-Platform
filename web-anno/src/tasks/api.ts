@@ -18,7 +18,7 @@ export interface CreateTask {
   priority: number; case_ids: string[];
 }
 export interface Assignee {
-  id: string; username: string; real_name: string; role: 'admin' | 'member';
+  id: string; username: string; real_name: string; role: 'admin' | 'member' | 'student';
   quals: Partial<Record<SystemCode, ('annotate' | 'review')[]>>; status: string;
   expire_at: string; must_change_password: boolean; mfa_enabled: boolean; in_flight_limit: number | null;
 }

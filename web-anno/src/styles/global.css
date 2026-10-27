@@ -417,3 +417,14 @@ body {
 .task-detail-empty > .viewer-icon { width: 36px; height: 36px; color: #80a8d7; }
 .task-detail-empty h4 { color: #203958; font-size: 16px; margin: 14px 0 8px; }
 @media (max-width: 1200px) { .tasks-split { grid-template-columns: minmax(0,1fr) 260px; gap: 12px; } .tasks-page-heading { align-items: flex-start; flex-direction: column; gap: 14px; } }
+
+.education-form { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
+.education-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.education-form .ant-select { width: 100%; }
+.education-form textarea { resize: vertical; }
+.education-object { border: 1px solid var(--ant-color-border, #394556); border-radius: 6px; padding: 7px; margin-bottom: 8px; }
+.education-object.selected { border-color: #479eff; background: rgb(71 158 255 / 8%); }
+.education-object-list { max-height: 260px; overflow: auto; }
+.education-report { white-space: pre-wrap; line-height: 1.8; overflow-wrap: anywhere; }
+.education-reference { border-top: 1px solid #536176; padding-top: 12px; }
+.education-workbench textarea:disabled { color: var(--viewer-text, #fff); -webkit-text-fill-color: var(--viewer-text, #fff); }

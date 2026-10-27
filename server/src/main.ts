@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/api-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, new ExpressAdapter());
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter());
+  app.useBodyParser('json', { limit: '3mb' });
   app.enableShutdownHooks();
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new ApiExceptionFilter());

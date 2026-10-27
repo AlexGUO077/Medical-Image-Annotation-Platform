@@ -1,4 +1,4 @@
-export type AccountRole = 'admin' | 'member';
+export type AccountRole = 'admin' | 'member' | 'student';
 export type Qualification = 'annotate' | 'review';
 export type Qualifications = Record<string, Qualification[]>;
 

@@ -14,6 +14,6 @@ import { PermissionService } from './permission.service';
   imports: [JwtModule.register({ secret: requiredEnv('JWT_SECRET') })],
   controllers: [AuthController],
   providers: [AuthService, AuthTokenService, TotpService, SecurityStateService, PermissionService, AccessTokenGuard, AdminGuard],
-  exports: [AccessTokenGuard, AdminGuard, AuthTokenService, PermissionService],
+  exports: [SecurityStateService, AccessTokenGuard, AdminGuard, AuthTokenService, PermissionService],
 })
 export class AuthModule {}

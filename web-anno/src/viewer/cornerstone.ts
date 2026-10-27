@@ -1,12 +1,12 @@
 import { cache, Enums, imageLoader, init, metaData, RenderingEngine, utilities, type Types } from '@cornerstonejs/core';
-import { viewerApi, type FrameWindow, type Series, type FrameGeometry } from './api';
+import { viewerApi, type FrameWindow, type Series, type FrameAccess, type FrameGeometry } from './api';
 
 const pending = new Map<string, () => Promise<Types.IImage>>();
 const metadata = new Map<string, Record<string, unknown>>();
 let initialized = false;
 
 /** A single watermarked display frame in RAM; never a DICOM loader or a calibrated measurement image. */
-export async function mountFrame(element: HTMLDivElement, token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal,libraryVersion?:number) {
+export async function mountFrame(element: HTMLDivElement, token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal,libraryVersion?:FrameAccess) {
   if (!initialized) {
     init();
     metaData.addProvider((type, imageId: string) => metadata.get(imageId)?.[type]);

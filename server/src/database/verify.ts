@@ -5,12 +5,17 @@ import { APP_DATABASE_ROLE } from './provision-role';
 export const BUSINESS_TABLES = [
   'users', 'cases', 'studies', 'series', 'reports', 'attachments', 'taxonomy_nodes', 'sign_tags',
   'tasks', 'task_cases', 'task_assignments', 'annotation_objects', 'annotation_tags', 'reviews',
-  'audit_logs', 'export_requests',
+  'audit_logs', 'export_requests', 'education_roster', 'education_tasks', 'education_items', 'education_students', 'education_attempts',
 ] as const;
 
 type ExpectedColumn = readonly [dataType: string, nullable: boolean];
 
 const EXPECTED_COLUMNS: Record<string, Record<string, ExpectedColumn>> = {
+  education_roster: {student_no:['character varying',false],real_name:['character varying',false],class_name:['character varying',false],expire_at:['date',false],user_id:['uuid',true],activation_hash:['character varying',true],activation_expires_at:['timestamp with time zone',true],activated_at:['timestamp with time zone',true]},
+  education_tasks: {title:['character varying',false],instructions:['character varying',false],status:['character varying',false],created_by:['uuid',false]},
+  education_items: {task_id:['uuid',false],case_id:['uuid',false],ordinal:['integer',false],reference_version:['integer',false],series_ids:['jsonb',false],reference:['jsonb',false]},
+  education_students: {task_id:['uuid',false],roster_id:['uuid',false]},
+  education_attempts: {item_id:['uuid',false],student_id:['uuid',false],state:['character varying',false],version:['integer',false],answer:['jsonb',false],submitted_at:['timestamp with time zone',true]},
   users: {
     username: ['character varying', false], password_hash: ['character varying', false],
     real_name: ['character varying', false], email: ['character varying', true],
@@ -107,7 +112,7 @@ export async function existingBusinessTables(dataSource: DataSource): Promise<st
 
 export async function verifyDatabase(dataSource: DataSource): Promise<void> {
   const tables = await existingBusinessTables(dataSource);
-  assert(tables.length === BUSINESS_TABLES.length, `Expected 16 business tables, found ${tables.length}`);
+  assert(tables.length === BUSINESS_TABLES.length, `Expected ${BUSINESS_TABLES.length} business tables, found ${tables.length}`);
 
   const commonColumnRows = await dataSource.query(
     `SELECT count(*)::int AS count

@@ -39,3 +39,7 @@
 依据手册 §6.2/§8.4，`GET /api/workbench/:caseId/attachments/:attachmentId/preview?page=1` 为当前合成病例标注人提供已确认附件的分页 PNG 预览。仅接受正整数页号和 page 查询字段；沿用现有对象 PNG/页清单，不提供原件、外部地址或下载入口。读取需有效账号会话、系统资格、标注分派、病例来源/脱敏确认和附件归属；输出前在同一事务重新鉴权并写 `workbench.attachment_viewed` 审计。加账号/姓名/时间水印，no-store/private、no-referrer、nosniff；失败不返回源内容。前端仅保留当前页临时 Blob URL，切换/关闭/离开页面撤销。
 
 影像区增加“拖拽调窗”模式：横向拖动调整窗宽、纵向调整窗位，显示候选数值；松手后一次调用既有帧服务渲染，避免每个 pointermove 都请求帧。窗口仍由服务器绑定到票据，不在浏览器处理原始 DICOM；输入框、CT 预设及平移继续可用。取消拖动不应用候选值。
+
+## 教育访问模式（D-46，2026-10-27）
+
+学生 POST /api/frames/ticket 使用 `access_mode=education,attempt_id`，不接受 expected_version。票据同时签名绑定本人会话、case、series、frame、window 和 attempt_id；签发与读帧均复核当前账号、本人获准任务、题目冻结序列和病例状态，渲染后再复核。student 的工作分派/library 模式，以及非student的education模式均拒绝。缓存预加载也绑定作答并重新取票；水印、几何校验、限流、no-store和原始影像防下载控制沿用。详见 [education-api](education-api.md)。

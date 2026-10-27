@@ -16,10 +16,11 @@ export function AuthenticatedLayout({ session, children, onLogout }: Authenticat
   const navigate = useNavigate();
   const location = useLocation();
   const viewing = isDarkThemePath(location.pathname);
-  const items = [
+  const items = session.role === 'student' ? [{key:'/student',label:'我的考核',icon:<ViewerIcon name="list"/>},{key:'/student/account',label:'修改密码',icon:<ViewerIcon name="settings"/>}] : [
     { key: '/tasks', label: '任务列表', icon: <ViewerIcon name="list" /> },
     { key: '/library', label: '病例库', icon: <ViewerIcon name="library" /> },
     ...(session.role === 'admin' ? [
+      { key: '/education', label: '学生与考核', icon: <ViewerIcon name="list" /> },
       { key: '/cases/import', label: '病例录入', icon: <ViewerIcon name="upload" /> },
       { key: '/dashboard', label: '统计看板', icon: <ViewerIcon name="chart" /> },
       { key: '/admin', label: '系统管理', icon: <ViewerIcon name="settings" /> },
@@ -33,14 +34,14 @@ export function AuthenticatedLayout({ session, children, onLogout }: Authenticat
           mode="inline"
           theme={viewing ? 'dark' : 'light'}
           items={items}
-          selectedKeys={[location.pathname.startsWith('/library/')?'/library':viewing?'/tasks':location.pathname]}
+          selectedKeys={[session.role==='student'?(location.pathname==='/student/account'?'/student/account':'/student'):location.pathname.startsWith('/library/')?'/library':viewing?'/tasks':location.pathname]}
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
       <Layout>
         <Header className="app-header">
           <span className="app-header-title">{viewing ? '医学影像标注平台' : items.find(item => location.pathname.startsWith(item.key))?.label ?? '医学影像标注平台'}</span>
-          <Typography.Text>{session.role === 'admin' ? '管理员' : '业务人员'}</Typography.Text>
+          <Typography.Text>{session.role === 'admin' ? '管理员' : session.role === 'student' ? '学生' : '业务人员'}</Typography.Text>
           <Button onClick={onLogout}>退出登录</Button>
         </Header>
         <Content className="app-content">{children}</Content>

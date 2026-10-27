@@ -1,0 +1,37 @@
+# 学生教学功能本地验证
+
+日期：2026-10-27。分支：`feat/student-teaching`。范围依据 [D-46](../decisions/D-46-student-teaching-scope.md) 与 [接口契约](../contracts/education-api.md)。本页记录开发验证，不代替人工验收或原 WP/SG 放行。
+
+## 完成内容
+
+- `student` 身份、预录名册、一次性激活、自设密码与登录后改密；管理员管理考核和提交。
+- 复用影像布局、绘制和水印帧；独立保存整份答案，保护多人、并发版本与站内离页。
+- 每题一次提交，提交后不可改写；展示冻结的已有参考报告与可用金标准轮廓，无自动评分。
+- 首版使用病例多序列、全量通用部位选项、对象级器官/位置文字；允许明确的零病灶回答。
+- 纯合成 DX、三帧 CT 演示题；`student_demo` 保持未提交供用户使用，`student_check` 承担浏览器验证。凭据只在本机忽略目录，不进入证据或 Git。
+
+## 验证环境与证据位置
+
+Node.js 24.14.0；现有 `miap-synthetic-m3-closeout` 本地 Docker 服务；PostgreSQL、Redis、Orthanc、HTTPS nginx；本机 Chrome + 已安装的 Playwright。所有新夹具为合成内容，未改写原老师样例。
+
+本地原始输出保存在忽略目录 `reports/student-education/`，包括 `check.log`、`integration.log`、`final-targeted.log`、`final-build.log`、`browser.log`；浏览器截图位于 `browser/student-workbench-{DX,CT}.png`、`student-feedback-{DX,CT}.png`。截图只包含合成图像与合成学生身份；未保存 HAR、浏览器 trace、Token 或密码。
+
+## 检查及结果
+
+1. `npm run check`：禁止文件、lint、类型、全部测试、构建。最终通过：脚本45项、后端517项、Python13项、前端225项，lint/类型/构建通过；一次运行遭遇本机睡眠/唤醒，出现长时间间隔与worker超时，核对系统睡眠记录后以临时 caffeinate 防止本次检查期间空闲睡眠并重跑。期间发现的旧渲染测试高并发超时通过限制 DOM 测试 worker 为2处理，未增加原60秒测试超时。登录页独立组件兼容、jsdom Request/AbortSignal 跨运行环境问题和选中对象可空类型已修复。
+2. `node server/test/education.integration.cjs`：在容器临时目录使用本分支编译产物执行，连接实际 PostgreSQL/Redis；创建独立随机 schema，结束删除；Orthanc/渲染在这一层明确替换为合成边界。通过名册激活与实际密码登录、同IP多学生激活、本人权限、跨学生拒绝、并发保存409、几何范围拒绝、重复提交同结果、数据库提交后不可变、参考冻结、52条提交分页、教育帧票据与渲染中撤权、下线拒绝、改密旧会话失效、含教学数据拒绝回滚迁移。
+3. 前端专项：`npm run test --workspace web-anno -- src/education/StudentWorkflow.test.tsx src/pages/AdminAccountsPanel.test.tsx`。11项通过，覆盖学生不能进入生产工作台、作答期无参考、立即离页保存、保存中继续编辑、退出失败保留答卷、已保存答卷离线退出、只读反馈及管理账号回归。
+4. `node server/test/education.browser.cjs`：使用显式 `MIAP_EDUCATION_INSTANCE`、`MIAP_EDUCATION_CREDENTIALS` 及本机 Playwright/Chrome 运行。实际管理员登录并新建测试考核；实际学生登录，DX和CT逐题绘制、填写对象与报告、保存、离开重读、提交、查看冻结报告与金标准叠加；验证管理端能查到两份提交、页面无运行错误。未提交用户的 `student_demo` 答卷。
+5. `node --check` 检查新增集成、浏览器、演示准备脚本；`git diff --check` 和文档相对链接检查。
+
+## 审查与修复
+
+按 HIGH 风险增加一名只读 reviewer，未安排多实现者。发现并修复 DELETE 触发器返回值、激活密码首尾空格、共享网络限流、提交分页、SPA离页保存和已保存答卷离线退出。修复后复用同一 reviewer 仅复核发现点，全部发现已关闭。真实PG测试另发现 TypeORM 的 UPDATE RETURNING 返回数组与影响行数元组，教育写接口改用 CTE SELECT，返回版本及提交结果已通过实际并发测试。
+
+## 本地运行与回退边界
+
+现有实例以 `deploy/compose.yml` 加忽略的 `reports/student-education/compose.local.json` 运行，将本分支 `server/dist`、`web-anno/dist` 只读挂载到原服务；镜像、持久卷及老师影像不复制或清空。当前入口 `https://localhost:18447/login`，管理员新增 `/education`，学生 `/student`。
+
+增量迁移已应用并授予现有最小应用账号新表权限。已有学生与答卷时 down 明确拒绝，不能强制删表或将 student 降为 member；应用回退应先关闭教学入口并保留兼容 schema，优先向前修复。
+
+本次仅本地分支开发与验证，不推送、不创建PR、不宣称云端或人工验收完成。教师身份、独立器官字典、计时与重复练习、忘记密码重置、自动报告分析和评分均属后续扩展。

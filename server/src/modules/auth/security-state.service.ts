@@ -14,6 +14,13 @@ export class SecurityStateService {
     if (count > 5) throw new HttpException('尝试次数过多，请稍后重试', 429);
   }
 
+  async assertActivationNetworkAllowed(ip: string): Promise<void> {
+    const key = this.attemptKey('activation-network', ip);
+    const count = await this.redis.incr(key);
+    if (count === 1) await this.redis.expire(key, 15 * 60);
+    if (count > 1000) throw new HttpException('激活请求过多，请稍后重试', 429);
+  }
+
   async clearAttempts(scope: 'password' | 'mfa', identifier: string): Promise<void> {
     await this.redis.del(this.attemptKey(scope, identifier));
   }

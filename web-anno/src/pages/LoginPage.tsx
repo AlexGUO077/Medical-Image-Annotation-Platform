@@ -56,7 +56,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       <Card className="login-card" variant="outlined">
         <Typography.Title level={1}>医学影像标注平台</Typography.Title>
         <Typography.Paragraph type="secondary">
-          请输入管理员分配的账号。平台不提供公开注册。
+          业务账号由管理员分配；学生使用学号登录，首次使用请先激活。
         </Typography.Paragraph>
         {error && <Alert type="error" showIcon message={error} />}
 
@@ -70,6 +70,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
               <Input.Password autoComplete="current-password" />
             </Form.Item>
             <Button block type="primary" htmlType="submit" loading={loading}>登录</Button>
+            <p><a href="/student/activate">激活学生身份</a></p>
           </Form>
         )}
 
