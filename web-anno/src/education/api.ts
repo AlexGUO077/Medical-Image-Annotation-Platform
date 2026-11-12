@@ -1,4 +1,4 @@
-import type { EducationFeedback, EducationTask, EducationWorkbench, RosterEntry, StudentAnswer } from './types';
+import type { CaseReferenceSections, EducationFeedback, EducationTask, EducationWorkbench, RosterEntry, StudentAnswer } from './types';
 export class EducationError extends Error {constructor(public status:number,message:string){super(message);}}
 async function request<T>(path:string,token:string|undefined,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>{
   const response=await fetch(`/api/education${path}`,{method,signal,cache:'no-store',redirect:'error',headers:{...(token?{Authorization:`Bearer ${token}`} :{}),...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});
@@ -12,7 +12,7 @@ export const educationApi={
   reissue:(token:string,id:string)=>request<{id:string;activation_code:string}>(`/roster/${id}/activation`,token,'POST',{}),
   candidates:(token:string,page=1)=>request<{id:string;case_no:string;source:string;status:string}[]>(`/candidates?page=${page}`,token),
   tasks:(token:string,page=1)=>request<EducationTask[]>(`/tasks?page=${page}`,token),
-  createTask:(token:string,body:{title:string;instructions:string;case_ids:string[];roster_ids:string[]})=>request<{id:string}>('/tasks',token,'POST',body),
+  createTask:(token:string,body:{title:string;instructions:string;case_ids:string[];roster_ids:string[];reference_sections:CaseReferenceSections[]})=>request<{id:string}>('/tasks',token,'POST',body),
   taskState:(token:string,id:string,status:'closed'|'revoked')=>request(`/tasks/${id}`,token,'PATCH',{status}),
   submissions:(token:string,id:string,page=1)=>request<{id:string;student_no:string;real_name:string;ordinal:number;answer:StudentAnswer;submitted_at:string}[]>(`/tasks/${id}/submissions?page=${page}`,token),
   start:(token:string,id:string)=>request<{id:string}>(`/items/${id}/attempts`,token,'POST',{}),

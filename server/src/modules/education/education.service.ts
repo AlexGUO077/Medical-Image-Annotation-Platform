@@ -71,7 +71,14 @@ export class EducationService {
     AND EXISTS(SELECT 1 FROM studies st JOIN series s ON s.study_id=st.id AND s.deleted_at IS NULL WHERE st.case_id=c.id AND st.deleted_at IS NULL)
     AND EXISTS(SELECT 1 FROM audit_logs WHERE target='cases:'||c.id::text AND action IN ('case_import.deidentification_confirmed','case_manual.confirmed'))`;}
   async createTask(actor:AuthUser,body:unknown,ip:string){
-    const b=object(body,['title','instructions','case_ids','roster_ids']),title=text(b.title,200,true),instructions=text(b.instructions??'',4000),cases=ids(b.case_ids,50).sort(),roster=ids(b.roster_ids,500).sort();
+    const b=object(body,['title','instructions','case_ids','roster_ids','reference_sections']),title=text(b.title,200,true),instructions=text(b.instructions??'',4000),cases=ids(b.case_ids,50).sort(),roster=ids(b.roster_ids,500).sort();
+    if(!Array.isArray(b.reference_sections)||b.reference_sections.length!==cases.length)throw new BadRequestException('请为每例病灶题核对医生的影像所见和诊断意见');
+    const excerpts=new Map(b.reference_sections.map(value=>{
+      const entry=object(value,['case_id','findings','impression']);
+      const findings=text(entry.findings,10000,true),impression=text(entry.impression,5000,true);
+      return [uuid(entry.case_id),{findings,impression}] as const;
+    }));
+    if(cases.some(id=>!excerpts.has(id)))throw new BadRequestException('参考报告与所选病例不一致');
     return this.db.transaction(async m=>{
       await educationActor(m,actor,'admin');
       const people=await m.query('SELECT id FROM education_roster WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL AND expire_at>=CURRENT_DATE ORDER BY id FOR SHARE',[roster]);
@@ -81,11 +88,13 @@ export class EducationService {
       const [task]=await m.query(`INSERT INTO education_tasks(title,instructions,status,created_by) VALUES($1,$2,'published',$3) RETURNING id`,[title,instructions,actor.id]);
       for(let n=0;n<sources.length;n++){
         const source=sources[n];const [report]=await m.query('SELECT raw_text FROM reports WHERE case_id=$1 AND deleted_at IS NULL FOR SHARE',[source.id]);
+        const sections=excerpts.get(source.id)!;
+        if(!report||!report.raw_text.includes(sections.findings)||!report.raw_text.includes(sections.impression))throw new BadRequestException('所见和诊断意见须取自该病例当前的脱敏报告，请重新核对');
         const series=await m.query(`SELECT s.id FROM series s JOIN studies st ON st.id=s.study_id WHERE st.case_id=$1 AND st.deleted_at IS NULL AND s.deleted_at IS NULL ORDER BY s.id FOR SHARE OF s,st`,[source.id]);
         const standard=await readAnnotationObjects(m,source.id,source.annotation_version) as Record<string,unknown>[];
         const annotations=standard.length&&standard.every(a=>a.is_gold)?standard.map(({id,series_id,tool,geometry,frame_start,frame_end,key_frame_index,window_preset,part_id,confidence,sign_tag_ids})=>({id,series_id,tool,geometry,frame_start,frame_end,key_frame_index,window_preset,part_id,confidence,sign_tag_ids,report_sent_ids:[]})):[];
         const parts=await m.query('SELECT name FROM taxonomy_nodes WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL',[[...new Set(annotations.map(a=>a.part_id).filter(Boolean))]]);
-        const reference={report:report.raw_text,annotations,part_names:parts.map((p:{name:string})=>p.name),version:source.annotation_version};
+        const reference={report:report.raw_text,...sections,annotations,part_names:parts.map((p:{name:string})=>p.name),version:source.annotation_version};
         await m.query('INSERT INTO education_items(task_id,case_id,ordinal,reference_version,series_ids,reference) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)',[task.id,source.id,n+1,source.annotation_version,JSON.stringify(series.map((s:{id:string})=>s.id)),JSON.stringify(reference)]);
       }
       await m.query('INSERT INTO education_students(task_id,roster_id) SELECT $1,unnest($2::uuid[])',[task.id,roster]);

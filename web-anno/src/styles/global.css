@@ -428,3 +428,12 @@ body {
 .education-report { white-space: pre-wrap; line-height: 1.8; overflow-wrap: anywhere; }
 .education-reference { border-top: 1px solid #536176; padding-top: 12px; }
 .education-workbench textarea:disabled { color: var(--viewer-text, #fff); -webkit-text-fill-color: var(--viewer-text, #fff); }
+.education-instructions { margin: 0; line-height: 1.55; }
+.education-object { border-inline-start-width: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.education-object > .ant-btn-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.education-object > small { color: var(--viewer-muted); }
+.education-object-heading, .education-reference h4 { margin: 0; }
+.education-reference p { margin: 5px 0 0; }
+.education-reference summary, .education-reference-editor summary { cursor: pointer; }
+.education-reference-editor { display: grid; gap: 10px; margin: 8px 0 16px; padding: 12px; }
+.education-reference-editor label { display: grid; gap: 4px; }

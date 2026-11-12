@@ -54,7 +54,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   const [admin]=await db.query(`SELECT *,expire_at::text FROM users WHERE role='admin'`),adminToken=app.get(AuthTokenService).signAccess(admin);
   const caseId=randomUUID(),study=randomUUID(),series=randomUUID(),alienSeries=randomUUID(),part='11000000-0000-4000-8000-000000000003';
   await db.query(`INSERT INTO cases(id,case_no,status,source,system_code,confirm_method,clinical_text) VALUES($1,'SYN-EDU','已录入','synthetic','resp','临床综合诊断','HIDDEN CLINICAL')`,[caseId]);
-  await db.query(`INSERT INTO reports(case_id,raw_text,sentences) VALUES($1,'SYNTHETIC REFERENCE ORIGINAL','[{"idx":0,"text":"HIDDEN SENTENCE"}]')`,[caseId]);
+  await db.query(`INSERT INTO reports(case_id,raw_text,sentences) VALUES($1,'HIDDEN FINDINGS. HIDDEN IMPRESSION.','[{"idx":0,"text":"HIDDEN SENTENCE"}]')`,[caseId]);
   await db.query(`INSERT INTO studies(id,case_id,study_uid,study_date) VALUES($1,$2,'2.25.88881',CURRENT_DATE)`,[study,caseId]);
   await db.query(`INSERT INTO series(id,study_id,series_uid,orthanc_id,modality,frame_count,default_window) VALUES($1,$2,'2.25.88882','synthetic','CT',3,'{"center":40,"width":400}')`,[series,study]);
   await db.query(`INSERT INTO audit_logs(actor,action,target,detail,ip) VALUES($1,'case_manual.confirmed',$2,'{}','test')`,[admin.id,'cases:'+caseId]);
@@ -76,18 +76,27 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   assert.equal((await req(`/workbench/${caseId}`,'GET',undefined,people[0].token)).status,403);
   assert.equal((await req(`/workbench/${caseId}/attachments/${randomUUID()}/preview`,'GET',undefined,people[0].token)).status,403);
   assert.equal((await req('/education/tasks','POST',{},people[0].token)).status,403);
-  const task=ok(await req('/education/tasks','POST',{title:'合成考核',instructions:'独立作答',case_ids:[caseId],roster_ids:people.map(p=>p.roster)},adminToken),201);
+  const draftTask={title:'合成考核',instructions:'独立作答',case_ids:[caseId],roster_ids:people.map(p=>p.roster)};
+  const reference={case_id:caseId,findings:'HIDDEN FINDINGS.',impression:'HIDDEN IMPRESSION.'};
+  for(const sections of [undefined,[],[{...reference,impression:''}],[{...reference,case_id:randomUUID()}],[{...reference,impression:'outside original report'}]]){
+   assert.equal((await req('/education/tasks','POST',{...draftTask,reference_sections:sections},adminToken)).status,400);
+  }
+  const task=ok(await req('/education/tasks','POST',{...draftTask,reference_sections:[reference]},adminToken),201);
   const tasks=ok(await req('/education/tasks','GET',undefined,people[0].token));assert.equal(tasks.length,1);const item=tasks[0].items[0].id;
   const attempts=[];for(const p of people)attempts.push(ok(await req(`/education/items/${item}/attempts`,'POST',{},p.token),201).id);
   const w=ok(await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[0].token));
   assert.match((await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[0].token)).headers.get('cache-control'),/no-store/);
-  for(const secret of ['HIDDEN CLINICAL','HIDDEN SENTENCE','SYNTHETIC REFERENCE ORIGINAL','clinical_text','reference','system_code'])assert(!JSON.stringify(w).includes(secret),secret);
+  for(const secret of ['HIDDEN CLINICAL','HIDDEN SENTENCE','HIDDEN FINDINGS','HIDDEN IMPRESSION','clinical_text','reference','system_code'])assert(!JSON.stringify(w).includes(secret),secret);
   assert.equal((await req(`/education/attempts/${attempts[0]}/feedback`,'GET',undefined,people[0].token)).status,403);
   assert.equal((await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[1].token)).status,403);
-  const body={body_part_id:part,normal:false,findings:'学生自己的所见',impression:'学生自己的判断',objects:[{id:randomUUID(),series_id:series,tool:'box',geometry:{x:10,y:10,w:20,h:20},frame_start:0,frame_end:0,key_frame_index:0,window_preset:'{"center":40,"width":400}',part_id:part,sign_tag_ids:[],confidence:null,report_sent_ids:[],organ:'合成器官',description:'独立病变描述'}]};
+  const body={body_part_id:part,findings:'学生自己的所见',impression:'学生自己的判断',objects:[{id:randomUUID(),series_id:series,tool:'box',geometry:{x:10,y:10,w:20,h:20},frame_start:0,frame_end:0,key_frame_index:0,window_preset:'{"center":40,"width":400}',part_id:part,sign_tag_ids:[],confidence:null,report_sent_ids:[],organ:'合成器官',description:'独立病变描述'}]};
+  body.objects.push({...body.objects[0],id:randomUUID(),geometry:{x:70,y:60,w:10,h:30},organ:'第二位置',description:'第二病灶'});
   const save=(who,expected,answer)=>req(`/education/attempts/${attempts[who]}/draft`,'PUT',{expected_version:expected,answer},people[who].token);
+  const incomplete={...body,normal:true,objects:[]};
+  ok(await save(1,0,incomplete));
+  assert.equal((await req(`/education/attempts/${attempts[1]}/submit`,'POST',{expected_version:1},people[1].token)).status,400);
   const race=await Promise.all([save(0,0,body),save(0,0,body)]);assert.deepEqual(race.map(r=>r.status).sort(),[200,409]);
-  ok(await save(1,0,{...body,findings:'另一学生',objects:body.objects.map(o=>({...o,id:randomUUID()}))}));
+  ok(await save(1,1,{...body,findings:'另一学生',objects:body.objects.map(o=>({...o,id:randomUUID()}))}));
   assert.equal(ok(await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[0].token)).attempt.answer.findings,'学生自己的所见');
   assert.equal((await save(0,1,{...body,objects:body.objects.map(o=>({...o,series_id:alienSeries}))})).status,400);
   assert.equal((await save(0,1,{...body,objects:body.objects.map(o=>({...o,geometry:{x:120,y:120,w:20,h:20}}))})).status,400);
@@ -102,7 +111,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   await assert.rejects(db.query('UPDATE education_attempts SET version=version+1 WHERE id=$1',[attempts[0]]),/immutable/);
   await assert.rejects(db.query('DELETE FROM education_attempts WHERE id=$1',[attempts[0]]),/immutable/);
   await db.query(`UPDATE reports SET raw_text='CHANGED REFERENCE' WHERE case_id=$1`,[caseId]);
-  const feedback=ok(await req(`/education/attempts/${attempts[0]}/feedback`,'GET',undefined,people[0].token));assert.equal(feedback.reference.report,'SYNTHETIC REFERENCE ORIGINAL');assert(!JSON.stringify(feedback).includes('HIDDEN CLINICAL'));
+  const feedback=ok(await req(`/education/attempts/${attempts[0]}/feedback`,'GET',undefined,people[0].token));assert.equal(feedback.reference.report,'HIDDEN FINDINGS. HIDDEN IMPRESSION.');assert.equal(feedback.reference.findings,reference.findings);assert.equal(feedback.reference.impression,reference.impression);assert.deepEqual(feedback.attempt.answer.objects.map(o=>o.description),['独立病变描述','第二病灶']);assert(!JSON.stringify(feedback).includes('HIDDEN CLINICAL'));
   // Validate complete submission pagination beyond the former fixed cap.
   for(let n=0;n<51;n++){
     const userId=randomUUID();await db.query(`INSERT INTO users(id,username,password_hash,real_name,role,status,expire_at,must_change_password) VALUES($1,$2,'unused','合成分页学生','student','active','2099-12-31',false)`,[userId,`page_${schema}_${n}`]);

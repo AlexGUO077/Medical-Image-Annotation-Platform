@@ -47,6 +47,13 @@ it.each([
 ])('moves the entire contour by dragging an edge away from its handles',(item,from,to,expected)=>{
   drag(show({annotations:[item]}),from,to);expect(change).toHaveBeenCalledWith(item.id,expected);
 });
+it('starts a separate brush lesion on an existing mask when explicitly adding',()=>{
+  const brush:Annotation={...point,tool:'brush',geometry:brushStroke(undefined,controls.geometry,[50,50],[70,50],10,false)};
+  const canvas=show({annotations:[brush],tool:'brush',createNew:true});
+  drag(canvas,[60,50],[85,65]);
+  expect(create).toHaveBeenCalledExactlyOnceWith('brush',expect.any(Object));
+  expect(change).not.toHaveBeenCalled();expect(select).not.toHaveBeenCalled();
+});
 it('does not mistake the empty interior of a polygon for its contour',()=>{
   click(show({annotations:[polygon]}),150,140);expect(select).not.toHaveBeenCalled();
 });

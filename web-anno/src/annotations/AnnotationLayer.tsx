@@ -8,7 +8,7 @@ import { brushStroke, clampPoint, frameMask, inside, measurement, polygonValid, 
 type Controls=Awaited<ReturnType<typeof mountFrame>>;
 interface Props {
  colorIds?:string[]; opacity?:number; controls:Controls; annotations:Annotation[]; comparison?:Annotation[]; frame:number; selected?:string; hidden:Set<string>; locked:Set<string>;
- tool:DrawingTool; diameter:number; erase:boolean; freehand:boolean; disabled:boolean; navigation?:boolean; isActive?():boolean;
+ createNew?:boolean; tool:DrawingTool; diameter:number; erase:boolean; freehand:boolean; disabled:boolean; navigation?:boolean; isActive?():boolean;
  onSelect(id:string):void; onDelete?(id:string):void; onCreate(tool:Annotation['tool'],geometry:Geometry):void; onChange(id:string,geometry:Geometry):void;
 }
 function vertices(a:Annotation):Point[]{
@@ -112,7 +112,7 @@ export function AnnotationLayer(p:Props){
    // Finish an in-progress polygon before considering existing contours beneath it.
    const drawingPolygon=p.tool==='polygon'&&polygon.length>0;
    const painting=p.tool==='brush'&&a?.id===p.selected&&a?.tool==='brush'&&!p.navigation&&!p.disabled;
-   if(a&&!drawingPolygon&&!painting){
+   if(a&&!p.createNew&&!drawingPolygon&&!painting){
     e.stopPropagation();e.preventDefault();canvas.current?.focus();p.onSelect(a.id);if(p.disabled||p.locked.has(a.id))return;
     canvas.current?.setPointerCapture(e.pointerId);
     const c=p.controls.toCanvas(...q);const handle=vertices(a).findIndex(v=>{const d=p.controls.toCanvas(...v);return Math.hypot(c[0]-d[0],c[1]-d[1])<10;});
