@@ -136,7 +136,7 @@ function StudentWorkspace({session,data,feedback,onExpired,onReload}:{session:Se
  <WorkspaceLayout identity={<>
    <Link className="student-home-link" to="/student" aria-label="返回学生主页" title="返回学生主页"><ViewerIcon name="home"/></Link>
    <strong className="student-task-identity" title={data.task.title}>{data.task.title}</strong>
-   <span className="student-question-number">第 {data.item.ordinal} 题</span><Tag color={feedback?'green':'blue'}>{feedback?'提交后对照':'独立作答'}</Tag>
+   <span className="student-question-number">第 {data.item.ordinal} 题</span><Tag bordered={false} color={feedback?'green':'blue'}>{feedback?'提交后对照':'独立作答'}</Tag>
  </>}
   leftTitle={feedback?'报告对照':'我的阅片报告'} rightTitle={`我的病灶（${objects.length}）`} focus={focus} onFocus={setFocus}
   actions={feedback?<Space><span>已提交 · {data.attempt.submitted_at&&new Date(data.attempt.submitted_at).toLocaleString()}</span>{standard?.annotations.length?<Switch aria-label="显示医生参考标注" checked={showStandard} onChange={setShowStandard} checkedChildren="标准轮廓开" unCheckedChildren="标准轮廓关"/>:null}</Space>:<Space><span className="draft-status" role="status" data-saved={status==='已保存'&&!offline}>{offline?'离线':status}</span><Button disabled={!editable||offline} onClick={()=>void save().catch(fail)}>保存</Button><Popconfirm title={missing||'提交后将锁定作答并开放医生参考报告。确认提交？'} onConfirm={missing?undefined:submit} okText={missing?'知道了':'确认提交'} showCancel={!missing} disabled={!editable||offline}><Button type="primary" loading={submitting} disabled={!editable||offline}>提交作答</Button></Popconfirm></Space>}

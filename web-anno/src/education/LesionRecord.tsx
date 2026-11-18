@@ -37,7 +37,7 @@ export function LesionRecord({ object: o, number, data, feedback, editable, canC
         disabled={!editable} onChange={e => onChange({ organ: e.target.value })}/>
     </label>
     <label className="education-field">病变描述
-      <Input.TextArea aria-label="病变描述" autoSize={{ minRows: 2 }} maxLength={2000} value={o.description}
+      <Input.TextArea aria-label="病变描述" autoSize={{ minRows: 4 }} maxLength={2000} value={o.description}
         placeholder="记录这个病灶的影像表现" disabled={!editable} onChange={e => onChange({ description: e.target.value })}/>
     </label>
     <details className="lesion-options">

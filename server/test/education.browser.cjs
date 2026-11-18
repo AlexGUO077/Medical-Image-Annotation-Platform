@@ -89,7 +89,12 @@ async function checkLineChange(field, actionName, edit) {
   await page.getByRole('combobox',{name:'身体部位',exact:true}).fill('合成示例部位-resp');await page.getByText('呼吸 / 合成示例部位-resp',{exact:true}).click();
   const expands=async label=>{
    const field=page.getByLabel(label,{exact:true});
-   await field.fill('第一行\n第二行\n第三行\n第四行');
+   const visibleRows=await field.evaluate(el=>{
+    const style=getComputedStyle(el);
+    const textHeight=el.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
+    return Math.round(textHeight/parseFloat(style.lineHeight));
+   });
+   await field.fill(Array.from({length:visibleRows+1},(_,i)=>`第 ${i+1} 行`).join('\n'));
    await page.waitForFunction(name=>{const el=document.querySelector(`textarea[aria-label="${name}"]`);return el.scrollHeight<=el.clientHeight+1;},label);
    await field.evaluate(el=>el.scrollIntoView({block:'center'}));
    const originalHeight=await field.evaluate(el=>el.clientHeight);
