@@ -4,6 +4,29 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
 const {createHash,X509Certificate}=require('node:crypto');
 const {generate}=require('otplib');
 const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
+
+async function checkLineChange(field, actionName, edit) {
+ const probe = await field.evaluateHandle(textarea => {
+  const panel = textarea.closest('.workspace-panel-body');
+  const frames = [];
+  const sample = () => {
+   frames.push({ height: textarea.clientHeight, innerScroll: textarea.scrollTop, panelScroll: panel.scrollTop });
+   if (frames.length < 8) requestAnimationFrame(sample);
+  };
+  textarea.addEventListener('input', () => requestAnimationFrame(sample), { once: true });
+  return { frames, scrollBefore: panel.scrollTop };
+ });
+ await edit();
+ await field.page().waitForFunction(result => result.frames.length === 8, probe, { timeout: 5000 });
+ const { frames, scrollBefore } = await probe.jsonValue();
+ await probe.dispose();
+ const heights = frames.map(frame => frame.height);
+ assert(Math.max(...heights) - Math.min(...heights) <= 1, `${actionName}: textarea height changed across frames: ${heights.join(', ')}`);
+ assert(frames.every(frame => frame.innerScroll === 0), `${actionName}: textarea scrolled internally`);
+ assert(frames.every(frame => Math.abs(frame.panelScroll - scrollBefore) <= 1), `${actionName}: side panel jumped while the caret was visible`);
+ return heights[0];
+}
+
 (async()=>{
  const instance=process.env.MIAP_EDUCATION_INSTANCE,credentialFile=process.env.MIAP_EDUCATION_CREDENTIALS;
  assert(instance&&credentialFile,'Explicit local instance and private demo credentials required');
@@ -65,7 +88,18 @@ const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
   if(workbench.series[0].frame_count>1){await page.getByRole('button',{name:'下一帧',exact:true}).click();await page.locator('[data-frame-ready="1"]').waitFor();}
   await page.getByRole('combobox',{name:'身体部位',exact:true}).fill('合成示例部位-resp');await page.getByText('呼吸 / 合成示例部位-resp',{exact:true}).click();
   const expands=async label=>{
-   await page.getByLabel(label,{exact:true}).fill(Array.from({length:40},(_,i)=>`阅片记录 ${i+1}`).join('\n'));
+   const field=page.getByLabel(label,{exact:true});
+   await field.fill('第一行\n第二行\n第三行\n第四行');
+   await page.waitForFunction(name=>{const el=document.querySelector(`textarea[aria-label="${name}"]`);return el.scrollHeight<=el.clientHeight+1;},label);
+   await field.evaluate(el=>el.scrollIntoView({block:'center'}));
+   const originalHeight=await field.evaluate(el=>el.clientHeight);
+   const addedHeight=await checkLineChange(field,'Enter',()=>field.press('Enter'));
+   assert(addedHeight>originalHeight+1,'Enter should immediately make room for the next line');
+   const removedHeight=await checkLineChange(field,'Backspace',()=>field.press('Backspace'));
+   assert(Math.abs(removedHeight-originalHeight)<=1,'Deleting the empty line should restore the previous height');
+   const wrappedHeight=await checkLineChange(field,'Soft wrap',()=>page.keyboard.insertText('连续输入文字以观察自动换行'.repeat(4)));
+   assert(wrappedHeight>originalHeight+1,'Continuous text should wrap and expand the field');
+   await field.fill(Array.from({length:40},(_,i)=>`阅片记录 ${i+1}`).join('\n'));
    await page.waitForFunction(name=>{const field=document.querySelector(`textarea[aria-label="${name}"]`);const panel=field?.closest('.workspace-panel-body');return field&&panel&&field.clientHeight>300&&field.scrollHeight<=field.clientHeight+2&&panel.scrollHeight>panel.clientHeight;},label);
   };
   await expands('影像所见');await page.getByLabel('影像所见',{exact:true}).fill('上肺区见圆形亮影，对侧下肺区见片状影。');
@@ -98,7 +132,7 @@ const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
   await page.getByRole('button',{name:/^保\s*存$/}).click();await page.getByRole('status').filter({hasText:'已保存'}).waitFor();
   await page.screenshot({path:path.join(artifacts,`student-workbench-${workbench.series[0].modality}.png`)});
   const firstAttempt=workbench.attempt.id;
-  await page.getByRole('link',{name:'我的考核',exact:true}).click();await page.waitForURL('**/student');await card.getByRole('button',{name:/继续作答/}).first().click();await page.getByLabel('标注绘图层').waitFor();
+  await page.getByRole('link',{name:'返回学生主页',exact:true}).click();await page.waitForURL('**/student');await card.getByRole('button',{name:/继续作答/}).first().click();await page.getByLabel('标注绘图层').waitFor();
   assert.equal(await page.getByLabel('影像所见',{exact:true}).inputValue(),'上肺区见圆形亮影，对侧下肺区见片状影。');
   if(pointMode){
    assert.deepEqual(workbench.attempt.answer.objects.map(o=>1+(o.geometry.additional_points?.length??0)),[3,2]);
@@ -113,7 +147,7 @@ const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
   assert.equal(await page.getByRole('textbox').count(),0);await page.getByRole('heading',{name:'我的影像所见',exact:true}).waitFor();
   if(pointMode)assert.deepEqual(feedback.attempt.answer.objects,workbench.attempt.answer.objects);
   await page.getByLabel('标注绘图层').waitFor();await page.screenshot({path:path.join(artifacts,`student-feedback-${workbench.series[0].modality}.png`)});
-  await page.getByRole('link',{name:'我的考核',exact:true}).click();await page.waitForURL('**/student');
+  await page.getByRole('link',{name:'返回学生主页',exact:true}).click();await page.waitForURL('**/student');
   }
   const submissions=await request(`/api/education/tasks/${created.id}/submissions?page=1`,adminToken);assert.equal(submissions.length,2);assert(submissions.every(s=>s.answer.objects.length===2&&new Set(s.answer.objects.map(o=>o.id)).size===2));
   assert.deepEqual(errors,[]);

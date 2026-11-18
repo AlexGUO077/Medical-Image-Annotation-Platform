@@ -1,4 +1,5 @@
 const paths = {
+  home: 'm3 10 9-7 9 7 M5 8.5V20h5v-6h4v6h5V8.5',
   report: 'M6 3h8l4 4v14H6Z M14 3v5h4 M9 12h6 M9 16h6',
   layers: 'm3 8 9-5 9 5-9 5z M3 12l9 5 9-5 M3 16l9 5 9-5',
   plus: 'M12 5v14 M5 12h14',
