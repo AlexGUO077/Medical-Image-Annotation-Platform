@@ -47,7 +47,9 @@ function FrameSurface({ token, data, series, frame, window, layer, onGeometry, o
   const pointer = useRef<{x:number;y:number;kind:'pan'|'zoom'|'window';window:FrameWindow}>();
   const space = useRef(false);
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{if(isTextInput(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();space.current=true;}if(e.key.toLowerCase()==='r')controls.current?.reset();};
+    const down=(e:KeyboardEvent)=>{if(isTextInput(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
+      if(e.code==='Space'&&!(e.target instanceof HTMLElement&&e.target.closest('button,a,summary,[role="menuitem"],[role="switch"]'))){e.preventDefault();space.current=true;}
+      if(e.key.toLowerCase()==='r')controls.current?.reset();};
     const up=(e:KeyboardEvent)=>{if(e.code==='Space')space.current=false;};
     const blur=()=>{space.current=false;pointer.current=undefined;};
     globalThis.addEventListener('keydown',down);globalThis.addEventListener('keyup',up);globalThis.addEventListener('blur',blur);

@@ -1,10 +1,16 @@
 import { EducationLeaveGuard } from './navigation-guard';
-import { Alert, Button, Empty, Input, InputNumber, Popconfirm, Select, Space, Spin, Switch, Modal, Tag } from 'antd';
+import { Alert, Button, Empty, Popconfirm, Space, Spin, Switch, Modal, Tag } from 'antd';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
-import type { Annotation, Geometry } from '../annotations/types';
+import type { Annotation, Geometry, PointGeometry } from '../annotations/types';
 import type { DrawingTool } from '../annotations/drawing';
+import { pointsOnFrame, pointFrames } from '../annotations/point-marks';
+import { frameMask } from '../annotations/drawing';
+import { StudentReport } from './StudentReport';
+import { LesionCard } from './LesionCard';
+import { LesionRecord } from './LesionRecord';
+import { ViewerIcon } from '../viewer/ViewerIcon';
 import { FramePane } from '../pages/WorkbenchPage';
 import { WorkspaceLayout } from '../viewer/WorkspaceLayout';
 import { SeriesNavigation, ViewerToolbar } from '../viewer/ViewerToolbar';
@@ -49,12 +55,20 @@ function StudentWorkspace({session,data,feedback,onExpired,onReload}:{session:Se
  const objects=answer.objects,object=objects.find(o=>o.id===selected),series=data.series.find(s=>s.id===seriesId);
  const travel=(back:boolean)=>{if(!editable)return;const from=back?undo:redo,to=back?redo:undo,next=from.current.pop();if(next){to.current.push(structuredClone(current.current));change(next,false);}};
  const modify=(patch:Partial<StudentObject>)=>{if(object&&!locked.has(object.id))change({...answer,objects:objects.map(o=>o.id===object.id?{...o,...patch}:o)});};
- const remove=(oid:string)=>{if(locked.has(oid))return;change({...answer,objects:objects.filter(o=>o.id!==oid)});setSelected(undefined);};
+ const remove=(oid:string)=>{
+  if(!editable||locked.has(oid))return;
+  change({...answer,objects:objects.filter(o=>o.id!==oid)});
+  if(oid===selected){setSelected(undefined);chooseTool('select');}
+ };
  const chooseTool=(next:DrawingTool)=>{
   setTool(next);setWindowDrag(false);
   const drawing=toolDefinitions.find(t=>t.id===next);
   if(drawing)lastDrawing.current=drawing.id;
   else setCreating(false);
+ };
+ const pickTool=(next:DrawingTool)=>{
+  if(next==='point' && tool==='point' && !windowDrag){chooseTool('select');return;}
+  chooseTool(next);
  };
  const startLesion=()=>{
   setSelected(undefined);setCreating(true);setErase(false);
@@ -67,7 +81,39 @@ function StudentWorkspace({session,data,feedback,onExpired,onReload}:{session:Se
   if(o.series_id!==seriesId)setWindow(data.series.find(s=>s.id===o.series_id)?.default_window??null);
   setSeriesId(o.series_id);setFrame(o.key_frame_index);
  };
- const create=(kind:Annotation['tool'],shape:Geometry)=>{if(!editable||!series)return;const o:StudentObject={id:crypto.randomUUID(),series_id:series.id,tool:kind,geometry:shape,frame_start:frame,frame_end:frame,key_frame_index:frame,window_preset:series.modality==='CT'?JSON.stringify(window??series.default_window):null,part_id:null,confidence:null,sign_tag_ids:[],report_sent_ids:[],organ:'',description:''};change({...answer,objects:[...objects,o]});setSelected(o.id);setCreating(false);if(kind!=='brush')chooseTool('select');};
+ const create=(kind:Annotation['tool'],shape:Geometry)=>{
+  if(!editable||!series)return;
+  if(kind==='point'&&!creating&&object?.tool==='point'&&object.series_id===series.id){
+   if(locked.has(object.id)||hidden.has(object.id))return;
+   const geometry=object.geometry as PointGeometry;
+   const {x,y}=shape as PointGeometry;
+   modify({geometry:{...geometry,additional_points:[...(geometry.additional_points??[]),{frame_index:frame,x,y}]},
+    frame_start:Math.min(frame,object.frame_start),frame_end:Math.max(frame,object.frame_end)});
+   return;
+  }
+  const next:StudentObject={id:crypto.randomUUID(),series_id:series.id,tool:kind,geometry:shape,
+   frame_start:frame,frame_end:frame,key_frame_index:frame,window_preset:series.modality==='CT'?JSON.stringify(window??series.default_window):null,
+   part_id:null,confidence:null,sign_tag_ids:[],report_sent_ids:[],organ:'',description:''};
+  change({...answer,objects:[...objects,next]});setSelected(next.id);setCreating(false);
+  if(kind!=='brush'&&kind!=='point')chooseTool('select');
+ };
+ const canCopy=!!object&&object.series_id===seriesId&&!!series&&frame+1<series.frame_count&&frame>=object.frame_start&&frame<=object.frame_end
+  &&(object.tool!=='brush'||!!frameMask(object,frame))&&(object.tool!=='point'||pointsOnFrame(object,frame).length>0);
+ const copyToNext=()=>{
+  if(!editable||!object||locked.has(object.id)||!canCopy)return;
+  const nextFrame=frame+1;
+  let shape=structuredClone(object.geometry);
+  if(object.tool==='point'){
+   const [first,...rest]=pointsOnFrame(object,frame);
+   shape={x:first.x,y:first.y,...(rest.length?{additional_points:rest.map(p=>({x:p.x,y:p.y,frame_index:nextFrame}))}:{})};
+  }
+  if(object.tool==='brush'){
+   const mask=frameMask(object,frame)!;
+   shape={width:mask.width,height:mask.height,rle:[...mask.rle]};
+  }
+  const next={...structuredClone(object),id:crypto.randomUUID(),geometry:shape,frame_start:nextFrame,frame_end:nextFrame,key_frame_index:nextFrame};
+  change({...answer,objects:[...objects,next]});setSelected(next.id);setFrame(nextFrame);chooseTool('select');
+ };
  const blocker=useBlocker(({currentLocation,nextLocation})=>!feedback&&currentLocation.pathname!==nextLocation.pathname&&(!!pending.current||JSON.stringify(current.current)!==saved.current));
  useEffect(()=>{if(feedback)return;leaveGuard.current=async()=>{try{await save();return true;}catch(e){fail(e);return false;}};return()=>{leaveGuard.current=null;};});
  const leaveSaved=async()=>{try{await save();if(blocker.state==='blocked')blocker.proceed();}catch(e){fail(e);}};
@@ -77,36 +123,34 @@ function StudentWorkspace({session,data,feedback,onExpired,onReload}:{session:Se
  const incomplete=objects.findIndex(o=>!o.organ.trim()||!o.description.trim());
  const missing=!objects.length?'请先在影像上标注病灶':incomplete>=0?`请补全病灶 ${incomplete+1} 的器官 / 位置和病变描述`:!reportReady?'请填写身体部位、影像所见和诊断意见':'';
  const standard=feedback&&'reference'in data?data.reference:undefined;
+ const pointTarget=!creating&&object?.tool==='point'?object:undefined;
+ const pointHint=pointTarget
+  ? locked.has(pointTarget.id)?'当前病灶已锁定，请解锁或新增病灶'
+  : hidden.has(pointTarget.id)?'当前病灶已隐藏，请显示轮廓或新增病灶'
+  : `正在为病灶 ${objects.indexOf(pointTarget)+1} 加点`
+  : '点击影像标记第一个点';
  const frameDenied=(e:unknown)=>{setError(message(e));setBlocked(true);denied.current=true;};
- return <section className="workbench education-workbench" tabIndex={0} onKeyDown={e=>{if(isTextInput(e.target))return;if(e.key==='Escape'){setFocus(false);chooseTool('pan');setWindowDrag(true);}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(editable)void save().catch(fail);}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();travel(!e.shiftKey);}if((e.key==='Delete'||(e.key==='Backspace'&&tool!=='polygon'))&&selected&&editable){e.preventDefault();remove(selected);}if(!e.ctrlKey&&!e.metaKey&&!e.altKey){if(editable&&['1','2','3','4'].includes(e.key)){const next=({1:'box',2:'brush',3:'polygon',4:'point'} as const)[e.key as '1'|'2'|'3'|'4'];if(next!=='brush'||(geometry?.row_spacing&&geometry.column_spacing)){chooseTool(next);}}if(e.key.toLowerCase()==='w'){chooseTool('pan');setWindowDrag(true);}if(['p','z','m'].includes(e.key.toLowerCase())){const next=({p:'pan',z:'zoom',m:'measure'} as const)[e.key.toLowerCase() as 'p'|'z'|'m'];if(next!=='measure'||(geometry?.row_spacing&&geometry.column_spacing)){chooseTool(next);}}if(editable&&['[',']'].includes(e.key))setDiameter(n=>Math.max(.1,n+(e.key===']'?1:-1)));}if(['ArrowDown','ArrowUp'].includes(e.key)&&series){e.preventDefault();setFrame(n=>Math.max(0,Math.min(series.frame_count-1,n+(e.key==='ArrowDown'?1:-1))));}}}>
+ return <section className="workbench education-workbench" tabIndex={0} onKeyDown={e=>{if(isTextInput(e.target))return;if(e.key==='Escape'){setFocus(false);chooseTool('pan');setWindowDrag(true);}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(editable)void save().catch(fail);}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();travel(!e.shiftKey);}if((e.key==='Delete'||(e.key==='Backspace'&&tool!=='polygon'))&&selected&&editable){e.preventDefault();remove(selected);}if(!e.ctrlKey&&!e.metaKey&&!e.altKey){if(editable&&['1','2','3','4'].includes(e.key)){const next=({1:'box',2:'brush',3:'polygon',4:'point'} as const)[e.key as '1'|'2'|'3'|'4'];if(next!=='brush'||(geometry?.row_spacing&&geometry.column_spacing)){pickTool(next);}}if(e.key.toLowerCase()==='w'){chooseTool('pan');setWindowDrag(true);}if(['p','z','m'].includes(e.key.toLowerCase())){const next=({p:'pan',z:'zoom',m:'measure'} as const)[e.key.toLowerCase() as 'p'|'z'|'m'];if(next!=='measure'||(geometry?.row_spacing&&geometry.column_spacing)){chooseTool(next);}}if(editable&&['[',']'].includes(e.key))setDiameter(n=>Math.max(.1,n+(e.key===']'?1:-1)));}if(['ArrowDown','ArrowUp'].includes(e.key)&&series){e.preventDefault();setFrame(n=>Math.max(0,Math.min(series.frame_count-1,n+(e.key==='ArrowDown'?1:-1))));}}}>
  <Modal title="作答尚未保存" open={blocker.state==='blocked'} onCancel={()=>{if(blocker.state==='blocked')blocker.reset();}} footer={<Space><Button onClick={()=>{if(blocker.state==='blocked')blocker.reset();}}>继续作答</Button><Button danger onClick={()=>{saved.current=JSON.stringify(current.current);if(blocker.state==='blocked')blocker.proceed();}}>放弃未保存修改</Button><Button type="primary" disabled={offline||blocked} onClick={()=>void leaveSaved()}>保存后离开</Button></Space>}><p>当前输入尚未全部同步到服务器，请保存后离开。</p>{error&&<Alert type="error" message={error}/>}</Modal>
  {offline&&<Alert type="warning" message="离线中，修改尚未同步；请保持本页打开并恢复网络"/>}{error&&<Alert type="error" message={error} action={blocked?<Popconfirm title="重新加载将丢弃尚未保存的修改，继续？" onConfirm={onReload}><Button>重新加载</Button></Popconfirm>:<Button onClick={()=>{setError('');void save().catch(fail);}}>重试保存</Button>}/>}
- <WorkspaceLayout identity={<><Link to="/student">我的考核</Link><strong>{data.task.title} · 第 {data.item.ordinal} 题</strong><Tag color={feedback?'green':'blue'}>{feedback?'提交后对照':'独立作答'}</Tag></>}
+ <WorkspaceLayout identity={<><Link to="/student">我的考核</Link><strong className="student-task-identity" title={data.task.title}>{data.task.title}</strong><span className="student-question-number">第 {data.item.ordinal} 题</span><Tag color={feedback?'green':'blue'}>{feedback?'提交后对照':'独立作答'}</Tag></>}
   leftTitle={feedback?'报告对照':'我的阅片报告'} rightTitle={`我的病灶（${objects.length}）`} focus={focus} onFocus={setFocus}
-  actions={feedback?<Space><span>已提交 · {data.attempt.submitted_at&&new Date(data.attempt.submitted_at).toLocaleString()}</span>{standard?.annotations.length?<Switch checked={showStandard} onChange={setShowStandard} checkedChildren="标准轮廓开" unCheckedChildren="标准轮廓关"/>:null}</Space>:<Space><span role="status">{offline?'离线':status}</span><Button disabled={!editable||offline} onClick={()=>void save().catch(fail)}>保存</Button><Popconfirm title={missing||'提交后将锁定作答并开放医生参考报告。确认提交？'} onConfirm={missing?undefined:submit} okText={missing?'知道了':'确认提交'} showCancel={!missing} disabled={!editable||offline}><Button type="primary" loading={submitting} disabled={!editable||offline}>提交作答</Button></Popconfirm></Space>}
-  toolbar={series?<ViewerToolbar tool={tool} windowDrag={windowDrag} onTool={chooseTool} onWindowDrag={()=>{chooseTool('pan');setWindowDrag(true);}} drawing editable={editable} calibrated={!!geometry?.row_spacing&&!!geometry.column_spacing} window={window} modality={series.modality} onWindow={setWindow} diameter={diameter} onDiameter={setDiameter} erase={erase} onErase={setErase} freehand={freehand} onFreehand={setFreehand} canUndo={editable&&!!undo.current.length} canRedo={editable&&!!redo.current.length} onUndo={()=>travel(true)} onRedo={()=>travel(false)} opacity={opacity} onOpacity={setOpacity}/>:null}
-  left={<div className="education-form">{!feedback&&data.task.instructions&&<p className="education-instructions">{data.task.instructions}</p>}<label>身体部位<Select aria-label="身体部位" showSearch optionFilterProp="label" value={answer.body_part_id??undefined} disabled={!editable} options={data.parts.map(p=>({value:p.id,label:p.name}))} onChange={value=>change({...answer,body_part_id:value})}/></label>
-  {feedback&&answer.normal===true&&!objects.length&&<p>原答卷记录为未见异常。</p>}
-  <label>{feedback?'我的影像所见':'影像所见'}<Input.TextArea aria-label="影像所见" rows={4} maxLength={10000} value={answer.findings} disabled={!editable} placeholder="描述病灶的位置、形态、范围及影像表现" onChange={e=>change({...answer,findings:e.target.value})}/></label>
-  {standard?.findings&&<section className="education-reference"><h4>医生影像所见</h4><p className="education-report">{standard.findings}</p></section>}
-  <label>{feedback?'我的诊断意见':'诊断意见'}<Input.TextArea aria-label="诊断意见" rows={3} maxLength={5000} value={answer.impression} disabled={!editable} placeholder="结合影像所见，写出考虑的疾病及判断依据" onChange={e=>change({...answer,impression:e.target.value})}/></label>
-  {standard?.impression&&<section className="education-reference"><h4>医生诊断意见</h4><p className="education-report">{standard.impression}</p></section>}
-  {standard&&<section className="education-reference"><details open={!standard.findings||!standard.impression}><summary>参考报告原文</summary><p className="education-report">{standard.report}</p></details>
-   {standard.part_names.length>0&&<p>参考部位：{standard.part_names.join('、')}</p>}
-   <p>{standard.annotations.length?'实线为我的病灶，虚线为参考轮廓。':'本题仅提供报告对照。'}</p></section>}</div>}
+  actions={feedback?<Space><span>已提交 · {data.attempt.submitted_at&&new Date(data.attempt.submitted_at).toLocaleString()}</span>{standard?.annotations.length?<Switch aria-label="显示医生参考标注" checked={showStandard} onChange={setShowStandard} checkedChildren="标准轮廓开" unCheckedChildren="标准轮廓关"/>:null}</Space>:<Space><span className="draft-status" role="status" data-saved={status==='已保存'&&!offline}>{offline?'离线':status}</span><Button disabled={!editable||offline} onClick={()=>void save().catch(fail)}>保存</Button><Popconfirm title={missing||'提交后将锁定作答并开放医生参考报告。确认提交？'} onConfirm={missing?undefined:submit} okText={missing?'知道了':'确认提交'} showCancel={!missing} disabled={!editable||offline}><Button type="primary" loading={submitting} disabled={!editable||offline}>提交作答</Button></Popconfirm></Space>}
+  toolbar={series?<ViewerToolbar tool={tool} windowDrag={windowDrag} onTool={pickTool} onWindowDrag={()=>{chooseTool('pan');setWindowDrag(true);}} drawing={!feedback} editable={editable} calibrated={!!geometry?.row_spacing&&!!geometry.column_spacing} window={window} modality={series.modality} onWindow={setWindow} diameter={diameter} onDiameter={setDiameter} erase={erase} onErase={setErase} freehand={freehand} onFreehand={setFreehand} canUndo={editable&&!!undo.current.length} canRedo={editable&&!!redo.current.length} onUndo={()=>travel(true)} onRedo={()=>travel(false)} opacity={opacity} onOpacity={setOpacity}/>:null}
+  left={<StudentReport answer={answer} parts={data.parts} instructions={data.task.instructions} reference={standard} editable={editable} onChange={change}/>}
   right={<div className="education-form">
-   {!feedback&&<Button block type="primary" disabled={!editable||!series} onClick={startLesion}>新增病灶</Button>}
-   {creating&&<p role="status" className="education-instructions">在影像上用{toolDefinitions.find(t=>t.id===tool)?.label}绘制新病灶，也可切换绘图工具。</p>}
-   {objects.length===0&&!creating&&<p className="education-instructions">{feedback?'该答卷没有标注对象。':'点击“新增病灶”开始标注。每个病灶单独填写位置和描述。'}</p>}
-   <div className="education-object-list">{objects.map((o,i)=><div key={o.id} style={{borderInlineStartColor:objectColor(i)}} className={o.id===selected?'education-object selected':'education-object'}>
-    <Button type="link" aria-pressed={o.id===selected} onClick={()=>select(o.id)}>病灶 {i+1} · {o.organ||'待填写位置'}</Button>
-    <small>第 {o.key_frame_index+1} 帧{o.organ.trim()&&o.description.trim()?'':' · 描述待补全'}</small>
-    <Space><Button size="small" onClick={()=>toggle(setHidden,o.id)}>{hidden.has(o.id)?'显示':'隐藏'}</Button>{!feedback&&<><Button size="small" onClick={()=>toggle(setLocked,o.id)}>{locked.has(o.id)?'解锁':'锁定'}</Button><Button size="small" danger disabled={!editable||locked.has(o.id)} onClick={()=>remove(o.id)}>删除</Button></>}</Space></div>)}</div>
-  {object&&<><h4 className="education-object-heading">病灶 {objects.indexOf(object)+1} 的记录</h4><label>器官 / 位置<Input aria-label="器官 / 位置" maxLength={100} value={object.organ} disabled={!editable||locked.has(object.id)} onChange={e=>modify({organ:e.target.value})}/></label><label>病变描述<Input.TextArea aria-label="病变描述" rows={3} maxLength={2000} value={object.description} disabled={!editable||locked.has(object.id)} onChange={e=>modify({description:e.target.value})}/></label><label>征象<Select aria-label="征象" mode="multiple" showSearch optionFilterProp="label" options={data.signs.map(s=>({value:s.id,label:s.name}))} value={object.sign_tag_ids} disabled={!editable||locked.has(object.id)} onChange={v=>modify({sign_tag_ids:v})}/></label>
-  <label>对象部位<Select aria-label="对象部位" allowClear showSearch optionFilterProp="label" options={data.parts.map(p=>({value:p.id,label:p.name}))} value={object.part_id??undefined} disabled={!editable||locked.has(object.id)} onChange={v=>modify({part_id:v??null})}/></label>
-  <Space wrap><label>起始帧<InputNumber aria-label="起始帧" min={1} max={object.key_frame_index+1} value={object.frame_start+1} disabled={!editable||locked.has(object.id)} onChange={v=>{if(v)modify({frame_start:v-1});}}/></label><label>结束帧<InputNumber aria-label="结束帧" min={object.key_frame_index+1} max={data.series.find(s=>s.id===object.series_id)?.frame_count} value={object.frame_end+1} disabled={!editable||locked.has(object.id)} onChange={v=>{if(v)modify({frame_end:v-1});}}/></label></Space>
-  {!feedback&&<Button disabled={!editable||locked.has(object.id)||object.frame_end+1>=(data.series.find(s=>s.id===object.series_id)?.frame_count??0)} onClick={()=>{const next=structuredClone(object),f=object.key_frame_index+1;next.id=crypto.randomUUID();next.frame_start=f;next.frame_end=f;next.key_frame_index=f;if(next.tool==='brush')delete (next.geometry as {frames?:unknown}).frames;change({...answer,objects:[...objects,next]});setSelected(next.id);setFrame(f);}}>复制到下一帧</Button>}</>}</div>}>
-  {series?<><div className="viewport-stage" onWheel={e=>{if(e.deltaY&&series.frame_count>1)setFrame(n=>Math.max(0,Math.min(series.frame_count-1,n+(e.deltaY>0?1:-1))));}}><SeriesNavigation series={data.series} selected={series} frame={frame} onFrame={setFrame} annotatedFrames={objects.filter(o=>o.series_id===seriesId).map(o=>({frame:o.key_frame_index,color:objectColor(objects.indexOf(o)),number:objects.indexOf(o)+1}))} onSeries={sid=>{setSeriesId(sid);setFrame(0);setWindow(data.series.find(s=>s.id===sid)?.default_window??null);}}/>
-  <FramePane token={session.token} data={{case:{id:data.item.case_id}}} series={series} frame={frame} window={window} libraryVersion={{attempt_id:id}} onGeometry={setGeometry} onExpired={onExpired} onDenied={frameDenied} windowDrag={windowDrag} onWindow={setWindow} layer={{annotations:objects.filter(o=>o.series_id===seriesId),comparison:!blocked&&showStandard?standard?.annotations.filter(o=>o.series_id===seriesId):undefined,colorIds:objects.map(o=>o.id),selected,hidden,locked,tool,diameter,erase,freehand,opacity:opacity/100,createNew:creating,disabled:!editable,onSelect:selectOnImage,onDelete:remove,onCreate:create,onChange:(oid,g)=>change({...answer,objects:objects.map(o=>o.id===oid?{...o,geometry:g}:o)})}}/></div><footer className="viewer-status"><span>{feedback?'已提交，只读对照':'独立作答 · 滚轮翻层 · 中键平移'}</span><span>{objects.length} 个对象</span></footer></>:<Empty description="暂无可阅片序列"/>}
+    {!feedback&&<button type="button" className="add-lesion" disabled={!editable||!series} onClick={startLesion}><ViewerIcon name="plus"/>新增病灶</button>}
+    {!feedback&&tool==='point'&&!windowDrag&&<p role="status" className="point-mode-hint"><ViewerIcon name="point"/><span>{pointHint}<small>再次点击点工具结束，新增病灶可另起一组。</small></span></p>}
+    {creating&&tool!=='point'&&<p role="status" className="education-instructions">在影像上用{toolDefinitions.find(t=>t.id===tool)?.label}绘制新病灶。</p>}
+    {objects.length===0&&!creating&&tool!=='point'&&<p className="education-instructions">{feedback?'该答卷没有标注对象。':'点击“新增病灶”开始标注。每个病灶单独填写位置和描述。'}</p>}
+    {!!objects.length&&<ul className="education-object-list" aria-label="病灶列表">{objects.map((o,i)=><LesionCard key={o.id}
+      object={o} index={i} selected={o.id===selected} locked={locked.has(o.id)} hidden={hidden.has(o.id)} feedback={feedback} editable={editable}
+      onSelect={()=>select(o.id)} onHide={()=>{if(o.id===selected&&!hidden.has(o.id))chooseTool('select');toggle(setHidden,o.id);}}
+      onLock={()=>{if(o.id===selected&&!locked.has(o.id))chooseTool('select');toggle(setLocked,o.id);}} onDelete={()=>remove(o.id)}/>)}</ul>}
+    {object&&<LesionRecord key={object.id} object={object} number={objects.indexOf(object)+1} data={data} feedback={feedback}
+      editable={editable&&!locked.has(object.id)} canCopy={canCopy} onChange={modify} onCopy={copyToNext}/>}
+  </div>}>
+  {series?<><div className="viewport-stage" onWheel={e=>{if(e.deltaY&&series.frame_count>1)setFrame(n=>Math.max(0,Math.min(series.frame_count-1,n+(e.deltaY>0?1:-1))));}}><SeriesNavigation series={data.series} selected={series} frame={frame} onFrame={setFrame} annotatedFrames={objects.flatMap((o,i)=>o.series_id!==seriesId?[]:(o.tool==='point'?pointFrames(o):[o.key_frame_index]).map(frame=>({frame,color:objectColor(i),number:i+1})))} onSeries={sid=>{setSelected(undefined);chooseTool('select');setSeriesId(sid);setFrame(0);setWindow(data.series.find(s=>s.id===sid)?.default_window??null);}}/>
+  <FramePane token={session.token} data={{case:{id:data.item.case_id}}} series={series} frame={frame} window={window} libraryVersion={{attempt_id:id}} onGeometry={setGeometry} onExpired={onExpired} onDenied={frameDenied} windowDrag={windowDrag} onWindow={setWindow} layer={{annotations:objects.filter(o=>o.series_id===seriesId),comparison:!blocked&&showStandard?standard?.annotations.filter(o=>o.series_id===seriesId):undefined,comparisonColor:'#77DAC2',colorIds:objects.map(o=>o.id),selected,hidden,locked,tool,diameter,erase,freehand,opacity:opacity/100,createNew:creating||(editable&&tool==='point'&&!windowDrag),disabled:!editable,onSelect:selectOnImage,onDelete:remove,onCreate:create,onChange:(oid,g)=>change({...answer,objects:objects.map(o=>o.id===oid?{...o,geometry:g}:o)})}}/></div><footer className="viewer-status">{feedback?<span className="overlay-legend"><i/>我的标注{showStandard&&!!standard?.annotations.length&&<><i className="doctor-line"/>医生参考</>}</span>:<span>滚轮翻层 · 中键平移</span>}<span>{objects.length} 个对象</span></footer></>:<Empty description="暂无可阅片序列"/>}
  </WorkspaceLayout></section>;
 }

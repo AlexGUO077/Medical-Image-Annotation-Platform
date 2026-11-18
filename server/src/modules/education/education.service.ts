@@ -5,7 +5,7 @@ import { DATABASE_SOURCE } from '../database/database.tokens';
 import type { AuthUser } from '../auth/auth.models';
 import { hashPassword } from '../../database/password';
 import { SecurityStateService } from '../auth/security-state.service';
-import { object, integer, uuid } from '../annotations/annotation-input';
+import { object, integer, uuid, type FramePoint } from '../annotations/annotation-input';
 import { readAnnotationObjects } from '../annotations/annotation-read';
 import { OrthancService } from '../cases/orthanc.service';
 import { educationActor, educationContext } from './education-access';
@@ -170,11 +170,19 @@ export class EducationService {
     for(const o of a.objects){const s=sources.find((s:{id:string})=>s.id===o.series_id);
       if(!s||o.frame_end>=s.frame_count)throw new BadRequestException('对象序列或帧号无效');
       if(s.modality==='CT'&&!o.window_preset)throw new BadRequestException('CT对象需记录窗宽窗位');
-      for(const frame of [o.key_frame_index,...((o.geometry.frames??[]) as {frame_index:number}[]).map(f=>f.frame_index)]){
+      const sizeAt=async(frame:number)=>{
         const key=`${s.id}:${frame}`;let size=sizes.get(key);
         if(!size){const resolved=await this.orthanc.resolveSeriesFrame(s.orthanc_id,s.series_uid,frame,s.frame_count);size=await this.orthanc.frameGeometry(resolved.instance_id,resolved.frame_index);sizes.set(key,size);}
+        return size;
+      };
+      for(const frame of [o.key_frame_index,...((o.geometry.frames??[]) as {frame_index:number}[]).map(f=>f.frame_index)]){
+        const size=await sizeAt(frame);
         const g=o.geometry,inside=(x:unknown,y:unknown)=>typeof x==='number'&&typeof y==='number'&&x>=0&&y>=0&&x<size!.width&&y<size!.height;
         if(o.tool==='brush'?g.width!==size.width||g.height!==size.height:o.tool==='polygon'?(g.points as number[][]).some(p=>!inside(p[0],p[1])):!inside(g.x,g.y)||(o.tool==='box'&&((g.x as number)+(g.w as number)>size.width||(g.y as number)+(g.h as number)>size.height)))throw new BadRequestException('标注几何超出影像范围');
+      }
+      for(const point of (o.geometry.additional_points ?? []) as FramePoint[]){
+        const size=await sizeAt(point.frame_index);
+        if(point.x>=size.width||point.y>=size.height)throw new BadRequestException('病灶点超出所在帧的影像范围');
       }
     }
   }

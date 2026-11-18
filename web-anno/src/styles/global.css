@@ -213,9 +213,6 @@ body {
 .viewer-page-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; color: var(--viewer-muted); white-space: nowrap; }
 .is-viewing .app-header { height: 40px; padding: 0 14px; background: var(--viewer-header); }
 .is-viewing .app-header .ant-btn { height: 28px; font-size: 12px; }
-.is-viewing .ant-layout-sider, .is-viewing .ant-menu-dark { background: var(--viewer-panel); }
-.is-viewing .app-brand { min-height: 40px; height: 40px; padding: 9px 14px; color: var(--viewer-accent); }
-.is-viewing .ant-menu-inline-collapsed > .ant-menu-item { padding-inline: 14px; margin-inline: 0; width: 48px; border-radius: 0; }
 .is-viewing .ant-menu-item-selected { box-shadow: inset 3px 0 var(--viewer-action); }
 [data-theme='dark'] { color: var(--viewer-text); }
 [data-theme='dark'] .ant-layout { background: var(--viewer-bg); }
@@ -418,22 +415,6 @@ body {
 .task-detail-empty h4 { color: #203958; font-size: 16px; margin: 14px 0 8px; }
 @media (max-width: 1200px) { .tasks-split { grid-template-columns: minmax(0,1fr) 260px; gap: 12px; } .tasks-page-heading { align-items: flex-start; flex-direction: column; gap: 14px; } }
 
-.education-form { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
-.education-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.education-form .ant-select { width: 100%; }
-.education-form textarea { resize: vertical; }
-.education-object { border: 1px solid var(--ant-color-border, #394556); border-radius: 6px; padding: 7px; margin-bottom: 8px; }
-.education-object.selected { border-color: #479eff; background: rgb(71 158 255 / 8%); }
-.education-object-list { max-height: 260px; overflow: auto; }
-.education-report { white-space: pre-wrap; line-height: 1.8; overflow-wrap: anywhere; }
-.education-reference { border-top: 1px solid #536176; padding-top: 12px; }
-.education-workbench textarea:disabled { color: var(--viewer-text, #fff); -webkit-text-fill-color: var(--viewer-text, #fff); }
-.education-instructions { margin: 0; line-height: 1.55; }
-.education-object { border-inline-start-width: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.education-object > .ant-btn-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.education-object > small { color: var(--viewer-muted); }
-.education-object-heading, .education-reference h4 { margin: 0; }
-.education-reference p { margin: 5px 0 0; }
-.education-reference summary, .education-reference-editor summary { cursor: pointer; }
+.education-reference-editor summary { cursor: pointer; }
 .education-reference-editor { display: grid; gap: 10px; margin: 8px 0 16px; padding: 12px; }
 .education-reference-editor label { display: grid; gap: 4px; }

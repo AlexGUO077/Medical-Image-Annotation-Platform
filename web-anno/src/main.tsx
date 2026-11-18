@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import 'antd/dist/reset.css';
 import './styles/global.css';
+import './styles/student-workspace.css';
 import { App } from './app/App';
 
 const rootElement = document.getElementById('root');

@@ -43,7 +43,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   await seedDatabase(db,randomBytes(20).toString('hex'));
   redis=createClient({url:process.env.REDIS_URL??`redis://:${encodeURIComponent(process.env.REDIS_PASSWORD)}@${process.env.REDIS_HOST??'127.0.0.1'}:${process.env.REDIS_PORT??6379}`});await redis.connect();
   const png=await require('sharp')({create:{width:128,height:128,channels:3,background:'#888'}}).png().toBuffer();let onRender;
-  const orthanc={resolveSeriesFrame:async()=>({instance_id:'synthetic',frame_index:0}),frameGeometry:async()=>({width:128,height:128,row_spacing:1,column_spacing:1})};
+  const orthanc={resolveSeriesFrame:async(_series,_uid,frame)=>({instance_id:'synthetic',frame_index:frame}),frameGeometry:async(_instance,frame)=>({width:frame===2?96:128,height:128,row_spacing:1,column_spacing:1})};
   class IntegrationModule{}
   Module({imports:[JwtModule.register({secret:process.env.JWT_SECRET})],controllers:[EducationController,EducationActivationController,AuthController,FramesController,WorkbenchController],providers:[EducationService,AccessTokenGuard,AdminGuard,AuthTokenService,AuthService,SecurityStateService,TotpService,AuditService,FramesService,FrameRateService,
    {provide:DATABASE_SOURCE,useValue:db},{provide:REDIS_CLIENT,useValue:redis},{provide:OrthancService,useValue:orthanc},{provide:FrameRenderCacheService,useValue:{render:async()=>{if(onRender)await onRender();return png;}}},{provide:WorkbenchService,useValue:{read:()=>{throw Error('Student reached production service');},attachment:()=>{throw Error('Student reached production attachments');}}}]})(IntegrationModule);
@@ -90,12 +90,14 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   assert.equal((await req(`/education/attempts/${attempts[0]}/feedback`,'GET',undefined,people[0].token)).status,403);
   assert.equal((await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[1].token)).status,403);
   const body={body_part_id:part,findings:'学生自己的所见',impression:'学生自己的判断',objects:[{id:randomUUID(),series_id:series,tool:'box',geometry:{x:10,y:10,w:20,h:20},frame_start:0,frame_end:0,key_frame_index:0,window_preset:'{"center":40,"width":400}',part_id:part,sign_tag_ids:[],confidence:null,report_sent_ids:[],organ:'合成器官',description:'独立病变描述'}]};
-  body.objects.push({...body.objects[0],id:randomUUID(),geometry:{x:70,y:60,w:10,h:30},organ:'第二位置',description:'第二病灶'});
+  body.objects.push({...body.objects[0],id:randomUUID(),tool:'point',frame_end:2,geometry:{x:70,y:60,additional_points:[{frame_index:0,x:75,y:55},{frame_index:2,x:83,y:65}]},organ:'第二位置',description:'第二病灶'});
   const save=(who,expected,answer)=>req(`/education/attempts/${attempts[who]}/draft`,'PUT',{expected_version:expected,answer},people[who].token);
   const incomplete={...body,normal:true,objects:[]};
   ok(await save(1,0,incomplete));
   assert.equal((await req(`/education/attempts/${attempts[1]}/submit`,'POST',{expected_version:1},people[1].token)).status,400);
   const race=await Promise.all([save(0,0,body),save(0,0,body)]);assert.deepEqual(race.map(r=>r.status).sort(),[200,409]);
+  const wrongFrameBounds=structuredClone(body);wrongFrameBounds.objects[1].geometry.additional_points[1].x=100;
+  assert.equal((await save(0,1,wrongFrameBounds)).status,400);
   ok(await save(1,1,{...body,findings:'另一学生',objects:body.objects.map(o=>({...o,id:randomUUID()}))}));
   assert.equal(ok(await req(`/education/attempts/${attempts[0]}/workbench`,'GET',undefined,people[0].token)).attempt.answer.findings,'学生自己的所见');
   assert.equal((await save(0,1,{...body,objects:body.objects.map(o=>({...o,series_id:alienSeries}))})).status,400);
@@ -112,6 +114,7 @@ const connection={host:process.env.POSTGRES_HOST??'127.0.0.1',port:Number(proces
   await assert.rejects(db.query('DELETE FROM education_attempts WHERE id=$1',[attempts[0]]),/immutable/);
   await db.query(`UPDATE reports SET raw_text='CHANGED REFERENCE' WHERE case_id=$1`,[caseId]);
   const feedback=ok(await req(`/education/attempts/${attempts[0]}/feedback`,'GET',undefined,people[0].token));assert.equal(feedback.reference.report,'HIDDEN FINDINGS. HIDDEN IMPRESSION.');assert.equal(feedback.reference.findings,reference.findings);assert.equal(feedback.reference.impression,reference.impression);assert.deepEqual(feedback.attempt.answer.objects.map(o=>o.description),['独立病变描述','第二病灶']);assert(!JSON.stringify(feedback).includes('HIDDEN CLINICAL'));
+  assert.deepEqual(feedback.attempt.answer.objects[1].geometry,body.objects[1].geometry);
   // Validate complete submission pagination beyond the former fixed cap.
   for(let n=0;n<51;n++){
     const userId=randomUUID();await db.query(`INSERT INTO users(id,username,password_hash,real_name,role,status,expire_at,must_change_password) VALUES($1,$2,'unused','合成分页学生','student','active','2099-12-31',false)`,[userId,`page_${schema}_${n}`]);

@@ -42,33 +42,56 @@ const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
   const published=organizer.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/education/tasks');
   await organizer.locator('.ant-popconfirm-buttons button.ant-btn-primary').click();
   const response=await published;assert.equal(response.status(),201);const created=await response.json();
+  const publishedSections=response.request().postDataJSON().reference_sections;
   await organizer.close();
-  const page=await browser.newPage({viewport:{width:1800,height:1150}});const errors=[];let workbench,feedback;
+  const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];let workbench,feedback;
   page.on('pageerror',()=>errors.push('Browser runtime error'));
   page.on('response',async r=>{try{if(r.status()===200&&/\/education\/attempts\/[^/]+\/workbench$/.test(new URL(r.url()).pathname))workbench=await r.json();if(r.status()===200&&/\/education\/attempts\/[^/]+\/feedback$/.test(new URL(r.url()).pathname))feedback=await r.json();}catch{/* Aborted navigation response. */}});
   await page.goto(base+'/login');await page.getByLabel('用户名',{exact:true}).fill(student.username);await page.getByLabel('密码',{exact:true}).fill(student.password);await page.getByRole('button',{name:/^登\s*录$/}).click();await page.waitForURL('**/student');
   assert.equal(await page.getByRole('menuitem',{name:'病例库',exact:true}).count(),0);
-  const card=page.locator('.ant-card').filter({hasText:title});
+  const card=page.getByRole('article').filter({has:page.getByRole('heading',{name:title,exact:true})});
   for(let question=0;question<2;question++){
   await card.getByRole('button',{name:/开始作答/}).first().click();await page.getByLabel('标注绘图层').waitFor();
+  const nav=page.getByRole('navigation',{name:'主导航',exact:true});
+  const handle=nav.getByRole('button',{name:'打开主导航'});
+  assert.equal(await handle.getAttribute('aria-expanded'),'false');
+  await page.mouse.move(2,200);await nav.getByRole('menuitem',{name:'我的考核'}).waitFor();
+  await page.mouse.move(600,200);await nav.getByRole('menuitem',{name:'我的考核'}).waitFor({state:'hidden'});
+  await handle.focus();await page.keyboard.press('Space');await nav.getByRole('menuitem',{name:'我的考核'}).waitFor();
+  await page.keyboard.press('Escape');await nav.getByRole('menuitem',{name:'我的考核'}).waitFor({state:'hidden'});
   assert(workbench);assert(!('reference'in workbench));assert(!JSON.stringify(workbench).includes('合成教学参考'));assert.equal(await page.getByText('医生影像所见',{exact:true}).count(),0);
   assert(!JSON.stringify(workbench).includes(reference_sections[0].impression));
   assert.equal(await page.getByRole('switch',{name:'未见异常'}).count(),0);
   if(workbench.series[0].frame_count>1){await page.getByRole('button',{name:'下一帧',exact:true}).click();await page.locator('[data-frame-ready="1"]').waitFor();}
   await page.getByRole('combobox',{name:'身体部位',exact:true}).fill('合成示例部位-resp');await page.getByText('呼吸 / 合成示例部位-resp',{exact:true}).click();
-  await page.getByLabel('影像所见',{exact:true}).fill('上肺区见圆形亮影，对侧下肺区见片状影。');await page.getByLabel('诊断意见',{exact:true}).fill('考虑模拟结节及局部实变。');
+  const expands=async label=>{
+   await page.getByLabel(label,{exact:true}).fill(Array.from({length:40},(_,i)=>`阅片记录 ${i+1}`).join('\n'));
+   await page.waitForFunction(name=>{const field=document.querySelector(`textarea[aria-label="${name}"]`);const panel=field?.closest('.workspace-panel-body');return field&&panel&&field.clientHeight>300&&field.scrollHeight<=field.clientHeight+2&&panel.scrollHeight>panel.clientHeight;},label);
+  };
+  await expands('影像所见');await page.getByLabel('影像所见',{exact:true}).fill('上肺区见圆形亮影，对侧下肺区见片状影。');
+  await expands('诊断意见');await page.getByLabel('诊断意见',{exact:true}).fill('考虑模拟结节及局部实变。');
   await page.getByRole('button',{name:'新增病灶',exact:true}).click();
-  await page.getByRole('button',{name:'画笔',exact:true}).click();
+  const pointMode=workbench.series[0].frame_count>1;
+  const pointTool=page.getByRole('button',{name:'点',exact:true});
+  await (pointMode?pointTool:page.getByRole('button',{name:'画笔',exact:true})).click();
   const canvas=page.getByLabel('标注绘图层'),box=await canvas.boundingBox();assert(box);
   // The demo images are square; the viewport fits them without stretching.
   const side=Math.min(box.width,box.height);
   const at=(x,y)=>[box.x+(box.width-side)/2+side*x/512,box.y+(box.height-side)/2+side*y/512];
   const stroke=async(x,y,x2,y2)=>{await page.mouse.move(...at(x,y));await page.mouse.down();await page.mouse.move(...at(x2,y2),{steps:8});await page.mouse.up();};
-  await stroke(156,175,192,175);
+  if(pointMode)await page.mouse.click(...at(156,175));else await stroke(156,175,192,175);
+  await expands('病变描述');
   await page.getByLabel('器官 / 位置',{exact:true}).fill('上肺区');await page.getByLabel('病变描述',{exact:true}).fill('圆形结节样影');
-  await stroke(173,163,173,184);
+  if(pointMode){
+   await page.mouse.click(...at(183,170));
+   await page.getByRole('button',{name:'下一帧',exact:true}).click();await page.locator('[data-frame-ready="2"]').waitFor();
+   await page.mouse.click(...at(173,184));await page.getByText('点标注 · 3 点',{exact:true}).waitFor();
+   await pointTool.click();assert.equal(await pointTool.getAttribute('aria-pressed'),'false');
+   await page.mouse.click(...at(250,250));await page.getByText('点标注 · 3 点',{exact:true}).waitFor();
+  }else await stroke(173,163,173,184);
   assert.equal(await page.locator('.education-object').count(),1);
-  await page.getByRole('button',{name:'新增病灶',exact:true}).click();await stroke(328,293,371,293);
+  await page.getByRole('button',{name:'新增病灶',exact:true}).click();
+  if(pointMode){await page.mouse.click(...at(328,293));await page.mouse.click(...at(371,293));}else await stroke(328,293,371,293);
   await page.getByLabel('器官 / 位置',{exact:true}).fill('对侧下肺区');await page.getByLabel('病变描述',{exact:true}).fill('楔形片状影');
   await page.getByRole('button',{name:'病灶 1 · 上肺区',exact:true}).click();
   assert.equal(await page.getByLabel('病变描述',{exact:true}).inputValue(),'圆形结节样影');
@@ -77,10 +100,18 @@ const {chromium}=require(process.env.MIAP_PLAYWRIGHT_MODULE||'playwright');
   const firstAttempt=workbench.attempt.id;
   await page.getByRole('link',{name:'我的考核',exact:true}).click();await page.waitForURL('**/student');await card.getByRole('button',{name:/继续作答/}).first().click();await page.getByLabel('标注绘图层').waitFor();
   assert.equal(await page.getByLabel('影像所见',{exact:true}).inputValue(),'上肺区见圆形亮影，对侧下肺区见片状影。');
+  if(pointMode){
+   assert.deepEqual(workbench.attempt.answer.objects.map(o=>1+(o.geometry.additional_points?.length??0)),[3,2]);
+   assert.deepEqual(workbench.attempt.answer.objects[0].geometry.additional_points.map(p=>p.frame_index),[1,2]);
+  }
   await page.getByRole('button',{name:'病灶 2 · 对侧下肺区',exact:true}).click();
   assert.equal(await page.getByLabel('病变描述',{exact:true}).inputValue(),'楔形片状影');
   await page.getByRole('button',{name:'提交作答',exact:true}).click();await page.locator('.ant-popconfirm-buttons button.ant-btn-primary').click();await page.waitForURL('**/feedback');await page.getByRole('heading',{name:'医生诊断意见',exact:true}).waitFor();
-  assert(feedback);assert.equal(feedback.attempt.id,firstAttempt);assert(feedback.reference.report.includes('合成教学参考'));assert.equal(feedback.reference.annotations.length,2);assert.equal(feedback.attempt.answer.objects.length,2);assert.equal(feedback.reference.findings,reference_sections[0].findings);assert.equal(feedback.reference.impression,reference_sections[0].impression);assert.equal(await page.getByLabel('影像所见',{exact:true}).isDisabled(),true);
+  assert(feedback);assert.equal(feedback.attempt.id,firstAttempt);assert(feedback.reference.report.includes('合成教学参考'));assert.equal(feedback.reference.annotations.length,2);assert.equal(feedback.attempt.answer.objects.length,2);
+  const reference=publishedSections.find(section=>section.case_id===workbench.item.case_id);
+  assert.equal(feedback.reference.findings,reference.findings);assert.equal(feedback.reference.impression,reference.impression);
+  assert.equal(await page.getByRole('textbox').count(),0);await page.getByRole('heading',{name:'我的影像所见',exact:true}).waitFor();
+  if(pointMode)assert.deepEqual(feedback.attempt.answer.objects,workbench.attempt.answer.objects);
   await page.getByLabel('标注绘图层').waitFor();await page.screenshot({path:path.join(artifacts,`student-feedback-${workbench.series[0].modality}.png`)});
   await page.getByRole('link',{name:'我的考核',exact:true}).click();await page.waitForURL('**/student');
   }

@@ -57,6 +57,18 @@ it('starts a separate brush lesion on an existing mask when explicitly adding',(
 it('does not mistake the empty interior of a polygon for its contour',()=>{
   click(show({annotations:[polygon]}),150,140);expect(select).not.toHaveBeenCalled();
 });
+it('moves just the hit point in a group and leaves the space between points unselected',()=>{
+  const group={...point,frame_end:2,geometry:{x:50,y:50,additional_points:[{frame_index:2,x:90,y:90},{frame_index:0,x:130,y:50}]}};
+  const canvas=show({annotations:[group]});
+  click(canvas,90,50);click(canvas,90,90);expect(select).not.toHaveBeenCalled();
+  drag(canvas,[130,50],[135,60]);
+  expect(change).toHaveBeenCalledWith(group.id,{x:50,y:50,additional_points:[{frame_index:2,x:90,y:90},{frame_index:0,x:135,y:60}]});
+});
+it('adjusts the nearest mark when two point handles overlap',()=>{
+  const group={...point,geometry:{x:50,y:50,additional_points:[{frame_index:0,x:54,y:51}]}};
+  drag(show({annotations:[group]}),[54,51],[62,62]);
+  expect(change).toHaveBeenCalledWith(group.id,{x:50,y:50,additional_points:[{frame_index:0,x:62,y:62}]});
+});
 it('selects painted mask pixels and offers object deletion',()=>{
   const brush:Annotation={...point,tool:'brush',geometry:brushStroke(undefined,controls.geometry,[50,50],[70,50],10,false)};
   const canvas=show({annotations:[brush]});click(canvas,60,50);expect(select).toHaveBeenCalledWith(point.id);

@@ -21,6 +21,8 @@
 
 answer={body_part_id:null|uuid,findings:string,impression:string,objects:[{...Annotation,organ:string,description:string}]}。学生对象 report_sent_ids 固定空；不调用生产报告关联提交。提交需部位、影像所见、诊断意见和 1–200 个病灶；每个病灶都须填写器官 / 位置和描述。空对象草稿可保存。旧客户端传入的布尔 normal 字段在保存时忽略，不能用于零对象提交。历史已提交答案保留原貌。
 
+教学答卷的点工具以一个病灶 ID 保存一组独立点。首点沿用代表帧的 `geometry.x/y`，其余点存为可选的 `geometry.additional_points: [{frame_index,x,y}]`。每个点均须位于同一授权序列、对象帧范围及该帧像素边界内。多点只在各自落点的帧上显示，依原有单点格式保存的范围仍按原方式显示。草稿、提交快照及对照读取同一份坐标。生产标注的点接口仍使用原有单点契约。
+
 帧 POST /frames/ticket 新增 access_mode=education,attempt_id；票据签名绑定 attempt。签发和输出前重复校验本人/学生关系/题目/序列范围/病例/任务。student 使用工作或 library 模式拒绝。反馈只复用本人影像授权，不开放原始 DICOM。
 
 迁移含 education_roster/tasks/items/students/attempts，旧表只扩展 student role 及空 quals 约束。提交后数据库触发器拒绝更新/删除。down 存在任何教学数据时拒绝，防丢答案。生产 cases.annotation_version/status 不被教育服务更新。

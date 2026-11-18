@@ -1,6 +1,8 @@
 import type { RleMask } from './rle';
 import type { ReviewRecord } from '../reviews/types';
-export type Geometry = { x: number; y: number } | { x: number; y: number; w: number; h: number } | { points: number[][] } | (RleMask & { frames?: (RleMask & { frame_index: number })[] });
+export interface FramePoint {frame_index:number; x:number; y:number}
+export interface PointGeometry {x:number; y:number; additional_points?:FramePoint[]}
+export type Geometry = PointGeometry | { x: number; y: number; w: number; h: number } | { points: number[][] } | (RleMask & { frames?: (RleMask & { frame_index: number })[] });
 export interface Annotation {
   id: string; series_id: string; tool: 'point' | 'box' | 'polygon' | 'brush'; geometry: Geometry;
   frame_start: number; frame_end: number; key_frame_index: number; window_preset: string | null;

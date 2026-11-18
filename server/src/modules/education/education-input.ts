@@ -24,7 +24,7 @@ export function parseAnswer(body:unknown){
     if(!Array.isArray(annotation.report_sent_ids)||annotation.report_sent_ids.length)throw new BadRequestException('学生对象不接受参考报告关联');
     return {annotation,organ:text(organ,100),description:text(description,2000)};
   });
-  const parsed=parseAnnotations({expected_version:version,annotations:extras.map(e=>e.annotation)});
+  const parsed=parseAnnotations({expected_version:version,annotations:extras.map(e=>e.annotation)}, 'education');
   const answer:StudentAnswer={body_part_id:a.body_part_id===null?null:uuid(a.body_part_id),
     findings:text(a.findings,10000),impression:text(a.impression,5000),
     objects:parsed.annotations.map((o,i)=>({...o,organ:extras[i]!.organ,description:extras[i]!.description}))};
