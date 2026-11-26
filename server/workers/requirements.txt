@@ -4,7 +4,7 @@ numpy==1.26.4
 paddleocr==2.10.0
 paddlepaddle==2.6.2
 paddlenlp==2.8.1
-Pillow==12.3.0
+Pillow==13.0.0
 
 # D-44: compatible Linux inference dependencies; no ONNX export service.
 protobuf==5.29.6

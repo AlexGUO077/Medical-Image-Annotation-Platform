@@ -119,11 +119,12 @@ class Instance:
         return result
 
     def tls(self):
+        nginx_image = json.loads(self.compose('config', '--format', 'json'))['services']['nginx']['image']
         run(['docker', 'volume', 'create', '--label', f'com.docker.compose.project={self.project}', f'{self.project}_tls'])
         run(['docker', 'run', '--rm', '--network', 'none', '--user', '0',
              '--mount', f'type=bind,source={self.directory / "certs"},target=/source,readonly',
              '--mount', f'type=volume,source={self.project}_tls,target=/target',
-             'miap/nginx:wp16', 'sh', '-c',
+             '--entrypoint', 'sh', nginx_image, '-c',
              'cp /source/fullchain.pem /source/privkey.pem /target/ && chown -R 101:101 /target && chmod 700 /target && chmod 600 /target/*.pem'])
 
     def provision(self):

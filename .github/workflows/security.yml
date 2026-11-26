@@ -105,45 +105,45 @@ jobs:
       matrix:
         include:
           - service: postgres
-            image: miap/postgres:16.15-alpine3.24
-            source: postgres:16.15-alpine3.24
-            digest: sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb
+            image: miap/postgres:16.16-alpine3.24
+            source: postgres:16.16-alpine3.24
+            digest: sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
             context: .
             dockerfile: docker/postgres/Dockerfile
           - service: orthanc
-            image: miap/orthanc:26.9.0-openssl-r7
+            image: miap/orthanc:26.9.0-os-20261126
             source: orthancteam/orthanc
             digest: sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca
             context: .
             dockerfile: docker/orthanc/Dockerfile
           - service: minio
-            image: miap/minio:2026-09-22-hardened
+            image: miap/minio:2026-11-23-hardened
             source: cgr.dev/chainguard/minio
-            digest: sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56
+            digest: sha256:f6243be11aaaa2fe654d260558e2b3fcef50135e78a3abfd0db802b13444f059
             context: .
             dockerfile: docker/minio/Dockerfile
           - service: redis
-            image: miap/redis:7.4.11-alpine3.21-openssl-r2
-            source: redis:7.4.11-alpine3.21
-            digest: sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
+            image: miap/redis:7.4.12-alpine3.22
+            source: redis:7.4.12-alpine3.22
+            digest: sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
             context: .
             dockerfile: docker/redis/Dockerfile
           - service: elasticsearch
-            image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4
-            source: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21
-            digest: sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
+            image: miap/elasticsearch:8.19.26-hardened
+            source: docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.26
+            digest: sha256:1c58031eac1f9482d670fb0766c166f723eca098f1394477e63d2b9428ad6ace
             context: .
             dockerfile: docker/elasticsearch/Dockerfile
           - service: server
-            image: miap/server:wp16-pebble-free
+            image: miap/server:wp16-20261126
             source: ubuntu:26.04
-            digest: sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
+            digest: sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
             context: .
             dockerfile: deploy/server/Dockerfile
           - service: nginx
-            image: miap/nginx:wp16
-            source: nginx:alpine
-            digest: sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+            image: miap/nginx:wp16-20261126
+            source: nginx:1.31.10-alpine3.24
+            digest: sha256:7fc0fb4af7bf006aeb31aea88069976060f8f0a0a86b667126742cc17f4e31ae
             context: .
             dockerfile: deploy/nginx/Dockerfile
     steps:

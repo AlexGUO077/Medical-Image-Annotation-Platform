@@ -31,3 +31,5 @@ Python 阻断涉及 protobuf、onnx 及构建工具。现有 PaddleNLP 2.6.1 元
 PyPI pip 的内置旧依赖仍被扫描阻断，不能把顶层 urllib3/setuptools 升级当作内置副本已修复。PaddleNLP 2.8.1 未声明 pip 为正式推理依赖，但 `utils/import_utils.py` 提前导入它。打包层仅把此导入移入可选 `install_package` 函数、置于任何安装/卸载动作之前；固定原文件 SHA256，不匹配立即停止构建。已安装模型依赖不需要调用该函数，运行镜像完整移除 pip/ensurepip。这个补丁不改模型、推理结果、依赖约束或业务控制；真实 OCR/NER 合成检查负责验证。Ubuntu 系统 pip 候选也未采用，不以发行版归类差异绕过内置库风险。
 
 上述改动均用于已批准的打包兼容与已检出漏洞修复；最终证据及尚未通过项统一记录在 WP-16 证据和 STATUS，不以候选构建或局部扫描宣称放行。
+
+2026-11-26，PR #69 将 worker 和附件转换共用的 Pillow 从 12.3.0 更新至 13.0.0，以修复影像编解码库的高危和严重告警。仍使用 Python 3.11、原 OCR 和 NER 模型。兼容性由打包后的 worker、合成附件解码和真实模型推理检查验证。[Pillow 发布说明](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html)
