@@ -35,6 +35,8 @@ jobs:
           docker compose --env-file .env.local up -d --wait --wait-timeout 240 postgres redis elasticsearch
       - name: Verify task HTTP authorization and database transactions
         run: node server/test/tasks.integration.cjs
+      - name: Verify student assessment and submission transactions with synthetic cases
+        run: node server/test/education.integration.cjs
       - name: Provision dedicated synthetic search account
         run: npm run search:provision --workspace=server
       - name: Verify public frames and published library with real ES

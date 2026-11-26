@@ -5,6 +5,7 @@ const {randomUUID,randomBytes}=require('node:crypto');
 const path=require('node:path');
 require('dotenv').config({path:process.env.MIAP_ENV_FILE??path.resolve(__dirname,'../../.env.local'),quiet:true});
 if(!process.env.POSTGRES_DB?.includes('synthetic'))throw Error('Synthetic database required');
+require('./frame-test-env.cjs')();
 require('reflect-metadata');
 const {DataSource}=require('typeorm'),{Client}=require('pg'),{createClient}=require('redis');
 const {ExpressAdapter}=require('@nestjs/platform-express');

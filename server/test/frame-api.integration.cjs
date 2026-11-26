@@ -6,12 +6,7 @@ require('dotenv').config({ path: process.env.MIAP_ENV_FILE ?? path.resolve(__dir
 const exportQuarantine=path.join(require('node:os').tmpdir(),'miap-export-it-'+randomBytes(8).toString('hex'));
 process.env.IMPORT_QUARANTINE_DIR=exportQuarantine;
 if (!process.env.POSTGRES_DB?.includes('synthetic')) throw new Error('Requires a synthetic database');
-process.env.JWT_SECRET = randomBytes(32).toString('hex');
-process.env.FRAME_TOKEN_SECRET = randomBytes(32).toString('hex');
-// Fixture-only budgets, never deployment defaults.
-process.env.FRAME_RATE_WINDOW_SECONDS = '60';
-for (const m of ['CR','DX','US']) process.env[`FRAME_RATE_${m}`] = '50';
-for (const m of ['CT','MR']) process.env[`FRAME_RATE_${m}`] = '100';
+require('./frame-test-env.cjs')();
 require('reflect-metadata');
 const sharp = require('sharp');
 const { DataSource } = require('typeorm');
