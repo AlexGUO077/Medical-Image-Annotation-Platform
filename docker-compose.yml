@@ -104,16 +104,16 @@ services:
 
 networks:
   miap-local:
-    name: miap-local-development
+    name: "${MIAP_DEV_PREFIX:-miap}-local-development"
 
 volumes:
   miap-postgres-data:
-    name: miap-postgres-data
+    name: "${MIAP_DEV_PREFIX:-miap}-postgres-data"
   miap-orthanc-data:
-    name: miap-orthanc-data
+    name: "${MIAP_DEV_PREFIX:-miap}-orthanc-data"
   miap-minio-data:
-    name: miap-minio-data
+    name: "${MIAP_DEV_PREFIX:-miap}-minio-data"
   miap-redis-data:
-    name: miap-redis-data
+    name: "${MIAP_DEV_PREFIX:-miap}-redis-data"
   miap-elasticsearch-data:
-    name: miap-elasticsearch-data
+    name: "${MIAP_DEV_PREFIX:-miap}-elasticsearch-data"

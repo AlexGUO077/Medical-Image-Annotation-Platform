@@ -1,4 +1,4 @@
-# 本地合成部署与恢复
+# 本地部署与恢复
 
 依据源 Word §8、[D-43](../docs/decisions/D-43-synthetic-deployment-backup.md)、[D-44](../docs/decisions/D-44-worker-container-security-compatibility.md)及[部署契约](../docs/contracts/deployment-backup.md)。当前仅本机 synthetic 演练；部署包不安装定时任务，不默认连接异地或真实数据环境。当前验收状态见 [STATUS](../docs/STATUS.md)。
 
@@ -20,7 +20,27 @@ python3 deploy/manage.py --instance "$PWD/.credentials/synthetic-local" up
 
 运行 server 不接收数据库 owner、MinIO root 或 ES elastic 密码。一次性初始化容器使用 owner，日常数据库账号继承已有 `miap_app`；MinIO 仅可访问两个项目桶，ES 仅发布索引权限。不要用 owner 账号替换应用账号来处理权限错误。
 
-2026-10-25，用户要求本机老师教学样例入库展示。此类实例可在私有 `.env` 显式设置 `DEPLOY_ALLOW_TEACHING=true`，启动初始化将同时接受 D-31 的 `teacher_provided_teaching`；默认仍仅允许 synthetic，未知来源始终拒绝。该开关仅传给一次性初始化进程，不扩大公网、病例发布库或导出范围。当前备份恢复演练仍限定 synthetic，不将含教学样例的实例用于原三例合成恢复验收。
+本机教学实例可在初始化时指定 `--allow-teaching`。默认实例保持合成测试范围。老师样例的本机准备见下节，合成恢复仍使用 `restore`。
+
+## 本机教学测试集
+
+演示目录固定在已验收版本，开发 worktree 独立构建。两个实例使用不同的 Compose 项目名、端口及数据卷。每个实例可放一份权限为 0600 的 `compose.local.json`，为本机架构选择镜像，并将本 worktree 的前后端构建目录只读挂载到对应容器。
+
+若在开发 worktree 使用根目录的 `docker-compose.yml` 跑合成集成测试，在该目录的私有 `.env.local` 设置独立的 `COMPOSE_PROJECT_NAME`、`MIAP_DEV_PREFIX` 和宿主端口。后者指定命名卷和网络前缀，默认值 `miap` 与原开发环境兼容。
+
+在仓库外的私有目录创建 0600 的 JSON 数组，列出已确认教学病例的 UUID。首次纳入的病例须已通过平台导入、脱敏确认、专业任务分派和考核发布。每次更新清单后，在源实例停止写入的一致窗口内捕获完整备份。备份包括完整实例，清单标出必须通过验收的病例；清单同时核对两段医生参考、两端任务和答卷摘要。
+
+```sh
+python3 deploy/manage.py --instance "$DEMO_INSTANCE" backup \
+  --destination "$PRIVATE_BACKUPS" --teaching-cases "$PRIVATE_CASE_LIST"
+python3 deploy/manage.py --instance "$DEV_INSTANCE" init \
+  --project "$DEV_PROJECT" --http-port "$DEV_HTTP_PORT" --https-port "$DEV_HTTPS_PORT" \
+  --window "$FRAME_WINDOW" --rates "$CR" "$DX" "$CT" "$MR" "$US" \
+  --allow-teaching --keys-from "$DEMO_INSTANCE"
+python3 deploy/manage.py --instance "$DEV_INSTANCE" prepare-teaching --source "$COMPLETE_BATCH"
+```
+
+首次准备只写入空项目。服务开放前校验来源、备份文件和病例清单，并逐份比对当时的草稿和已交卷答卷。同一批次再次运行时核验基线，保留之后新增的作答。换批次或恢复中断且尚未通过数据库核验时，选择另一个空项目。教学备份只保存在本机，恢复密钥随私有实例配置单独保管。验收时分别用标注员和学生账号打开影像，并核对交卷前后的报告可见性。
 
 ## 同批备份和新实例恢复
 
