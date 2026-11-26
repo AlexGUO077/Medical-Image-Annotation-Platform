@@ -74,3 +74,9 @@ npm run db:verify --workspace server
 按[已批准分派决策](../decisions/D-09-D-10-D-23-task-dispatch.md)，迁移 `1790640000002` 允许 audit_logs.actor 为 NULL，但 CHECK 限制仅 `tasks.assignment_released` / `tasks.auto_dispatched` 且 `detail.executor="task-worker"`、`ip="system"`；人工事件继续记录真实用户外键，追加约束和角色权限不变。已有空 actor 审计时 down 拒绝，不删除历史或补造操作者；应用回退可保留兼容 schema 后向前修复。
 
 WP-14 的既有 export_requests 扩展见 [受控导出契约](exports-audit-api.md) 和已确认 D-13。仅支持固定病例版本清单，数据库约束阻止自批、状态/链接/摘要不一致或领取次数超出 0/1；有无法归属的旧请求时 up 拒绝，有导出历史时 down 拒绝，不删除或补造历史。迁移先于页面，只在独立合成 schema 验证。
+
+## 学生教学增量（D-46，2026-10-27）
+
+`StudentEducation1793059200000` 在上述16张共享底座表之外新增 education_roster、education_tasks、education_items、education_students、education_attempts，完整数据边界见 [education-api](education-api.md)。users.role 扩展 student，并CHECK约束student的quals为空对象。学生答案不写入生产annotation_objects，不修改cases.annotation_version/status。发布固定参考内容，个人作答有版本与唯一约束，已提交答卷由触发器禁止UPDATE/DELETE。
+
+应用最小权限授权及数据库验证脚本同步覆盖新增表；迁移在有学生或教学数据时拒绝down，保留数据向前修复。该增量由用户本次教学功能授权引入，不追溯修改原16表建库要求。

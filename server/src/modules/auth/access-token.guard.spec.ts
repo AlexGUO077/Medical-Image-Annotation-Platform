@@ -14,11 +14,12 @@ function user(overrides: Partial<AuthUser> = {}): AuthUser {
   };
 }
 
-function setup(current: AuthUser | undefined, accountUpdatedAt = updatedAt.getTime()) {
+function setup(current: AuthUser | undefined, accountUpdatedAt = updatedAt.getTime(), controller = 'CasesController') {
   const request: AuthenticatedRequest = { headers: { authorization: 'Bearer access-token' } };
   const dataSource = { query: vi.fn().mockResolvedValue(current ? [current] : []) };
   const tokens = { verify: vi.fn().mockReturnValue({ sub: 'user-1', account_updated_at: accountUpdatedAt }) };
   const context = {
+    getClass: () => ({ name: controller }),
     switchToHttp: () => ({ getRequest: () => request }),
   };
   return {
@@ -49,4 +50,9 @@ describe('AccessTokenGuard', () => {
     const { guard, context } = setup(user(), updatedAt.getTime() - 1);
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
   });
+});
+
+describe('student production boundary',()=>{
+ it.each(['CasesController','WorkbenchController','ReviewsController','SearchController','TaxonomyController','UsersController'])('rejects student at %s',async name=>{const {guard,context}=setup(user({role:'student',quals:{}}),updatedAt.getTime(),name);await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);});
+ it.each(['EducationController','FramesController'])('allows authenticated student through %s resource checks',async name=>{const {guard,context}=setup(user({role:'student',quals:{}}),updatedAt.getTime(),name);await expect(guard.canActivate(context)).resolves.toBe(true);});
 });

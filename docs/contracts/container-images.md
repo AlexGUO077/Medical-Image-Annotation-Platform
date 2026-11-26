@@ -8,6 +8,46 @@ Every local runtime image is built from a source image pinned by manifest digest
 The same Dockerfile and source digest are used by Compose and the blocking Trivy
 matrix. They intentionally exclude credentials.
 
+## Current runtime
+
+The image table below is authoritative for both Compose files and the image
+scan. The November 2026 update keeps PostgreSQL on major 16, Redis on major 7
+and the Orthanc application at 26.9.0. Their images pick up the distribution's
+security fixes. The pinned [MinIO image](https://images.chainguard.dev/directory/image/minio/overview)
+includes both the server and `mc` for provisioning and health checks.
+
+[Elasticsearch 8.19.26](https://www.docker.elastic.co/r/elasticsearch/elasticsearch-wolfi:8.19.26)
+bundles fixed Netty, Jackson, jsoup and LZ4 libraries. Its five Guava modules
+use the checksum-pinned [33.7.2-jre release](https://repo.maven.apache.org/maven2/com/google/guava/guava/33.7.2-jre/)
+and its declared `failureaccess` 1.0.3 dependency. The smoke test verifies the
+module copies, embedded Jackson, Java futures, compression, index readback,
+SQL and HTML extraction on the packaged JVM.
+
+The server includes [Pillow 13.0.0](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html)
+for the existing Python 3.11 OCR and attachment paths. The Node build emits
+JavaScript on the build host. Native production modules and the Node binary
+come from the target architecture.
+
+| Service | Runtime image | Source image | Resolved digest | Dockerfile |
+| --- | --- | --- | --- | --- |
+| PostgreSQL | `miap/postgres:16.16-alpine3.24` | `postgres:16.16-alpine3.24` | `sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d` | `docker/postgres/Dockerfile` |
+| Orthanc | `miap/orthanc:26.9.0-os-20261126` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
+| MinIO | `miap/minio:2026-11-23-hardened` | `cgr.dev/chainguard/minio` | `sha256:f6243be11aaaa2fe654d260558e2b3fcef50135e78a3abfd0db802b13444f059` | `docker/minio/Dockerfile` |
+| Redis | `miap/redis:7.4.12-alpine3.22` | `redis:7.4.12-alpine3.22` | `sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe` | `docker/redis/Dockerfile` |
+| Elasticsearch | `miap/elasticsearch:8.19.26-hardened` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.26` | `sha256:1c58031eac1f9482d670fb0766c166f723eca098f1394477e63d2b9428ad6ace` | `docker/elasticsearch/Dockerfile` |
+| Server | `miap/server:wp16-20261126` | `ubuntu:26.04` | `sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db` | `deploy/server/Dockerfile` |
+| Nginx | `miap/nginx:wp16-20261126` | `nginx:1.31.10-alpine3.24` | `sha256:7fc0fb4af7bf006aeb31aea88069976060f8f0a0a86b667126742cc17f4e31ae` | `deploy/nginx/Dockerfile` |
+
+WP-16 adds the last two images in `deploy/compose.yml`, preserving the same five
+middleware definitions. Server/nginx run as UID 10001/101. Server retains official
+Python 3.11 (`sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce`)
+and Node 24.14.0 (`sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8`);
+nginx uses that Node source only to build static files. D-44 records the fixed
+worker dependencies and optional-installer import patch. See the WP-16 evidence
+and STATUS for actual verification; this table does not grant deployment approval.
+
+## Previous image selections
+
 `minio/minio` was unavailable from Docker Hub on 2026-09-18 (`denied:
 requested access to the resource is denied` / `unauthorized: authentication
 required`). The upstream MinIO Docker guide identifies `quay.io/minio/minio` as
@@ -17,8 +57,8 @@ HTTP-client probe.
 
 The generic `docker.elastic.co/elasticsearch/elasticsearch:8` tag was also not
 published by the Elastic registry. Elastic's 8.x Docker guide specifies
-`8.19.21` and its hardened Wolfi variant. The local image retains Elasticsearch
-8.19.21 and replaces the bundled Netty 4.1.135 artifacts with checksum-pinned
+`8.19.21` and its hardened Wolfi variant at the time. That image retained Elasticsearch
+8.19.21 and replaced the bundled Netty 4.1.135 artifacts with checksum-pinned
 4.1.137 artifacts from Maven Central, the compatible release containing the
 Trivy-reported fixes.
 
@@ -96,24 +136,6 @@ the exact previously selected 7.4.11 Alpine source image.
 All five final images explicitly declare a non-root runtime user; PostgreSQL,
 Orthanc, MinIO, Redis, and Elasticsearch run as UID 70, 999, 65532, 999, and
 1000 respectively in the local Compose environment.
-
-| Service | Runtime image | Source image | Resolved digest | Dockerfile |
-| --- | --- | --- | --- | --- |
-| PostgreSQL | `miap/postgres:16.15-alpine3.24` | `postgres:16.15-alpine3.24` | `sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb` | `docker/postgres/Dockerfile` |
-| Orthanc | `miap/orthanc:26.9.0-openssl-r7` | `orthancteam/orthanc` | `sha256:1ca07ad4a70f67f815e55a558e76718d572ed9d0571268a3fbc1516a9155c5ca` | `docker/orthanc/Dockerfile` |
-| MinIO | `miap/minio:2026-09-22-hardened` | `cgr.dev/chainguard/minio` | `sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56` | `docker/minio/Dockerfile` |
-| Redis | `miap/redis:7.4.11-alpine3.21-openssl-r2` | `redis:7.4.11-alpine3.21` | `sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7` | `docker/redis/Dockerfile` |
-| Elasticsearch | `miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4` | `docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21` | `sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea` | `docker/elasticsearch/Dockerfile` |
-| Server | `miap/server:wp16-pebble-free` | `ubuntu:26.04` | `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7` | `deploy/server/Dockerfile` |
-| Nginx | `miap/nginx:wp16` | `nginx:alpine` | `sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2` | `deploy/nginx/Dockerfile` |
-
-WP-16 adds the last two images in `deploy/compose.yml`, preserving the same five
-middleware definitions. Server/nginx run as UID 10001/101. Server retains official
-Python 3.11 (`sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce`)
-and Node 24.14.0 (`sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8`);
-nginx uses that Node source only to build static files. D-44 records the fixed
-worker dependencies and optional-installer import patch. See the WP-16 evidence
-and STATUS for actual verification; this table does not grant deployment approval.
 
 On 2026-10-10, PRs #60/#61/#62 were blocked by the same four HIGH findings.
 Elasticsearch's sole `lz4-java` 1.11.1 payload is replaced with Maven Central's

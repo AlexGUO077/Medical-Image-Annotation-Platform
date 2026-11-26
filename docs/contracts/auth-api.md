@@ -43,3 +43,7 @@ TOTP 密钥、密码、JWT、完整二维码和动态码不得写入日志或审
 WP-06 接入后，PATCH /api/users 在用户行锁内重新校验管理员当前会话，并将账号更新、失效标注分派释放及双方审计置于同一事务。新增响应 `released_assignments`；资格挂起使用既有 quals 更新语义，不新增资格状态表。自审任务丢失审核资格也释放其标注分派，其他系统资格不受影响；任一审计失败全部回滚。后台释放不冒用人工账号，见任务契约的系统审计约束。
 
 帧请求异常限流按 2026-09-30 已批准方案复用 status=disabled，记录 frames.locked 并使当前会话失效、释放在途标注。管理员复核后通过既有 PATCH status=active 启用，写 users.updated 审计；重新登录后按新账号版本计数，旧分派不恢复。见[帧接口契约](frames-api.md)。
+
+## 学生身份增量（D-46，2026-10-27）
+
+登录响应的 role 增加 student，学生无生产 annotate/review 资格；继续复用既有登录、有效期、密码策略与改密会话失效。预录学生通过 `/api/education/activate` 一次性设置密码，已激活身份可登录；激活和名册不沿用 POST /users。管理员账号的2FA要求不变。接口、限流与数据边界统一见 [education-api](education-api.md)。

@@ -1,0 +1,41 @@
+import { Alert, Button, Card, Checkbox, Form, Input, Modal, Popconfirm, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import type { Session } from '../auth/types';
+import { educationApi, EducationError } from './api';
+import { CaseReferenceEditor } from './CaseReferenceEditor';
+import type { CaseReferenceSections, EducationTask, RosterEntry, StudentAnswer } from './types';
+export function EducationAdminPage({session,onExpired}:{session:Session;onExpired():void}){
+ const [roster,setRoster]=useState<RosterEntry[]>([]),[cases,setCases]=useState<Awaited<ReturnType<typeof educationApi.candidates>>>([]),[tasks,setTasks]=useState<EducationTask[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[code,setCode]=useState<string>(),[tick,setTick]=useState(0),[page,setPage]=useState(1),[casePage,setCasePage]=useState(1),[taskPage,setTaskPage]=useState(1),[selectedCases,setSelectedCases]=useState<string[]>([]),[selectedPeople,setSelectedPeople]=useState<string[]>([]);
+ const [references,setReferences]=useState<Record<string,CaseReferenceSections>>({});
+ const ready=selectedCases.length>0&&selectedPeople.length>0&&selectedCases.every(id=>references[id]?.findings.trim()&&references[id]?.impression.trim());
+ const [submissionTask,setSubmissionTask]=useState(''),[submissionPage,setSubmissionPage]=useState(1);
+ const [answers,setAnswers]=useState<Awaited<ReturnType<typeof educationApi.submissions>>>(),[view,setView]=useState<{student_no:string;answer:StudentAnswer}>();const [rosterForm]=Form.useForm(),[taskForm]=Form.useForm();
+ const fail=(e:unknown)=>{setError(e instanceof Error?e.message:'请求失败');if(e instanceof EducationError&&e.status===401)onExpired();};
+ useEffect(()=>{let live=true;Promise.all([educationApi.roster(session.token,page),educationApi.candidates(session.token,casePage),educationApi.tasks(session.token,taskPage)]).then(([r,c,t])=>{if(live){setRoster(r);setCases(c);setTasks(t);}}).catch(e=>{if(live)fail(e);});return()=>{live=false;};},[session.token,tick,page,casePage,taskPage]);
+ const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError('');try{await action();}catch(e){fail(e);}finally{setBusy(false);}};
+ const pages=(n:number,count:number,set:(n:number)=>void)=><Space style={{marginTop:12}}><Button disabled={n===1} onClick={()=>set(n-1)}>上一页</Button><span>第 {n} 页</span><Button disabled={count<50} onClick={()=>set(n+1)}>下一页</Button></Space>;
+ return <section><Typography.Title level={2}>学生与考核管理</Typography.Title>{error&&<Alert type="error" message={error}/>}
+ <Tabs destroyOnHidden items={[
+ {key:'roster',label:'学生名册',children:<><Card title="提前录入学生" style={{marginBottom:16}}><Form form={rosterForm} layout="vertical" onFinish={v=>void run(async()=>{const r=await educationApi.createRoster(session.token,v);setCode(r.activation_code);rosterForm.resetFields();setTick(n=>n+1);})}>
+ <Space align="start" wrap><Form.Item label="学号 / 登录名" name="student_no" rules={[{required:true,pattern:/^[A-Za-z0-9_-]{3,64}$/}]}><Input maxLength={64}/></Form.Item><Form.Item label="姓名" name="real_name" rules={[{required:true}]}><Input maxLength={100}/></Form.Item><Form.Item label="班级" name="class_name" initialValue=""><Input maxLength={100}/></Form.Item><Form.Item label="账号有效期" name="expire_at" rules={[{required:true}]}><Input type="date"/></Form.Item></Space><Button htmlType="submit" type="primary" loading={busy}>录入并生成激活码</Button></Form></Card>
+ <Table rowKey="id" pagination={false} dataSource={roster} columns={[{title:'学号',dataIndex:'student_no'},{title:'姓名',dataIndex:'real_name'},{title:'班级',dataIndex:'class_name'},{title:'有效期',dataIndex:'expire_at'},{title:'状态',render:(_,r)=><Tag>{r.activated_at?'已激活':'未激活'}</Tag>},{title:'操作',render:(_,r)=>!r.user_id?<Popconfirm title="生成新码后，旧激活码立即失效，继续？" onConfirm={()=>run(async()=>{const v=await educationApi.reissue(session.token,r.id);setCode(v.activation_code);})}><Button disabled={busy}>重发激活码</Button></Popconfirm>:null}]}/>{pages(page,roster.length,setPage)}</>},
+ {key:'create',label:'安排考核',children:<Form form={taskForm} layout="vertical" onFinish={v=>void run(async()=>{await educationApi.createTask(session.token,{...v,case_ids:selectedCases,roster_ids:selectedPeople,reference_sections:selectedCases.map(id=>references[id])});taskForm.resetFields();setReferences({});setSelectedCases([]);setSelectedPeople([]);setTick(n=>n+1);})}>
+ <Form.Item label="考核名称" name="title" rules={[{required:true}]}><Input maxLength={200}/></Form.Item><Form.Item label="作答说明" name="instructions" initialValue=""><Input.TextArea rows={3} maxLength={4000} placeholder="学生提交前可见，请只填写操作要求"/></Form.Item>
+ <Typography.Title level={4}>选择病灶病例</Typography.Title><p>逐例核对影像中有可标注的病灶，并从医生的脱敏报告中选取所见和诊断意见。学生提交后才能看到这些内容。</p>
+ {cases.map(c=><div key={c.id}><Checkbox checked={selectedCases.includes(c.id)} onChange={e=>{
+   if(e.target.checked)setSelectedCases(old=>[...old,c.id]);
+   else {setSelectedCases(old=>old.filter(id=>id!==c.id));setReferences(old=>{const next={...old};delete next[c.id];return next;});}
+ }}>{c.case_no} · {c.source==='synthetic'?'合成病例':'教学样例'} · {c.status}</Checkbox>
+ {selectedCases.includes(c.id)&&<CaseReferenceEditor token={session.token} caseId={c.id} caseNo={c.case_no} value={references[c.id]} onChange={value=>setReferences(old=>({...old,[c.id]:value}))}/>}</div>)}
+ <div>{pages(casePage,cases.length,setCasePage)}</div>
+ <Typography.Title level={4}>选择学生</Typography.Title><Space wrap>{roster.map(r=><Checkbox key={r.id} checked={selectedPeople.includes(r.id)} onChange={e=>{
+   const checked=e.target.checked;
+   setSelectedPeople(old=>checked?[...old,r.id]:old.filter(id=>id!==r.id));
+ }}>{r.student_no} · {r.real_name}</Checkbox>)}</Space><div>{pages(page,roster.length,setPage)}</div>
+ <Popconfirm title={`将向 ${selectedPeople.length} 名学生发布 ${selectedCases.length} 道题，确认每例有病灶且医生所见和诊断意见已核对？`} onConfirm={()=>taskForm.submit()} disabled={busy||!ready}><Button type="primary" style={{marginTop:20}} loading={busy} disabled={!ready}>发布考核</Button></Popconfirm></Form>},
+ {key:'tasks',label:'考核与提交',children:<>{tasks.map(t=><Card key={t.id} title={t.title} extra={<Tag>{t.status==='published'?'进行中':t.status==='closed'?'已关闭':'已撤销'}</Tag>} style={{marginBottom:12}}><p>{t.instructions} · {t.items.length} 道题</p><Space><Button loading={busy} onClick={()=>void run(async()=>{setSubmissionTask(t.id);setSubmissionPage(1);setAnswers(await educationApi.submissions(session.token,t.id,1));})}>查看提交</Button>{t.status==='published'&&<Popconfirm title="关闭后停止新作答，已提交学生仍可对照，继续？" onConfirm={()=>run(async()=>{await educationApi.taskState(session.token,t.id,'closed');setTick(n=>n+1);})}><Button>结束考核</Button></Popconfirm>}{t.status!=='revoked'&&<Popconfirm title="撤销后学生将无法访问题目和参考内容，继续？" onConfirm={()=>run(async()=>{await educationApi.taskState(session.token,t.id,'revoked');setTick(n=>n+1);})}><Button danger>撤销</Button></Popconfirm>}</Space></Card>)}{pages(taskPage,tasks.length,setTaskPage)}</>}
+ ]}/>
+ <Modal title="一次性交接激活码" open={!!code} onCancel={()=>setCode(undefined)} onOk={()=>setCode(undefined)} destroyOnHidden><p>请将此码单独交给对应学生。有效期7天，关闭后无法再次查看。</p><Typography.Text copyable>{code}</Typography.Text></Modal>
+ <Modal title="学生提交" open={!!answers} onCancel={()=>{setAnswers(undefined);setView(undefined);}} footer={null} width={900} destroyOnHidden><Table rowKey="id" dataSource={answers} pagination={false} columns={[{title:'学号',dataIndex:'student_no'},{title:'姓名',dataIndex:'real_name'},{title:'题号',dataIndex:'ordinal'},{title:'提交时间',render:(_,r)=>new Date(r.submitted_at).toLocaleString()},{title:'作答',render:(_,r)=><Button onClick={()=>setView(r)}>查看报告与对象</Button>}]}/>{pages(submissionPage,answers?.length??0,n=>{setSubmissionPage(n);setView(undefined);void run(async()=>setAnswers(await educationApi.submissions(session.token,submissionTask,n)));})}{view&&<div><h3>{view.student_no} 的报告</h3><h4>影像所见</h4><p className="education-report">{view.answer.findings}</p><h4>诊断意见</h4><p className="education-report">{view.answer.impression}</p>{view.answer.objects.map((o,i)=><p key={o.id} className="education-report">对象 {i+1} · {o.organ} · 帧 {o.frame_start+1}–{o.frame_end+1}<br/>{o.description}</p>)}</div>}</Modal>
+ </section>;
+}

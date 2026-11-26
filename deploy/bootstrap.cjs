@@ -1,4 +1,5 @@
-// One-shot local synthetic provisioning. Administrator credentials never enter
+// One-shot local test provisioning; teaching sources require explicit opt-in.
+// Administrator credentials never enter
 // the long-running server container; manage.py passes them only to this process.
 'use strict';
 const { AppDataSource: database } = require('./dist/database/data-source');
@@ -10,14 +11,18 @@ async function main() {
       || process.env.POSTGRES_USER !== 'miap_owner') throw Error('Unexpected deployment target');
   await database.initialize();
   try {
+    const allowedSources = process.env.DEPLOY_ALLOW_TEACHING === 'true'
+      ? ['synthetic', 'teacher_provided_teaching'] : ['synthetic'];
+    const checkSources = async () => {
+      const [{ count }] = await database.query('SELECT count(*) FROM cases WHERE source IS NULL OR NOT (source = ANY($1::text[]))', [allowedSources]);
+      if (Number(count) !== 0) throw Error('Unapproved deployment source');
+    };
     const [existing] = await database.query("SELECT to_regclass('public.cases') AS table_name");
     if (existing.table_name) {
-      const [{ count }] = await database.query("SELECT count(*) FROM cases WHERE source IS DISTINCT FROM 'synthetic'");
-      if (Number(count) !== 0) throw Error('Non-synthetic data');
+      await checkSources();
     }
     await database.runMigrations({ transaction: 'all' });
-    const [{ count }] = await database.query("SELECT count(*) FROM cases WHERE source IS DISTINCT FROM 'synthetic'");
-    if (Number(count) !== 0) throw Error('Non-synthetic data');
+    await checkSources();
     await provisionApplicationRole(database);
     await database.query(`DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'miap_runtime') THEN

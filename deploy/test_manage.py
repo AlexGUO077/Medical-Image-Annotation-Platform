@@ -5,9 +5,10 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import manage
+import teaching_set
 
 
 class BackupSafetyTests(unittest.TestCase):
@@ -44,6 +45,49 @@ class BackupSafetyTests(unittest.TestCase):
         self.batch.rename(partial)
         with self.assertRaisesRegex(ValueError, 'published'):
             manage.verify_batch(partial)
+
+    def test_teaching_data_stays_local_and_requires_loopback_and_explicit_opt_in(self):
+        instance = Mock(values={'DEPLOY_ALLOW_TEACHING': 'true'})
+        with self.assertRaisesRegex(ValueError, 'local storage'):
+            manage.backup(instance, self.root / 'out', remote_sync=True)
+        instance.compose.assert_not_called()
+        instance.compose.return_value = b'{"services":{"nginx":{"ports":[{"host_ip":"0.0.0.0"}]}}}'
+        with self.assertRaisesRegex(ValueError, 'loopback'):
+            teaching_set.require_local(instance)
+        instance.values = {}
+        with self.assertRaisesRegex(ValueError, 'Enable local teaching'):
+            teaching_set.require_local(instance)
+
+    def test_teaching_inventory_is_bound_to_the_backup_and_separate_from_default_restore(self):
+        catalog = self.batch / 'teaching-set.json'
+        catalog.write_text('[]')
+        instance = Mock(values={k: 'synthetic-only' for k in manage.KEYS})
+        file = self.batch / 'manifest.json'
+        manifest = json.loads(file.read_text())
+        manifest.update(teaching_set_sha256=manage.checksum(catalog),
+                        key_fingerprints={k: manage.hashlib.sha256(v.encode()).hexdigest() for k, v in instance.values.items()})
+        file.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'matching synthetic'):
+            manage.restore(instance, self.batch)
+        instance.compose.assert_not_called()
+        catalog.write_text('[{}]')
+        with self.assertRaisesRegex(ValueError, 'inventory'):
+            manage.verify_batch(self.batch)
+
+    def test_reuse_allows_new_work_and_verifies_preexisting_answers(self):
+        attempt = dict(id='attempt', item='item', student='student', state='in_progress', version=2, answer='hashA')
+        frozen = dict(attempt, id='frozen', state='submitted')
+        case = dict(id='case', case_digest='case-hash', series=[], report='report-hash',
+                    assignments=[], items=[], attempts=[attempt, frozen])
+        updated = dict(case, attempts=[dict(attempt, version=3, answer='hashB'), frozen])
+        with patch.object(teaching_set, 'inventory', return_value=[updated]):
+            teaching_set.verify(None, [case], exact=False)
+            with self.assertRaisesRegex(ValueError, 'differs'):
+                teaching_set.verify(None, [case], exact=True)
+        updated['attempts'][1] = dict(frozen, answer='changed')
+        with patch.object(teaching_set, 'inventory', return_value=[updated]):
+            with self.assertRaisesRegex(ValueError, 'Frozen submission'):
+                teaching_set.verify(None, [case], exact=False)
 
     def test_tar_traversal_and_links_rejected_even_with_matching_checksum(self):
         for name, kind in [('../outside', tarfile.REGTYPE), ('/absolute', tarfile.REGTYPE),

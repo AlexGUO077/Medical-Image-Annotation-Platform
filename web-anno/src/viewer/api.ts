@@ -1,3 +1,4 @@
+export type FrameAccess = number | { attempt_id: string };
 export interface FrameGeometry { width:number; height:number; row_spacing:number|null; column_spacing:number|null }
 export interface FrameWindow { center: number; width: number }
 export interface Series { id: string; series_uid: string; modality: string; frame_count: number; default_window: FrameWindow | null }
@@ -14,7 +15,7 @@ async function json<T>(path: string, token: string, signal: AbortSignal, body?: 
   if (!response.ok) throw new ViewerRequestError(response.status,data.message ?? '工作台请求失败');
   return data as T;
 }
-async function readFrame(token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal,libraryVersion?:number): Promise<{blob:Blob;geometry:FrameGeometry}> {
+async function readFrame(token: string, caseId: string, series: Series, index: number, window: FrameWindow | null, signal: AbortSignal,libraryVersion?:FrameAccess): Promise<{blob:Blob;geometry:FrameGeometry}> {
     const ticket = await json<{ url: string }>('/api/frames/ticket', token, signal, { case_id: caseId, series_uid: series.series_uid, frame_index: index, window,...binding(libraryVersion) });
     if (!/^\/api\/frames\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(ticket.url)) throw new Error('帧地址无效');
     const response = await fetch(ticket.url, { headers: { Authorization: `Bearer ${token}` }, signal, cache:'no-store', redirect:'error' });
@@ -31,8 +32,8 @@ async function readFrame(token: string, caseId: string, series: Series, index: n
 }
 interface Preload {token:string;caseId:string;key:string;controller:AbortController;result:Promise<{blob:Blob;geometry:FrameGeometry}|undefined>}
 const preloads=new Map<string,Preload>();
-const binding=(version?:number)=>version===undefined?{}:{access_mode:'library',expected_version:version};
-const keyFor=(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,version?:number)=>JSON.stringify([token,caseId,series.id,index,window,...(version===undefined?[]:[version])]);
+const binding=(version?:FrameAccess)=>version===undefined?{}:typeof version==='number'?{access_mode:'library',expected_version:version}:{access_mode:'education',attempt_id:version.attempt_id};
+const keyFor=(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,version?:FrameAccess)=>JSON.stringify([token,caseId,series.id,index,window,...(version===undefined?[]:[version])]);
 export const viewerApi = {
  async attachment(token:string,caseId:string,id:string,page:number,signal:AbortSignal,context:'workbench'|'reviews'|'library'='workbench',version?:number){
   if(context==='library'&&!Number.isSafeInteger(version))throw new ViewerRequestError(400,'附件发布版本无效');
@@ -43,7 +44,7 @@ export const viewerApi = {
   return {blob:await response.blob(),page_count:count};
  },
  workbench:(id:string,token:string,signal:AbortSignal)=>json<Workbench>(`/api/workbench/${encodeURIComponent(id)}`,token,signal),
- async frame(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,signal:AbortSignal,libraryVersion?:number){
+ async frame(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,signal:AbortSignal,libraryVersion?:FrameAccess){
   const key=keyFor(token,caseId,series,index,window,libraryVersion),cached=preloads.get(key);preloads.delete(key);
   if(cached){
    const cancel=()=>cached.controller.abort();signal.addEventListener('abort',cancel,{once:true});
@@ -57,7 +58,7 @@ export const viewerApi = {
   }
   return readFrame(token,caseId,series,index,window,signal,libraryVersion);
  },
- preload(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,libraryVersion?:number){
+ preload(token:string,caseId:string,series:Series,index:number,window:FrameWindow|null,libraryVersion?:FrameAccess){
   if(index<0||index>=series.frame_count)return;
   const key=keyFor(token,caseId,series,index,window,libraryVersion);if(preloads.has(key))return;
   // One-frame lookahead, bounded across this page; only watermarked display PNGs in RAM.

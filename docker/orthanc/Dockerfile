@@ -4,8 +4,7 @@ USER root
 
 # Kernel development headers are not needed to run Orthanc.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends \
-      libssl3t64=3.5.5-1ubuntu3.7 openssl=3.5.5-1ubuntu3.7 openssl-provider-legacy=3.5.5-1ubuntu3.7 \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && apt-get purge --yes --auto-remove linux-libc-dev \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/orthanc/db \

@@ -38,13 +38,25 @@ function mask(value: unknown) {
   if (total !== count) invalid('RLE 未覆盖完整掩膜');
   return { rle, width, height };
 }
-function geometry(tool: AnnotationTool, value: unknown, start: number, end: number, key: number): Record<string, unknown> {
+export interface FramePoint {frame_index: number; x: number; y: number}
+function geometry(tool: AnnotationTool, value: unknown, start: number, end: number, key: number, scope: 'production' | 'education'): Record<string, unknown> {
   const keys = tool === 'point' ? ['x','y'] : tool === 'box' ? ['x','y','w','h'] : tool === 'polygon' ? ['points'] : ['rle','width','height','frames'];
+  if (scope === 'education' && tool === 'point') keys.push('additional_points');
   const data = object(value, [...keys, 'type']);
   if (data.type !== undefined && data.type !== tool) invalid('工具与几何类型不符');
   if (tool === 'point' || tool === 'box') {
     const x = coordinate(data.x), y = coordinate(data.y);
-    if (tool === 'point') return { x, y };
+    if (tool === 'point') {
+      if (data.additional_points === undefined) return { x, y };
+      if (!Array.isArray(data.additional_points)) invalid('病灶点列无效');
+      const points = data.additional_points.map(value => {
+        const point = object(value, ['frame_index', 'x', 'y']);
+        const frame_index = integer(point.frame_index);
+        if (frame_index < start || frame_index > end) invalid('病灶点超出对象帧范围');
+        return { frame_index, x: coordinate(point.x), y: coordinate(point.y) };
+      });
+      return points.length ? { x, y, additional_points: points } : { x, y };
+    }
     const w = coordinate(data.w), h = coordinate(data.h);
     if (!w || !h || !Number.isFinite(x+w) || !Number.isFinite(y+h)) invalid('矩形必须有有效面积');
     return { x, y, w, h };
@@ -78,7 +90,7 @@ function geometry(tool: AnnotationTool, value: unknown, start: number, end: numb
   }).sort((a, b) => a.frame_index-b.frame_index);
   return { ...representative, frames };
 }
-export function parseAnnotations(body: unknown): { expected_version: number; annotations: AnnotationInput[] } {
+export function parseAnnotations(body: unknown, scope: 'production' | 'education' = 'production'): { expected_version: number; annotations: AnnotationInput[] } {
   const input = object(body, ['expected_version', 'annotations']);
   const expected_version = integer(input.expected_version);
   if (!Array.isArray(input.annotations)) invalid('annotations 必须为数组');
@@ -98,7 +110,7 @@ export function parseAnnotations(body: unknown): { expected_version: number; ann
     if (confidence !== null && confidence !== '典型' && confidence !== '不典型') invalid('置信度无效');
     if (item.window_preset !== undefined && item.window_preset !== null && (typeof item.window_preset !== 'string' || !item.window_preset.trim())) invalid('窗预设无效');
     return { id: item.id === undefined ? randomUUID() : uuid(item.id), series_id: uuid(item.series_id), tool,
-      geometry: geometry(tool, item.geometry, start, end, key), frame_start: start, frame_end: end, key_frame_index: key,
+      geometry: geometry(tool, item.geometry, start, end, key, scope), frame_start: start, frame_end: end, key_frame_index: key,
       window_preset: typeof item.window_preset === 'string' ? item.window_preset.trim() : null,
       part_id: item.part_id === null ? null : uuid(item.part_id), sign_tag_ids: signs, confidence, report_sent_ids: sentences } as AnnotationInput;
   });

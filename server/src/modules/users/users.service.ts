@@ -97,6 +97,7 @@ export class UsersService {
       if (!current || current.updated_at.getTime() !== actor.updated_at.getTime()) throw new UnauthorizedException('会话已失效，请重新登录');
       if (current.role !== 'admin' || !accountAvailable(current)) throw new ForbiddenException('管理员账号不可用');
       if (!target) throw new NotFoundException('账号不存在');
+      if (target.role === 'student' && quals !== undefined && Object.keys(quals).length) throw new BadRequestException('学生账号不能授予生产资格');
       if (input.reset_mfa === true && target.role !== 'admin') throw new BadRequestException('只有管理员账号具有双因素认证');
       const updates: string[] = [], values: unknown[] = [];
       const changes: Record<string, unknown> = {};

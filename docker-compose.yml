@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/postgres/Dockerfile
-    image: miap/postgres:16.15-alpine3.24
+    image: miap/postgres:16.16-alpine3.24
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: docker/orthanc/Dockerfile
-    image: miap/orthanc:26.9.0-openssl-r7
+    image: miap/orthanc:26.9.0-os-20261126
     environment:
       ORTHANC_USERNAME: ${ORTHANC_USERNAME}
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD}
@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: docker/minio/Dockerfile
-    image: miap/minio:2026-09-22-hardened
+    image: miap/minio:2026-11-23-hardened
     command: server /data --console-address ":9001"
     environment:
       MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:9000
@@ -64,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: docker/redis/Dockerfile
-    image: miap/redis:7.4.11-alpine3.21-openssl-r2
+    image: miap/redis:7.4.12-alpine3.22
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -82,7 +82,7 @@ services:
     build:
       context: .
       dockerfile: docker/elasticsearch/Dockerfile
-    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4
+    image: miap/elasticsearch:8.19.26-hardened
     environment:
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
       discovery.type: single-node
@@ -104,16 +104,16 @@ services:
 
 networks:
   miap-local:
-    name: miap-local-development
+    name: "${MIAP_DEV_PREFIX:-miap}-local-development"
 
 volumes:
   miap-postgres-data:
-    name: miap-postgres-data
+    name: "${MIAP_DEV_PREFIX:-miap}-postgres-data"
   miap-orthanc-data:
-    name: miap-orthanc-data
+    name: "${MIAP_DEV_PREFIX:-miap}-orthanc-data"
   miap-minio-data:
-    name: miap-minio-data
+    name: "${MIAP_DEV_PREFIX:-miap}-minio-data"
   miap-redis-data:
-    name: miap-redis-data
+    name: "${MIAP_DEV_PREFIX:-miap}-redis-data"
   miap-elasticsearch-data:
-    name: miap-elasticsearch-data
+    name: "${MIAP_DEV_PREFIX:-miap}-elasticsearch-data"

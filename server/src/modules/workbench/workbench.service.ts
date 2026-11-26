@@ -58,9 +58,10 @@ export class WorkbenchService {
       const [current] = await manager.query('SELECT *,expire_at::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR NO KEY UPDATE', [actor.id]) as AuthUser[];
       if (!current || !accountAvailable(current) || current.updated_at.getTime() !== actor.updated_at.getTime()) throw new ForbiddenException('账号或会话已失效');
       const [item] = await manager.query(`SELECT id,case_no,source,system_code,status,clinical_text,age_band,sex,confirm_method FROM cases c
-        WHERE id=$1 AND deleted_at IS NULL AND source='synthetic' AND EXISTS (
+        WHERE id=$1 AND deleted_at IS NULL AND EXISTS (
           SELECT 1 FROM audit_logs WHERE target='cases:'||c.id::text AND action IN ('case_import.deidentification_confirmed','case_manual.confirmed'))`, [id]);
-      if (!item) throw new ForbiddenException('工作台病例不可访问');
+      if (!item || !['synthetic', 'teacher_provided_teaching'].includes(item.source)
+        || (role === 'library' && item.source !== 'synthetic')) throw new ForbiddenException('工作台病例不可访问');
       await this.assertAccess(manager,current,id,item.system_code,role,version);
       return {current,item};
   }

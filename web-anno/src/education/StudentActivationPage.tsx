@@ -1,0 +1,8 @@
+import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { educationApi } from './api';
+export function StudentActivationPage(){const [error,setError]=useState(''),[done,setDone]=useState(''),[busy,setBusy]=useState(false);
+ return <main className="login-page"><Card className="login-card"><Typography.Title level={2}>学生身份激活</Typography.Title><p>使用管理员预录的学号和单独交接的激活码，设置自己的密码。</p>{error&&<Alert type="error" message={error}/>} {done?<Alert type="success" message={`激活成功，请使用学号 ${done} 登录`}/>:<Form layout="vertical" onFinish={async(v:{student_no:string;code:string;password:string;confirm:string})=>{setError('');if(v.password!==v.confirm){setError('两次输入的密码不一致');return;}setBusy(true);try{const r=await educationApi.activate(v.student_no,v.code,v.password);setDone(r.username);}catch(e){setError(e instanceof Error?e.message:'激活失败');}finally{setBusy(false);}}}>
+ <Form.Item label="学号" name="student_no" rules={[{required:true}]}><Input autoComplete="username" maxLength={64}/></Form.Item><Form.Item label="激活码" name="code" rules={[{required:true}]}><Input.Password autoComplete="off" maxLength={128}/></Form.Item><Form.Item label="设置密码" name="password" extra="至少12位，包含字母和数字" rules={[{required:true,min:12,max:128}]}><Input.Password autoComplete="new-password"/></Form.Item><Form.Item label="确认密码" name="confirm" rules={[{required:true}]}><Input.Password autoComplete="new-password"/></Form.Item><Button block htmlType="submit" type="primary" loading={busy}>激活学生身份</Button></Form>}<p><Link to="/login">返回登录</Link></p></Card></main>;
+}

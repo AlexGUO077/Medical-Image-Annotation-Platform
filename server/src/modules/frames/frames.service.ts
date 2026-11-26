@@ -1,3 +1,4 @@
+import { educationContext } from '../education/education-access';
 import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import sharp from 'sharp';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -77,6 +78,12 @@ export class FramesService {
       if (!series || !['synthetic','teacher_provided_teaching'].includes(series.source) || target.frame_index >= series.frame_count) {
         throw new ForbiddenException('帧资源不可访问');
       }
+      if(target.access_mode==='education'){
+        if(current.role!=='student')throw new ForbiddenException('仅学生可使用考核影像');
+        await educationContext(manager,current.id,target.attempt_id!,target.case_id,series.id);
+        return work(manager,current,series);
+      }
+      if(current.role==='student')throw new ForbiddenException('学生需使用考核影像授权');
       if(target.access_mode==='library'){
         await new PermissionService(manager as unknown as DataSource).assertPublishedCase(current,target.case_id,series.system_code,target.expected_version!);
         return work(manager,current,series);
@@ -111,8 +118,8 @@ export class FramesService {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('帧参数无效');
     const value = body as Record<string, unknown>;
     const window = value.window ?? null;
-    if (Object.keys(value).some(k => !['case_id','series_uid','frame_index','window','access_mode','expected_version'].includes(k)) ||
-        !((value.access_mode===undefined&&value.expected_version===undefined)||(value.access_mode==='library'&&Number.isSafeInteger(value.expected_version)&&(value.expected_version as number)>=0)) ||
+    if (Object.keys(value).some(k => !['case_id','series_uid','frame_index','window','access_mode','expected_version','attempt_id'].includes(k)) ||
+        !((value.access_mode===undefined&&value.expected_version===undefined&&value.attempt_id===undefined)||(value.access_mode==='library'&&value.attempt_id===undefined&&Number.isSafeInteger(value.expected_version)&&(value.expected_version as number)>=0)||(value.access_mode==='education'&&value.expected_version===undefined&&typeof value.attempt_id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.attempt_id))) ||
         typeof value.case_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.case_id) ||
         typeof value.series_uid !== 'string' || value.series_uid.length > 64 || !/^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$/.test(value.series_uid) ||
         !Number.isSafeInteger(value.frame_index) || (value.frame_index as number) < 0 ||
@@ -121,6 +128,6 @@ export class FramesService {
           !Number.isFinite((window as { width: number }).width) || (window as { width: number }).width <= 0))) {
       throw new BadRequestException('帧参数无效');
     }
-    return { case_id: value.case_id.toLowerCase(), series_uid: value.series_uid, frame_index: value.frame_index as number, window: window as FrameTarget['window'],...(value.access_mode==='library'?{access_mode:'library' as const,expected_version:value.expected_version as number}:{}) };
+    return { case_id: value.case_id.toLowerCase(), series_uid: value.series_uid, frame_index: value.frame_index as number, window: window as FrameTarget['window'],...(value.access_mode==='library'?{access_mode:'library' as const,expected_version:value.expected_version as number}:value.access_mode==='education'?{access_mode:'education' as const,attempt_id:(value.attempt_id as string).toLowerCase()}:{}) };
   }
 }

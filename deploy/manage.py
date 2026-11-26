@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local synthetic deployment only. No shell execution, cron installation or cloud defaults."""
+"""Local deployment, synthetic recovery and opt-in private teaching recovery."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import teaching_set
 
 ROOT = Path(__file__).resolve().parent
 STORES = {'orthanc': '/var/lib/orthanc/db', 'minio': '/data'}
@@ -75,6 +76,11 @@ class Instance:
         self.env = {**os.environ, **self.values}
         self.command = ['docker', 'compose', '--project-name', self.project, '--env-file',
                         str(self.directory / '.env'), '-f', str(ROOT / 'compose.yml')]
+        override = self.directory / 'compose.local.json'
+        if override.exists():
+            if override.is_symlink() or override.stat().st_mode & 0o077:
+                raise ValueError('The instance override must be private')
+            self.command.extend(['-f', str(override)])
 
     def compose(self, *args, **kwargs):
         return run([*self.command, *args], env=kwargs.pop('env', self.env), **kwargs)
@@ -113,17 +119,19 @@ class Instance:
         return result
 
     def tls(self):
+        nginx_image = json.loads(self.compose('config', '--format', 'json'))['services']['nginx']['image']
         run(['docker', 'volume', 'create', '--label', f'com.docker.compose.project={self.project}', f'{self.project}_tls'])
         run(['docker', 'run', '--rm', '--network', 'none', '--user', '0',
              '--mount', f'type=bind,source={self.directory / "certs"},target=/source,readonly',
              '--mount', f'type=volume,source={self.project}_tls,target=/target',
-             'miap/nginx:wp16', 'sh', '-c',
+             '--entrypoint', 'sh', nginx_image, '-c',
              'cp /source/fullchain.pem /source/privkey.pem /target/ && chown -R 101:101 /target && chmod 700 /target && chmod 600 /target/*.pem'])
 
     def provision(self):
         admin = {**self.env, 'POSTGRES_USER': 'miap_owner', 'POSTGRES_PASSWORD': self.values['POSTGRES_OWNER_PASSWORD']}
+        admin['DEPLOY_ALLOW_TEACHING'] = self.values.get('DEPLOY_ALLOW_TEACHING', 'false')
         overrides = []
-        for key in ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'SEED_ADMIN_PASSWORD', 'ELASTIC_PASSWORD']:
+        for key in ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'SEED_ADMIN_PASSWORD', 'ELASTIC_PASSWORD', 'DEPLOY_ALLOW_TEACHING']:
             overrides.extend(['-e', key])
         self.compose('run', '--rm', '--no-deps', *overrides, 'server', 'node', 'bootstrap.cjs', env=admin)
         for bucket in ['miap-mask-maps', 'miap-attachments']:
@@ -177,6 +185,8 @@ def initialize(args):
     if args.keys_from:
         _, source = private_config(args.keys_from)
         values.update({key: source[key] for key in KEYS})
+    if getattr(args, 'allow_teaching', False):
+        values['DEPLOY_ALLOW_TEACHING'] = 'true'
     values.update(DEPLOY_INSTANCE_DIR=str(directory), DEPLOY_HTTP_PORT=str(args.http_port),
                   DEPLOY_HTTPS_PORT=str(args.https_port), ORTHANC_USERNAME='miap_orthanc',
                   MINIO_ROOT_USER='miap_owner', FRAME_RATE_WINDOW_SECONDS=str(args.window))
@@ -213,6 +223,10 @@ def verify_batch(directory, *, unpublished=False):
     manifest = json.loads((directory / 'manifest.json').read_text())
     if manifest.get('format') != 1 or manifest.get('complete') is not True or set(manifest.get('files', {})) != set(FILES):
         raise ValueError('Incomplete backup manifest')
+    if 'teaching_set_sha256' in manifest:
+        index = directory / 'teaching-set.json'
+        if index.is_symlink() or not index.is_file() or checksum(index) != manifest['teaching_set_sha256']:
+            raise ValueError('Missing or inconsistent private case inventory')
     for name in FILES:
         path = directory / name
         if path.is_symlink() or not path.is_file() or checksum(path) != manifest['files'][name]:
@@ -226,7 +240,11 @@ def verify_batch(directory, *, unpublished=False):
     return manifest
 
 
-def backup(instance, destination):
+def backup(instance, destination, *, teaching_cases=None, remote_sync=False):
+    if remote_sync and (teaching_cases is not None or instance.values.get('DEPLOY_ALLOW_TEACHING') == 'true'):
+        raise ValueError('A teaching backup must remain on local storage')
+    if teaching_cases is not None:
+        teaching_set.require_local(instance)
     destination.mkdir(mode=0o700, parents=True, exist_ok=True)
     if destination.stat().st_mode & 0o077:
         raise ValueError('Backup root must be private (0700)')
@@ -246,6 +264,14 @@ def backup(instance, destination):
         stopped = instance.containers()
         if any(stopped[service][1] for service in ['server', *STORES]):
             raise ValueError('Writers did not stop')
+        inventory_hash = None
+        if remote_sync or teaching_cases is not None:
+            teaching_set.check_sources(instance, teaching=teaching_cases is not None)
+        if teaching_cases is not None:
+            records = teaching_set.inventory(instance, teaching_cases)
+            inventory = partial / 'teaching-set.json'
+            write_private(inventory, json.dumps(records, sort_keys=True))
+            inventory_hash = checksum(inventory)
         with (partial / 'postgres.dump').open('xb') as output:
             instance.compose('exec', '-T', 'postgres', 'pg_dump', '-U', 'miap_owner', '-d', 'miap_synthetic',
                              '--no-owner', '--no-acl', '-Fc', output=output)
@@ -255,6 +281,8 @@ def backup(instance, destination):
         manifest = {'format': 1, 'complete': True, 'project': instance.project,
                     'key_fingerprints': {key: hashlib.sha256(instance.values[key].encode()).hexdigest() for key in KEYS},
                     'files': {name: checksum(partial / name) for name in FILES}}
+        if inventory_hash is not None:
+            manifest['teaching_set_sha256'] = inventory_hash
         write_private(partial / 'manifest.json', json.dumps(manifest))
         verify_batch(partial, unpublished=True)
     finally:
@@ -278,11 +306,36 @@ def backup(instance, destination):
     return complete
 
 
-def restore(instance, source):
+def restore(instance, source, *, teaching=False):
     manifest = verify_batch(source)  # Validate before creating any target resources.
     fingerprints = {key: hashlib.sha256(instance.values[key].encode()).hexdigest() for key in KEYS}
     if manifest.get('key_fingerprints') != fingerprints:
         raise ValueError('Restore keys do not match this batch')
+    if teaching != ('teaching_set_sha256' in manifest):
+        raise ValueError('Choose the matching synthetic restore or private teaching preparation')
+    if teaching:
+        teaching_set.require_local(instance)
+        if not instance.marker.get('restoration_keys') or instance.project == manifest['project']:
+            raise ValueError('Teaching recovery requires a distinct local project and restoration keys')
+        baseline = json.loads((source / 'teaching-set.json').read_text())
+        identity = checksum(source / 'manifest.json')
+        pending = instance.directory / '.teaching-restore-pending'
+        ready = instance.directory / '.teaching-restore-ready'
+        if ready.exists() or pending.exists():
+            previous = ready if ready.exists() else pending
+            if previous.read_text() != identity:
+                raise ValueError('Another snapshot owns this target; choose a new instance')
+            if not instance.containers().get('postgres', (None, False))[1]:
+                instance.compose('up', '-d', '--wait', '--wait-timeout', '180', 'postgres')
+            teaching_set.check_sources(instance, teaching=True)
+            teaching_set.verify(instance, baseline, exact=False)
+            services = instance.containers()
+            if previous == pending or not all(services.get(s, (None, False))[1] for s in [*MIDDLEWARE, 'server', 'nginx']):
+                finish_restore(instance)
+            if previous == pending:
+                pending.replace(ready)
+            print('Existing teaching instance verified; current answers preserved.')
+            return
     if not instance.marker.get('restoration_keys') or instance.resources():
         raise ValueError('Restore requires a new, unused instance initialized with --keys-from')
     instance.compose('create', 'postgres', *STORES)
@@ -294,13 +347,25 @@ def restore(instance, source):
     with (source / 'postgres.dump').open('rb') as input_file:
         instance.compose('exec', '-T', 'postgres', 'pg_restore', '-U', 'miap_owner', '-d', 'miap_synthetic',
                          '--no-owner', '--no-acl', '--single-transaction', '--exit-on-error', input_file=input_file)
-    count = instance.compose('exec', '-T', 'postgres', 'psql', '-U', 'miap_owner', '-d', 'miap_synthetic', '-At',
-                             '-c', "SELECT count(*) FROM cases WHERE source IS DISTINCT FROM 'synthetic'").strip()
-    if count != b'0':
-        raise ValueError('Restored data is not synthetic; business services remain stopped')
+    if teaching:
+        teaching_set.check_sources(instance, teaching=True)
+        teaching_set.verify(instance, baseline, exact=True)
+        write_private(pending, identity)
+    else:
+        count = instance.compose('exec', '-T', 'postgres', 'psql', '-U', 'miap_owner', '-d', 'miap_synthetic', '-At',
+                                 '-c', "SELECT count(*) FROM cases WHERE source IS DISTINCT FROM 'synthetic'").strip()
+        if count != b'0':
+            raise ValueError('Restored data is not synthetic; business services remain stopped')
+    finish_restore(instance)
+    if teaching:
+        teaching_set.verify(instance, baseline, exact=True)
+        pending.replace(ready)
+    print('Same-batch stores restored. Verify authenticated previews before accepting the restoration.')
+
+
+def finish_restore(instance):
     instance.up()
     instance.compose('exec', '-T', 'server', 'node', 'dist/modules/search/reconcile-search.js')
-    print('Same-batch stores restored. Verify three authenticated previews before accepting the restoration.')
 
 
 def main():
@@ -315,14 +380,18 @@ def main():
     init.add_argument('--window', type=int, required=True)
     init.add_argument('--rates', type=int, nargs=5, required=True, metavar=('CR', 'DX', 'CT', 'MR', 'US'))
     init.add_argument('--keys-from', type=Path)
+    init.add_argument('--allow-teaching', action='store_true', help='Allow approved teaching data on this local instance')
     sub.add_parser('up')
     build = sub.add_parser('build')
     build.add_argument('services', nargs='+', choices=[*MIDDLEWARE, 'server', 'nginx'])
     back = sub.add_parser('backup')
     back.add_argument('--destination', required=True, type=Path)
+    back.add_argument('--teaching-cases', type=Path, help='Private JSON array of case UUIDs for a local teaching snapshot')
     back.add_argument('--rsync-target', help='Explicit user@host:/absolute/path; preconfigured SSH identity and known_hosts required')
     recovery = sub.add_parser('restore')
     recovery.add_argument('--source', required=True, type=Path)
+    teaching = sub.add_parser('prepare-teaching', help='Restore to a fresh local instance or verify the same baseline again')
+    teaching.add_argument('--source', required=True, type=Path)
     args = parser.parse_args()
     if args.operation == 'init':
         initialize(args)
@@ -337,12 +406,13 @@ def main():
             target = args.rsync_target
             if target and not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*:/[a-zA-Z0-9_/.-]+', target):
                 raise ValueError('Use a literal SSH user, host and absolute directory')
-            complete = backup(instance, args.destination.resolve())
+            selected = teaching_set.read_selection(args.teaching_cases) if args.teaching_cases else None
+            complete = backup(instance, args.destination.resolve(), teaching_cases=selected, remote_sync=bool(target))
             if target:
                 run(['rsync', '-a', '-e', 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes', '--', str(complete), target.rstrip('/') + '/'])
                 print('Verified batch synchronized to the configured target.')
-        elif args.operation == 'restore':
-            restore(instance, args.source.resolve())
+        elif args.operation in ('restore', 'prepare-teaching'):
+            restore(instance, args.source.resolve(), teaching=args.operation == 'prepare-teaching')
 
 
 if __name__ == '__main__':

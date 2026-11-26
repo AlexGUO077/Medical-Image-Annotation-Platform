@@ -105,10 +105,10 @@ export class AnnotationsService {
       ORDER BY t.id FOR NO KEY UPDATE OF t`, [id,user.id]);
     if (!task) throw new ForbiddenException('标注病例不可访问');
     new PermissionService(manager as unknown as DataSource).assertQualification(user, task.system_code, 'annotate');
-    const [item] = await manager.query(`SELECT c.id,c.system_code,c.annotation_version FROM cases c WHERE c.id=$1
-      AND c.deleted_at IS NULL AND c.source='synthetic' AND EXISTS(SELECT 1 FROM audit_logs
+    const [item] = await manager.query(`SELECT c.id,c.system_code,c.annotation_version,c.source FROM cases c WHERE c.id=$1
+      AND c.deleted_at IS NULL AND EXISTS(SELECT 1 FROM audit_logs
         WHERE target='cases:'||c.id::text AND action IN ('case_import.deidentification_confirmed','case_manual.confirmed')) FOR UPDATE`, [id]);
-    if (!task || !item) throw new ForbiddenException('标注病例不可访问');
+    if (!task || !item || !['synthetic', 'teacher_provided_teaching'].includes(item.source)) throw new ForbiddenException('标注病例不可访问');
     await new PermissionService(manager as unknown as DataSource).assertCaseAssignment(user, id, item.system_code, 'annotate');
     return { user, item, taskId: task.id };
   }

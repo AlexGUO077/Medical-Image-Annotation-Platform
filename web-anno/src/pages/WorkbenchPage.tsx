@@ -2,7 +2,7 @@ import { Alert, Button, Empty, Space, Spin, Tabs, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { Link,useNavigate,useParams } from 'react-router-dom';
 import type { Session } from '../auth/types';
-import { ViewerRequestError, viewerApi, type FrameGeometry, type FrameWindow, type Series, type Workbench } from '../viewer/api';
+import { ViewerRequestError, viewerApi, type FrameAccess, type FrameGeometry, type FrameWindow, type Series, type Workbench } from '../viewer/api';
 import { AnnotationLayer } from '../annotations/AnnotationLayer';
 import { AnnotationPanel } from '../annotations/AnnotationPanel';
 import { AttachmentPreview } from '../viewer/AttachmentPreview';
@@ -23,7 +23,7 @@ import { ViewerIcon } from '../viewer/ViewerIcon';
 import { ViewerPageState } from '../viewer/ViewerPageState';
 import { isTextInput, objectColor } from '../viewer/workspaceConfig';
 const message = (e: unknown) => e instanceof Error ? e.message : '工作台加载失败';
-type FramePaneProps = { token:string; data:Workbench; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void;libraryVersion?:number;onDenied?(e:unknown):void };
+type FramePaneProps = { token:string; data:{case:{id:string}}; series:Series; frame:number; window:FrameWindow|null; layer:Omit<Parameters<typeof AnnotationLayer>[0],'controls'|'frame'>; onGeometry(value:FrameGeometry):void;onExpired?():void;windowDrag:boolean;onWindow(value:FrameWindow):void;libraryVersion?:FrameAccess;onDenied?(e:unknown):void };
 export function FramePane(props:FramePaneProps) {
   const {token,data,series,frame,window,libraryVersion}=props;
   const identity=JSON.stringify([token,data.case.id,series,frame,window,libraryVersion]);
@@ -47,7 +47,9 @@ function FrameSurface({ token, data, series, frame, window, layer, onGeometry, o
   const pointer = useRef<{x:number;y:number;kind:'pan'|'zoom'|'window';window:FrameWindow}>();
   const space = useRef(false);
   useEffect(()=>{
-    const down=(e:KeyboardEvent)=>{if(isTextInput(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();space.current=true;}if(e.key.toLowerCase()==='r')controls.current?.reset();};
+    const down=(e:KeyboardEvent)=>{if(isTextInput(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
+      if(e.code==='Space'&&!(e.target instanceof HTMLElement&&e.target.closest('button,a,summary,[role="menuitem"],[role="switch"]'))){e.preventDefault();space.current=true;}
+      if(e.key.toLowerCase()==='r')controls.current?.reset();};
     const up=(e:KeyboardEvent)=>{if(e.code==='Space')space.current=false;};
     const blur=()=>{space.current=false;pointer.current=undefined;};
     globalThis.addEventListener('keydown',down);globalThis.addEventListener('keyup',up);globalThis.addEventListener('blur',blur);

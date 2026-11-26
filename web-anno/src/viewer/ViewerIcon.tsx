@@ -1,4 +1,9 @@
 const paths = {
+  home: 'm3 10 9-7 9 7 M5 8.5V20h5v-6h4v6h5V8.5',
+  report: 'M6 3h8l4 4v14H6Z M14 3v5h4 M9 12h6 M9 16h6',
+  layers: 'm3 8 9-5 9 5-9 5z M3 12l9 5 9-5 M3 16l9 5 9-5',
+  plus: 'M12 5v14 M5 12h14',
+  trash: 'M4 6h16 M9 6V3h6v3 M7 6l1 15h8l1-15 M10 10v7 M14 10v7',
   box: 'M4 4h16v16H4z',
   brush: 'm14 4 6 6-9 9-6-6z M5 13l-2 8 8-2 M14 4l2-2 6 6-2 2',
   polygon: 'M5 4 20 7 17 20 3 16Z M5 4h.01 M20 7h.01 M17 20h.01 M3 16h.01',

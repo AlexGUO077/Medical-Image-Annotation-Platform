@@ -1,6 +1,8 @@
 # 工作台读取与本地阅片切片
 
-源手册 §5.2/§6.2、基线 WP-08/S7，UI §7～§9。基于尚待远端验证的 PR #40 本地开发，不放行 SG-4。此切片仅允许 synthetic 病例；真实/教学影像仍须完成帧安全门验收。
+源手册 §5.2/§6.2、基线 WP-08/S7，UI §7～§9。最初 PR #40 切片仅允许 synthetic 病例，不由接口实现推定 SG-4 放行。当前本机教学样例范围见下段，阶段验收状态仍以 STATUS 为准。
+
+2026-10-25，用户明确要求将既有老师教学样例入库，用于本机验收展示；按 D-31 以 `teacher_provided_teaching` 保留来源。标注工作台允许已脱敏确认且有效分派的该来源病例，沿用账号、资格、帧票据、水印、限流和审计检查。已发布病例库仍限 synthetic，本次不扩大其他真实来源或公网用途。
 
 `GET /api/workbench/{caseId}` 必须认证且持有当前有效标注分派，管理员无旁路。与释放共享用户行锁，复核会话版本、资格、期限、任务和病例状态，确认脱敏入库审计。返回最小病例字段（id/case_no/source/system_code/status/clinical_text/age_band/sex/confirm_method）、按 idx 排序的只读报告句、附件 id/filename/kind、序列 id/series_uid/modality/frame_count/default_window。禁止返回 Orthanc ID、对象键、脱敏映射和原始 DICOM；写 workbench.viewed 审计后返回，失败无业务内容。Cache-Control 为 no-store, private。
 

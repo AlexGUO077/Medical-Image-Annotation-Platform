@@ -6,6 +6,10 @@ import type { Workbench } from './api';
 import { SYSTEM_OPTIONS } from '../cases/types';
 
 const preferenceKey = 'miap.workspace.widths';
+const layoutModes = [
+  { key: 'standard', label: '标准三栏' }, { key: 'left', label: '隐藏左栏' },
+  { key: 'right', label: '隐藏右栏' }, { key: 'focus', label: '影像专注模式' },
+];
 type Widths = { left: number; right: number };
 const bounded = (side: keyof Widths, value: number) => Math.min(panelSizes[side].max, Math.max(panelSizes[side].min, value));
 function initialWidths(): Widths {
@@ -61,7 +65,10 @@ export function WorkspaceLayout({ identity, actions, toolbar, left, right, child
     onPointerDown={e => { drag.current = { side, x: e.clientX, width: widths[side] }; e.currentTarget.setPointerCapture(e.pointerId); }}
     onPointerMove={e => { if (drag.current?.side === side) resize(side, drag.current.width + (e.clientX - drag.current.x) * (side === 'right' ? -1 : 1)); }}
     onPointerUp={() => { drag.current = undefined; }} onPointerCancel={() => { drag.current = undefined; }} />;
-  return <><header className="workbench-heading"><div className="workbench-identity">{identity}</div><div className="workspace-tools">{toolbar}<div className="workspace-view-options"><Dropdown trigger={['click']} menu={{ items: [{ key: 'standard', label: '标准三栏' }, { key: 'left', label: '隐藏左栏' }, { key: 'right', label: '隐藏右栏' }, { key: 'focus', label: '影像专注模式' }], onClick: ({ key }) => { onFocus(key === 'focus'); setLeftOpen(key !== 'left'); setRightOpen(key !== 'right'); } }}><Button type="text" aria-label="视图布局" title="视图布局" icon={<ViewerIcon name="layout" />} /></Dropdown><Button type="text" aria-label={focus ? '退出专注模式' : '影像专注模式'} title={focus ? '退出专注模式 · Esc' : '影像专注模式'} aria-pressed={focus} icon={<ViewerIcon name="focus" />} onClick={() => onFocus(!focus)} /></div></div><div className="workbench-header-actions">{actions}</div></header>
+  const layoutItems = autoCollapseLeft
+    ? [{ type: 'group' as const, label: '窄窗口可单独展开左栏或右栏', children: layoutModes }]
+    : layoutModes;
+  return <><header className="workbench-heading"><div className="workbench-identity">{identity}</div><div className="workspace-tools">{toolbar}<div className="workspace-view-options"><Dropdown trigger={['click']} menu={{ items: layoutItems, onClick: ({ key }) => { onFocus(key === 'focus'); setLeftOpen(key !== 'left'); setRightOpen(key !== 'right'); } }}><Button type="text" aria-label="视图布局" title="视图布局" icon={<ViewerIcon name="layout" />} /></Dropdown><Button type="text" aria-label={focus ? '退出专注模式' : '影像专注模式'} title={focus ? '退出专注模式 · Esc' : '影像专注模式'} aria-pressed={focus} icon={<ViewerIcon name="focus" />} onClick={() => onFocus(!focus)} /></div></div><div className="workbench-header-actions">{actions}</div></header>
   <div className={`workspace-layout${focus ? ' is-focused' : ''}`} ref={root} style={{ '--left-width': `${showLeft ? widths.left : 36}px`, '--right-width': `${showRight ? widths.right : 36}px` } as CSSProperties}>
     <aside className={`workspace-panel${showLeft ? '' : ' is-collapsed'}`} aria-label={leftTitle}>
       <div className="workspace-panel-heading"><span>{showLeft ? leftTitle : ''}</span><Tooltip title={showLeft ? '收起左侧栏' : '展开左侧栏'}><Button type="text" aria-label={showLeft ? '收起左侧栏' : '展开左侧栏'} icon={<ViewerIcon name={showLeft ? 'left' : 'right'} />} onClick={() => showLeft ? setLeftOpen(false) : expand('left')} /></Tooltip></div>
@@ -71,9 +78,8 @@ export function WorkspaceLayout({ identity, actions, toolbar, left, right, child
     <main className="workbench-center">{children}</main>
     {showRight ? divider('right') : <div />}
     <aside className={`workspace-panel${showRight ? '' : ' is-collapsed'}`} aria-label={rightTitle}>
-      <div className="workspace-panel-heading"><Tooltip title={showRight ? '收起右侧栏' : '展开右侧栏'}><Button type="text" aria-label={showRight ? '收起右侧栏' : '展开右侧栏'} icon={<ViewerIcon name={showRight ? 'right' : 'left'} />} onClick={() => showRight ? setRightOpen(false) : expand('right')} /></Tooltip><span>{showRight ? rightTitle : ''}</span></div>
+      <div className="workspace-panel-heading"><span>{showRight ? rightTitle : ''}</span><Tooltip title={showRight ? '收起右侧栏' : '展开右侧栏'}><Button type="text" aria-label={showRight ? '收起右侧栏' : '展开右侧栏'} icon={<ViewerIcon name={showRight ? 'right' : 'left'} />} onClick={() => showRight ? setRightOpen(false) : expand('right')} /></Tooltip></div>
       <div className="workspace-panel-body" hidden={!showRight}>{right}</div>
     </aside>
-    {available > 0 && available < 1232 && <span className="workspace-size-hint">建议将浏览器窗口扩大至 1280px 以上</span>}
   </div></>;
 }

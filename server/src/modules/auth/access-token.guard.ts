@@ -33,6 +33,9 @@ export class AccessTokenGuard implements CanActivate {
     if (claims.account_updated_at !== user.updated_at.getTime()) {
       throw new UnauthorizedException('会话已失效，请重新登录');
     }
+    if (user.role === 'student' && !['EducationController', 'FramesController'].includes(context.getClass().name)) {
+      throw new ForbiddenException('学生身份不可访问生产业务接口');
+    }
     request.user = user;
     request.auth = claims;
     return true;

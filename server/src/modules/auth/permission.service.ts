@@ -10,10 +10,12 @@ export class PermissionService {
   constructor(@Inject(DATABASE_SOURCE) private readonly dataSource: DataSource) {}
 
   assertQualification(user: AuthUser, systemCode: string, required: Qualification): void {
+    if (user.role === 'student') throw new ForbiddenException('学生不可访问生产标注');
     if (!user.quals[systemCode]?.includes(required)) throw new ForbiddenException('缺少对应系统资格');
   }
 
   async assertPublishedCase(user:AuthUser,caseId:string,systemCode:string,version:number):Promise<void> {
+    if(user.role==='student')throw new ForbiddenException('学生不可访问病例库');
     if(!user.quals[systemCode]?.some(q=>q==='annotate'||q==='review'))throw new ForbiddenException('缺少对应系统资格');
     const rows=await this.dataSource.query(`SELECT c.id FROM cases c JOIN users u ON u.id=$2
       WHERE c.id=$1 AND c.system_code=$3 AND c.annotation_version=$4 AND ${publishedPredicate}

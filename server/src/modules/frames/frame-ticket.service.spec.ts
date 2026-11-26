@@ -91,3 +91,12 @@ describe('internal frame tickets', () => {
     expect(() => new FrameTicketService()).toThrow(/FRAME_TOKEN_SECRET/);
   });
 });
+
+describe('education frame binding',()=>{
+ it('binds an attempt and rejects mixed or unsigned access changes',()=>{
+  const service=new FrameTicketService(),education={...target,access_mode:'education' as const,attempt_id:target.case_id};
+  const token=extract(service.issue(session,education).url);expect(service.verify(token,session)).toEqual(education);
+  for(const change of [{attempt_id:undefined},{attempt_id:'invalid'},{expected_version:1},{access_mode:undefined}])expect(()=>service.issue(session,{...education,...change} as FrameTarget)).toThrow();
+  const parts=token.split('.');parts[1]=Buffer.from(JSON.stringify({...jwt.decode(token),attempt_id:session.user_id})).toString('base64url');expect(()=>service.verify(parts.join('.'),session)).toThrow();
+ });
+});

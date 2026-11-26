@@ -6,7 +6,7 @@ export const APP_DATABASE_ROLE = 'miap_app';
 const MUTABLE_TABLES = [
   'users', 'taxonomy_nodes', 'sign_tags', 'cases', 'studies', 'series', 'reports', 'attachments',
   'tasks', 'task_cases', 'task_assignments', 'annotation_objects', 'annotation_tags', 'reviews',
-  'export_requests',
+  'export_requests', 'education_roster', 'education_tasks', 'education_items', 'education_students', 'education_attempts',
 ];
 
 export async function provisionApplicationRole(dataSource: DataSource): Promise<void> {

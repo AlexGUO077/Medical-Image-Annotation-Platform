@@ -1,7 +1,7 @@
 services:
   postgres:
     build: {context: .., dockerfile: docker/postgres/Dockerfile}
-    image: miap/postgres:16.15-alpine3.24
+    image: miap/postgres:16.16-alpine3.24
     environment:
       POSTGRES_DB: miap_synthetic
       POSTGRES_USER: miap_owner
@@ -15,7 +15,7 @@ services:
       retries: 30
   orthanc:
     build: {context: .., dockerfile: docker/orthanc/Dockerfile}
-    image: miap/orthanc:26.9.0-openssl-r7
+    image: miap/orthanc:26.9.0-os-20261126
     environment:
       ORTHANC_USERNAME: ${ORTHANC_USERNAME:?}
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:?}
@@ -31,7 +31,7 @@ services:
       retries: 30
   minio:
     build: {context: .., dockerfile: docker/minio/Dockerfile}
-    image: miap/minio:2026-09-22-hardened
+    image: miap/minio:2026-11-23-hardened
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
@@ -46,7 +46,7 @@ services:
       retries: 30
   redis:
     build: {context: .., dockerfile: docker/redis/Dockerfile}
-    image: miap/redis:7.4.11-alpine3.21-openssl-r2
+    image: miap/redis:7.4.12-alpine3.22
     command: [redis-server, --appendonly, "yes", --requirepass, '${REDIS_PASSWORD:?}']
     environment: {REDIS_PASSWORD: '${REDIS_PASSWORD:?}'}
     volumes: [redis:/data]
@@ -58,7 +58,7 @@ services:
       retries: 30
   elasticsearch:
     build: {context: .., dockerfile: docker/elasticsearch/Dockerfile}
-    image: miap/elasticsearch:8.19.21-netty-4.1.137-jackson-2.18.11-jsoup-1.23.2-lz4-1.11.4
+    image: miap/elasticsearch:8.19.26-hardened
     environment:
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?}
       discovery.type: single-node
@@ -76,7 +76,7 @@ services:
   server:
     platform: linux/amd64
     build: {context: .., dockerfile: deploy/server/Dockerfile}
-    image: miap/server:wp16-pebble-free
+    image: miap/server:wp16-20261126
     init: true
     stop_grace_period: 120s
     environment:
@@ -128,7 +128,7 @@ services:
     depends_on:
       server: {condition: service_healthy}
     build: {context: .., dockerfile: deploy/nginx/Dockerfile}
-    image: miap/nginx:wp16
+    image: miap/nginx:wp16-20261126
     ports: ['127.0.0.1:${DEPLOY_HTTP_PORT:?}:8080', '127.0.0.1:${DEPLOY_HTTPS_PORT:?}:8443']
     volumes:
       - '${DEPLOY_INSTANCE_DIR:?}/nginx.conf:/etc/nginx/nginx.conf:ro'

@@ -1,4 +1,4 @@
-export type AccountRole = 'admin' | 'member';
+export type AccountRole = 'admin' | 'member' | 'student';
 export type Qualifications = Record<string, Array<'annotate' | 'review'>>;
 
 export interface AuthResponse {

@@ -1,3 +1,4 @@
+import { EducationModule } from './modules/education/education.module';
 import {ExportsModule} from './modules/exports/exports.module';
 import {AuditModule} from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -16,5 +17,5 @@ import { FramesModule } from './modules/frames/frames.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 
-@Module({ imports: [DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule, SearchModule, DashboardModule, ExportsModule, AuditModule] })
+@Module({ imports: [EducationModule, DatabaseModule, RedisModule, HealthModule, AuthModule, UsersModule, TaxonomyModule, CasesModule, TasksModule, FramesModule, WorkbenchModule, AnnotationsModule, ReviewsModule, SearchModule, DashboardModule, ExportsModule, AuditModule] })
 export class AppModule {}

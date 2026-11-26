@@ -41,6 +41,9 @@ __pycache__/
 /minio/
 /backups/
 /exports/
+/local-demo/
+teaching-set.json
+teaching-cases.json
 *.dump
 *.bak
 *.sql.gz
@@ -48,8 +51,22 @@ __pycache__/
 # Medical data must never be committed by default
 *.dcm
 *.dicom
+*.ima
+DICOMDIR
 *.nii
 *.nii.gz
+*.zip
+*.rar
+*.7z
+*.tar
+*.tgz
+*.tar.gz
+*.tar.xz
+*.tar.zst
+*.xls
+*.xlsx
+*.csv
+*.tsv
 
 # Only explicitly reviewed synthetic fixtures may override the medical-data rule
 !test/fixtures/synthetic/**

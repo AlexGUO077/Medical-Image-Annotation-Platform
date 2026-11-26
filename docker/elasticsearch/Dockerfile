@@ -1,51 +1,24 @@
-FROM docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.21@sha256:4780b851ca7f79eb59c94d5151984c2748c7548c8074047c870a0b187eb918ea
+FROM docker.elastic.co/elasticsearch/elasticsearch-wolfi:8.19.26@sha256:1c58031eac1f9482d670fb0766c166f723eca098f1394477e63d2b9428ad6ace
 
 USER root
 
-ADD --checksum=sha256:f474b14c7734f15e0540394cb6f39d67777b7581a42919e4ac89d253d4efd929 https://repo.maven.apache.org/maven2/io/netty/netty-buffer/4.1.137.Final/netty-buffer-4.1.137.Final.jar /tmp/netty/netty-buffer-4.1.137.Final.jar
-ADD --checksum=sha256:9987b6a660b0a6b1f0d791485dae33180b3d1c63687c006fe6d3fd025e9e3798 https://repo.maven.apache.org/maven2/io/netty/netty-codec/4.1.137.Final/netty-codec-4.1.137.Final.jar /tmp/netty/netty-codec-4.1.137.Final.jar
-ADD --checksum=sha256:2d9a33ce41bd9f6f607df95039e42518a1fca16f83c9bbfe72beb57df6e2489f https://repo.maven.apache.org/maven2/io/netty/netty-codec-dns/4.1.137.Final/netty-codec-dns-4.1.137.Final.jar /tmp/netty/netty-codec-dns-4.1.137.Final.jar
-ADD --checksum=sha256:0535bb5a736472bef5c948d15eb273c4ab9f796656fc7c5d6b982ad92bddbd49 https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.137.Final/netty-codec-http-4.1.137.Final.jar /tmp/netty/netty-codec-http-4.1.137.Final.jar
-ADD --checksum=sha256:576ddcfb51b78e86f145c9a52b60e500b1a1d5a257cafec8aa5416ffba044b49 https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.137.Final/netty-codec-http2-4.1.137.Final.jar /tmp/netty/netty-codec-http2-4.1.137.Final.jar
-ADD --checksum=sha256:4a6190e08988c058bfeef2b5965e71946439c771abf721c68f4039b4e7b023e8 https://repo.maven.apache.org/maven2/io/netty/netty-codec-socks/4.1.137.Final/netty-codec-socks-4.1.137.Final.jar /tmp/netty/netty-codec-socks-4.1.137.Final.jar
-ADD --checksum=sha256:d31926b01adcc07af86f5e27b81b6d6c115df17d366e835d1fc3f5a1924e7e52 https://repo.maven.apache.org/maven2/io/netty/netty-common/4.1.137.Final/netty-common-4.1.137.Final.jar /tmp/netty/netty-common-4.1.137.Final.jar
-ADD --checksum=sha256:d0e4c6ee4779f59f6ab2fb5d388e4f57147c82270164b37945764bb9bda96a44 https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.137.Final/netty-handler-4.1.137.Final.jar /tmp/netty/netty-handler-4.1.137.Final.jar
-ADD --checksum=sha256:843de10c4cef34cbc1a5344090f1b57db532fbebf141559862da675f6b656df4 https://repo.maven.apache.org/maven2/io/netty/netty-handler-proxy/4.1.137.Final/netty-handler-proxy-4.1.137.Final.jar /tmp/netty/netty-handler-proxy-4.1.137.Final.jar
-ADD --checksum=sha256:b4cf2aeedd9fc7c8c439bbfe574f63cfe5b83392e88bbc07ca0e8424b7cff955 https://repo.maven.apache.org/maven2/io/netty/netty-resolver/4.1.137.Final/netty-resolver-4.1.137.Final.jar /tmp/netty/netty-resolver-4.1.137.Final.jar
-ADD --checksum=sha256:898d63ca62ed68ff46543c5344f969424b417f1e8d082fe2bb0181ba10144194 https://repo.maven.apache.org/maven2/io/netty/netty-resolver-dns/4.1.137.Final/netty-resolver-dns-4.1.137.Final.jar /tmp/netty/netty-resolver-dns-4.1.137.Final.jar
-ADD --checksum=sha256:6251adc2a2921572382732a2db188d4f4f2251fd6ebb49c5d44bbf33d6bfb1a7 https://repo.maven.apache.org/maven2/io/netty/netty-transport/4.1.137.Final/netty-transport-4.1.137.Final.jar /tmp/netty/netty-transport-4.1.137.Final.jar
-ADD --checksum=sha256:8056e7637f9948f953314894cf995ab664711b66c73c4cd5b593ae84f0b1048c https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-unix-common/4.1.137.Final/netty-transport-native-unix-common-4.1.137.Final.jar /tmp/netty/netty-transport-native-unix-common-4.1.137.Final.jar
-ADD --checksum=sha256:55049554b799dc8e53bf234fffa36e001f7b5b65c32994b9bd59fc6356f1c52f https://repo.maven.apache.org/maven2/io/netty/netty-transport-classes-epoll/4.1.137.Final/netty-transport-classes-epoll-4.1.137.Final.jar /tmp/netty/netty-transport-classes-epoll-4.1.137.Final.jar
-
-RUN find /usr/share/elasticsearch/modules -type f -name '*-4.1.135.Final.jar' \
-      -exec sh -c 'for old do artifact="$(basename "$old" -4.1.135.Final.jar)"; install -m 0644 -o 1000 -g 0 "/tmp/netty/${artifact}-4.1.137.Final.jar" "$old"; done' sh {} + \
-    && rm -rf /tmp/netty
-
-# Patch all bundled Jackson copies; preserve paths required by Elastic module policies.
-ADD --checksum=sha256:825fa72dfb9e2f8a642322f1390dbac22c30d15ebd6dc6b3772158821ee124eb https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.18.11/jackson-core-2.18.11.jar /tmp/jackson-core.jar
-ADD --checksum=sha256:075ad94a76c3edf83e1972dc26f476361eb6b9d0e260d93fc11105509bc79cab https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.11/jackson-databind-2.18.11.jar /tmp/jackson-databind.jar
-COPY docker/elasticsearch/patch-embedded-jackson.sh /tmp/patch-embedded-jackson.sh
-RUN test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-core-2.18.9.jar' | wc -l)" -eq 9 \
-    && test "$(find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' | wc -l)" -eq 4 \
-    && find /usr/share/elasticsearch/modules -type f -name 'jackson-core-2.18.9.jar' \
-      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-core.jar {} \; \
-    && find /usr/share/elasticsearch/modules -type f -name 'jackson-databind-2.18.9.jar' \
-      -exec install -m 0644 -o 1000 -g 0 /tmp/jackson-databind.jar {} \; \
-    && sh /tmp/patch-embedded-jackson.sh \
-    && rm /tmp/jackson-core.jar /tmp/jackson-databind.jar /tmp/patch-embedded-jackson.sh
-
-# Keep the attachment module's policy-bound JAR path while patching its contents.
-ADD --checksum=sha256:e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003 https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar /tmp/jsoup.jar
-RUN test "$(find /usr/share/elasticsearch -type f -name 'jsoup-*.jar' | wc -l)" -eq 1 \
-    && test -f /usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar \
-    && install -m 0644 -o 1000 -g 0 /tmp/jsoup.jar /usr/share/elasticsearch/modules/ingest-attachment/jsoup-1.21.2.jar \
-    && rm /tmp/jsoup.jar
-
-# Preserve Elastic's policy-bound path while replacing the sole LZ4 dependency.
-ADD --checksum=sha256:58c8e0b813960d2a248e050c353baea73139b48a2ffc55382d42c69707e17325 https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.11.4/lz4-java-1.11.4.jar /tmp/lz4-java.jar
-RUN test "$(find /usr/share/elasticsearch -type f -name 'lz4-java-*.jar' | wc -l)" -eq 1 \
-    && test -f /usr/share/elasticsearch/lib/lz4-java-1.11.1.jar \
-    && install -m 0644 -o 1000 -g 0 /tmp/lz4-java.jar /usr/share/elasticsearch/lib/lz4-java-1.11.1.jar \
-    && rm /tmp/lz4-java.jar
+# Each module has its own classloader. Preserve the bundled JAR paths when upgrading.
+ADD --checksum=sha256:b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c https://repo.maven.apache.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar /tmp/guava.jar
+ADD --checksum=sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb https://repo.maven.apache.org/maven2/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar /tmp/failureaccess.jar
+WORKDIR /usr/share/elasticsearch
+RUN test "$(find modules -name 'guava-*.jar' | wc -l)" -eq 5 \
+    && test "$(find modules -name 'failureaccess-*.jar' | wc -l)" -eq 4 \
+    && for module in repository-gcs x-pack-identity-provider x-pack-inference x-pack-security x-pack-watcher; do \
+         path="modules/${module}/guava-32.0.1-jre.jar"; \
+         test -f "$path" && install -m 0644 -o 1000 -g 0 /tmp/guava.jar "$path" || exit 1; \
+         if [ "$module" = x-pack-inference ]; then \
+           path="modules/${module}/failureaccess-1.0.3.jar"; \
+         else \
+           path="modules/${module}/failureaccess-1.0.1.jar"; \
+           test -f "$path" || exit 1; \
+         fi; \
+         install -m 0644 -o 1000 -g 0 /tmp/failureaccess.jar "$path" || exit 1; \
+       done \
+    && rm /tmp/guava.jar /tmp/failureaccess.jar
 
 USER 1000:0
